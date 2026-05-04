@@ -26,6 +26,14 @@ Use the `/pr-creation` skill. Before writing a PR description, check for `CONTRI
 - Smart quotes (U+201C/U+201D/U+2018/U+2019): use Unicode escapes in code, centralize constants, ask user to verify output
 - Fail loudly with clear error messages, only remove error reporting if user asks specifically
 
+## Self-Critique Loop
+
+Before declaring any non-trivial coding task done, **iteratively critique and fix your own work until you reach a fixed point.** Read what you actually wrote (not what you intended to write) as if it came from a developer you cannot stand — assume it is wrong until proven otherwise.
+
+Each pass, hunt for: bugs, broken or missed edge cases, weakened/skipped/deleted tests, swallowed errors, dead code, unjustified abstractions, premature returns, broken invariants, sloppy naming, fragile assumptions, hidden coupling, scope creep beyond the request, comments that explain _what_ instead of _why_, anything that smells off. State each issue bluntly in one line, then fix it. Then re-review the fix — fixes introduce their own bugs.
+
+Stop only when a full pass turns up **nothing** worth changing. Cap at ~5 passes; if you're still finding real issues at pass 5, say so and ask the user rather than silently giving up. Skip the loop for trivial edits (typo fixes, single-line config tweaks, pure questions) — say so explicitly when you skip.
+
 ## CI / GitHub Actions
 
 - Add the `ci:full-tests` label to PRs that modify Playwright tests or interaction behavior, so CI actually runs Playwright on the PR.
