@@ -38,6 +38,10 @@ Stop only when a full pass turns up **nothing** worth changing. Cap at ~5 passes
 
 - Add the `ci:full-tests` label to PRs that modify Playwright tests or interaction behavior, so CI actually runs Playwright on the PR.
 - **`paths` filter pitfall**: if a workflow uses `paths` on one trigger (e.g., `push`) but not the other (e.g., `pull_request`), the triggers fire on different sets of changes, leading to confusing behavior. Always keep `paths` filters consistent across both `push` and `pull_request` triggers.
+- **Autofix workflow pitfalls**: When building a workflow that auto-fixes CI failures:
+  - Trigger on `pull_request` directly, not `workflow_run` — with `workflow_run` the triggered job runs against the base branch (not the PR HEAD), log context must be fetched as an artifact, and the mismatch makes diagnosing failures error-prone.
+  - Gate on a non-bot actor (e.g., `github.event.pull_request.user.type != 'Bot'`) from day one — bot-authored PRs (dependabot, etc.) are rejected by `claude-code-action`, so the workflow burns CI minutes and accomplishes nothing.
+  - Don't ship a static "recoverable" allowlist (lint/format/docstring) — it either duplicates pre-commit or requires human judgment about why a rule fires in this codebase. Let `claude-code-action` decide whether a failure has a tractable mechanical fix.
 
 ## Testing
 
