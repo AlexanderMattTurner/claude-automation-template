@@ -96,7 +96,7 @@ fi
 # owner/repo and export GH_REPO to make all gh commands work.
 
 if [ -z "${GH_REPO:-}" ]; then
-	remote_url=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || true)
+	remote_url=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null)
 	if [[ "$remote_url" =~ /git/([^/]+/[^/]+)$ ]]; then
 		GH_REPO="${BASH_REMATCH[1]}"
 		GH_REPO="${GH_REPO%.git}"
@@ -105,12 +105,6 @@ if [ -z "${GH_REPO:-}" ]; then
 			echo "export GH_REPO=\"$GH_REPO\"" >>"$CLAUDE_ENV_FILE"
 		fi
 	fi
-fi
-
-# Set gh's default repo so commands like `gh pr create` work even when
-# the git remote is a local proxy URL that gh can't resolve.
-if [ -n "${GH_REPO:-}" ] && command -v gh &>/dev/null; then
-	gh repo set-default "$GH_REPO" || warn "Failed to set default repo for gh"
 fi
 
 #######################################

@@ -10,7 +10,7 @@ A GitHub template that makes [Claude Code](https://docs.anthropic.com/en/docs/cl
 
 - **A solid starting CLAUDE.md** — upholds high code quality standards.
 - **Pre-push verification** — Claude runs your build, lint, and type checks before every push
-- **Post-push CI watching** — Claude waits for CI to pass and gets told to fix failures (with a retry cap so it doesn't burn tokens forever)
+- **Skill-driven PR flow** — the `pr-creation` skill runs an iterative compress-critique-fix loop on the diff, then watches CI and fixes failures before reporting back
 - **Enforced code quality** — Conventional Commits, Prettier formatting, and lint-staged run on every commit
 - **`@claude` GitHub integration** — mention Claude in issues or PR comments and it responds with full repo context
 - **Automatic template sync** — downstream repos receive improvements daily via PR, with conflict detection that preserves your customizations
@@ -37,12 +37,10 @@ Then [install the Claude GitHub app](https://github.com/apps/claude) to enable `
 
 ### Claude Session Hooks (`.claude/`)
 
-| Hook         | What it does                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------ |
-| SessionStart | Installs tools (gh, shfmt, shellcheck), configures git, installs dependencies                    |
-| PreToolUse   | Runs build/lint/typecheck before `git push` or `gh pr create`                                    |
-| PostToolUse  | Watches `gh pr checks` for up to 5 minutes after push                                            |
-| Stop         | Blocks session completion if tests/lint/typecheck fail; gives up after 3 attempts to avoid loops |
+| Hook         | What it does                                                                  |
+| ------------ | ----------------------------------------------------------------------------- |
+| SessionStart | Installs tools (gh, shfmt, shellcheck), configures git, installs dependencies |
+| PreToolUse   | Runs build/lint/typecheck before `git push` or `gh pr create`                 |
 
 ### Claude Skills (`.claude/skills/`)
 
