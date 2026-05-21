@@ -4,7 +4,7 @@ name: pr-creation
 description: >
   Creates high-quality pull requests with an iterative compress-critique-fix loop before submission.
   Activate this skill whenever you are asked to create, open, submit, or push a pull request,
-  AND whenever a new feature, fix, or refactor is complete and ready to ship.
+  OR whenever a new feature, fix, or refactor is complete and ready to ship.
   Also activate when the user says "make a PR", "open a PR", "submit this for review",
   "push and create a PR", "I'm done, create the PR", "the feature is done", "I'm finished",
   or any variation of completing work / requesting a pull request.
