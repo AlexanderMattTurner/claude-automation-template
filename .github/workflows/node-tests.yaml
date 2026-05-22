@@ -34,10 +34,10 @@ jobs:
       - name: Check if test script is configured
         id: check
         run: |
-          if node -e "const p=require('./package.json'); const s=p.scripts?.test; process.exit(s && !s.includes('ERROR: Configure') ? 0 : 1)"; then
-            echo "configured=true" >> $GITHUB_OUTPUT
+          if bash .github/scripts/script-configured.sh test; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
           else
-            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Test script not configured, skipping tests"
           fi
 
