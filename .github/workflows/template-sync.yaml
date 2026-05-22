@@ -45,8 +45,11 @@ env:
   # To add a new template-managed workflow, put that marker at the top of the
   # workflow file — no change to SYNC_PATHS needed.
   SYNC_PATHS: ".claude .hooks .github/actions .github/scripts .github/prompts"
-  # Paths listed here are removed from SYNC_PATHS before processing. Use the
-  # exact string that appears in SYNC_PATHS (whole dir or whole file path).
+  # Paths listed here are removed from SYNC_PATHS before processing. Match is
+  # exact-string against entries in SYNC_PATHS — i.e. whole directories (e.g.
+  # `.github/prompts`) or whole auto-discovered workflow paths (e.g.
+  # `.github/workflows/claude.yaml`). Per-file excludes inside a synced dir
+  # are not supported.
   EXCLUDE_PATHS: ""
 
 permissions:
@@ -158,10 +161,12 @@ jobs:
           # the marker travels with the file.
           for wf in _template/.github/workflows/*.yaml _template/.github/workflows/*.yml; do
             [ -e "$wf" ] || continue
-            if head -20 "$wf" | grep -qE '^# template-sync: managed[[:space:]]*$'; then
-              rel="${wf#_template/}"
-              SYNC_PATHS="$SYNC_PATHS $rel"
-              echo "Discovered template-managed workflow: $rel"
+            # Marker must be the very first line — strict to avoid matching
+            # the literal string when it appears in inline documentation.
+            if IFS= read -r first_line < "$wf" && [ "$first_line" = "# template-sync: managed" ]; then
+              rel_path="${wf#_template/}"
+              SYNC_PATHS="$SYNC_PATHS $rel_path"
+              echo "Discovered template-managed workflow: $rel_path"
             fi
           done
 
