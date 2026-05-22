@@ -8,10 +8,9 @@ This directory contains configuration and skills for Claude Code.
 .claude/
 ├── settings.json              # Claude Code hooks configuration
 ├── hooks/
-│   ├── session-setup.sh           # Runs on session start (installs tools, configures git)
-│   ├── pre-push-check.sh         # Runs before git push / gh pr (build, lint, typecheck)
-│   ├── bash-antipattern-check.sh # Hard-blocks `|| true` and `|| :` in Bash commands
-│   └── lib-checks.sh             # Shared bash helpers (exists, has_script)
+│   ├── session-setup.sh      # Runs on session start (installs tools, configures git)
+│   ├── pre-push-check.sh    # Runs before git push / gh pr (build, lint, typecheck)
+│   └── lib-checks.sh        # Shared bash helpers (exists, has_script)
 └── skills/
     └── pr-creation/       # PR creation workflow with self-critique
         ├── SKILL.md       # Main skill entrypoint
@@ -41,14 +40,6 @@ Before `git push` or `gh pr` commands, `pre-push-check.sh` runs any configured�
 - **ruff**: Python linting if applicable
 
 Only runs scripts that are actually configured in `package.json`—skips placeholder scripts.
-
-### Bash Antipattern Check Hook
-
-Every `Bash` tool call passes through `bash-antipattern-check.sh`, which exits 2
-(blocking) if the command contains `|| true` or `|| :`. These patterns silently
-swallow errors and violate the “fail loudly” rule in `CLAUDE.md`. Literal
-occurrences inside single- or double-quoted arguments (e.g. `grep '|| true'`)
-are ignored.
 
 ### Skills
 

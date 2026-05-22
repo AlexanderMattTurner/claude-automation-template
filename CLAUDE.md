@@ -22,7 +22,6 @@ Use the `/pr-creation` skill. Before writing a PR description, check for `CONT
 
 - Fail loudly: throw errors over logging warnings for critical issues
 - Let exceptions propagate—never use try/except unless there is a specific, necessary recovery action. Default to crashing on unexpected input
-- Never append `|| true` or `|| :` to shell commands—it silently swallows errors. A PreToolUse hook (`.claude/hooks/bash-antipattern-check.sh`) hard-blocks these in Bash tool calls. Use `if ! cmd; then ...; fi` or capture the exit code instead
 - Un-nest conditionals; combine related checks
 - Smart quotes (U+201C/U+201D/U+2018/U+2019): use Unicode escapes in code, centralize constants, ask user to verify output
 - Fail loudly with clear error messages, only remove error reporting if user asks specifically
