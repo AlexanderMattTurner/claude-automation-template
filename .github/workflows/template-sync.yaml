@@ -38,7 +38,7 @@ on:
 env:
   TEMPLATE_REPO: "alexander-turner/claude-automation-template"
   # Only sync core automation files that don't need customization
-  SYNC_PATHS: ".claude .hooks .github/scripts .github/workflows/template-sync.yaml .github/workflows/dependabot-auto-merge.yaml .github/workflows/claude.yaml .github/workflows/phone-home.yaml .github/workflows/security-vulnerability-scan.yaml .github/prompts/security-vulnerability-scan.md"
+  SYNC_PATHS: ".claude .hooks .github/actions .github/scripts .github/workflows/template-sync.yaml .github/workflows/dependabot-auto-merge.yaml .github/workflows/claude.yaml .github/workflows/phone-home.yaml .github/workflows/security-vulnerability-scan.yaml .github/prompts/security-vulnerability-scan.md"
   # These are excluded because they require project-specific customization
   # (lint/test need project scripts)
   EXCLUDE_PATHS: ""
