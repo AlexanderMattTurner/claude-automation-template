@@ -34,19 +34,16 @@ jobs:
       - name: Check if scripts are configured
         id: check
         run: |
-          script_configured() {
-            node -e "const p=require('./package.json'); const s=p.scripts?.['$1']; process.exit(s && !s.includes('ERROR: Configure') ? 0 : 1)"
-          }
-          if script_configured check; then
-            echo "check_configured=true" >> $GITHUB_OUTPUT
+          if bash .github/scripts/script-configured.sh check; then
+            echo "check_configured=true" >> "$GITHUB_OUTPUT"
           else
-            echo "check_configured=false" >> $GITHUB_OUTPUT
+            echo "check_configured=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Type check script not configured, skipping"
           fi
-          if script_configured lint; then
-            echo "lint_configured=true" >> $GITHUB_OUTPUT
+          if bash .github/scripts/script-configured.sh lint; then
+            echo "lint_configured=true" >> "$GITHUB_OUTPUT"
           else
-            echo "lint_configured=false" >> $GITHUB_OUTPUT
+            echo "lint_configured=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Lint script not configured, skipping"
           fi
 

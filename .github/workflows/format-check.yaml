@@ -21,24 +21,4 @@ jobs:
         run: pnpm format --check
 
       - name: Check tracked symlinks are portable
-        # Absolute-target symlinks (e.g., /Users/foo/...) silently break on every
-        # other machine. Fail loudly so they don't ship.
-        run: |
-          set -euo pipefail
-          violations=""
-          while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            mode=$(printf '%s' "$line" | awk '{print $1}')
-            hash=$(printf '%s' "$line" | awk '{print $2}')
-            path=$(printf '%s' "$line" | cut -f2-)
-            [ "$mode" = "120000" ] || continue
-            target=$(git cat-file blob "$hash")
-            case "$target" in
-              /*) violations="${violations}${path} -> ${target}"$'\n' ;;
-            esac
-          done < <(git ls-files -s)
-          if [ -n "$violations" ]; then
-            echo "::error::Tracked symlinks resolve to absolute paths (not portable across machines):"
-            printf '%s' "$violations"
-            exit 1
-          fi
+        run: bash .github/scripts/check-symlinks.sh

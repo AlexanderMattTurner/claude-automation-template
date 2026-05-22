@@ -17,6 +17,7 @@ if [ -f .claude/settings.json ]; then
   commands=$(jq -r '.. | objects | select(.command?) | .command' .claude/settings.json 2>/dev/null || true)
   while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
+    # shellcheck disable=SC2016  # literal $CLAUDE_PROJECT_DIR matched by sed
     resolved=$(echo "$cmd" | sed 's|"\$CLAUDE_PROJECT_DIR"/\?|./|g; s|"||g; s|\$CLAUDE_PROJECT_DIR/\?|./|g')
     read -ra tokens <<<"$resolved"
     for token in "${tokens[@]}"; do
