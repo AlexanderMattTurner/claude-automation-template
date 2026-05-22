@@ -18,6 +18,7 @@ jobs:
         uses: ./.github/actions/setup-base-env
 
       - name: Check formatting
+        if: hashFiles('package.json') != ''
         run: pnpm format --check
 
       - name: Check tracked symlinks are portable

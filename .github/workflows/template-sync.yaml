@@ -1,4 +1,3 @@
-# template-sync: managed
 name: Sync from Template
 
 # Syncs updates from the template repository automatically.
@@ -39,17 +38,14 @@ on:
 env:
   TEMPLATE_REPO: "alexander-turner/claude-automation-template"
   # Whole directories of core automation files that are always template-owned.
-  # Individual workflows under .github/workflows/ are auto-discovered at runtime
-  # by scanning for a `# template-sync: managed` marker line (see the
-  # "Discover template-managed workflows" section in the sync step below).
-  # To add a new template-managed workflow, put that marker at the top of the
-  # workflow file — no change to SYNC_PATHS needed.
-  SYNC_PATHS: ".claude .hooks .github/actions .github/scripts .github/prompts"
+  # Every file under these paths propagates to downstream consumers; new files
+  # added to the template auto-sync without anyone having to edit this list.
+  # Downstream-added files in these directories are left alone (sync only
+  # copies files that exist in the template).
+  SYNC_PATHS: ".claude .hooks .github/actions .github/scripts .github/workflows .github/prompts"
   # Paths listed here are removed from SYNC_PATHS before processing. Match is
-  # exact-string against entries in SYNC_PATHS — i.e. whole directories (e.g.
-  # `.github/prompts`) or whole auto-discovered workflow paths (e.g.
-  # `.github/workflows/claude.yaml`). Per-file excludes inside a synced dir
-  # are not supported.
+  # exact-string against entries in SYNC_PATHS (whole directories). Per-file
+  # excludes inside a synced directory are not supported.
   EXCLUDE_PATHS: ""
 
 permissions:
@@ -151,26 +147,6 @@ jobs:
 
           # Update version file
           echo "$TEMPLATE_SHA" > .template-version
-
-          #############################################
-          # Discover template-managed workflows
-          #############################################
-          # Workflows opt-in by including `# template-sync: managed` near the
-          # top of the file. This lets the template add new automation
-          # workflows without anyone having to remember to edit SYNC_PATHS —
-          # the marker travels with the file. Note: discovery scans only the
-          # current template HEAD, so deleting a managed workflow upstream
-          # won't trigger auto-deletion downstream — coordinate manually.
-          for wf in _template/.github/workflows/*.yaml _template/.github/workflows/*.yml; do
-            [ -e "$wf" ] || continue
-            # Marker must be the very first line — strict to avoid matching
-            # the literal string when it appears in inline documentation.
-            if IFS= read -r first_line < "$wf" && [ "$first_line" = "# template-sync: managed" ]; then
-              rel_path="${wf#_template/}"
-              SYNC_PATHS="$SYNC_PATHS $rel_path"
-              echo "Discovered template-managed workflow: $rel_path"
-            fi
-          done
 
           #############################################
           # File processing

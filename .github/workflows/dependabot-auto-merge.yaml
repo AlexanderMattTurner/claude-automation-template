@@ -1,4 +1,3 @@
-# template-sync: managed
 name: Dependabot Auto-Merge
 
 # Automatically merges Dependabot PRs for minor/patch updates after CI passes.
