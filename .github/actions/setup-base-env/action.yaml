@@ -1,5 +1,5 @@
 name: "Setup Base Environment"
-description: "Sets up Node.js with pnpm and caching. Optionally sets up Python with uv."
+description: "Sets up Node.js with pnpm and caching when a package.json is present (no-op otherwise). Optionally sets up Python with uv."
 inputs:
   node-version:
     description: "Node.js version to use"
@@ -18,19 +18,23 @@ runs:
   using: "composite"
   steps:
     - name: Set up Node.js
+      if: hashFiles('package.json') != ''
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
 
     - name: Install pnpm
+      if: hashFiles('package.json') != ''
       uses: pnpm/action-setup@v4
 
     - name: Get pnpm store directory
+      if: hashFiles('package.json') != ''
       shell: bash
       run: |
         echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
     - name: Restore pnpm cache
+      if: hashFiles('package.json') != ''
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.STORE_PATH }}
@@ -39,6 +43,7 @@ runs:
           ${{ runner.os }}-pnpm-store-
 
     - name: Install Node Dependencies
+      if: hashFiles('package.json') != ''
       run: pnpm install
       shell: bash
 
