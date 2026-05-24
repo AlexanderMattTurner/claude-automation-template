@@ -18,6 +18,8 @@ Commits MUST use [Conventional Commits](https://www.conventionalcommits.org/) (`
 
 Use the `/pr-creation` skill. Before writing a PR description, check for `CONTRIBUTING.md` or `.github/PULL_REQUEST_TEMPLATE.md` in the target repo and follow its conventions. **Never** include `claude.ai` URLs, session links, or AI-tool attribution links in PRs. Include a `## Lessons Learned` section **only** for generalizable changes to the template files (e.g., `.claude/`, `.hooks/`, `.github/workflows/`, `CLAUDE.md`, `setup.sh`) that would benefit other downstream repos—the `phone-home.yaml` workflow propagates these to the template repo on merge. Repo-specific fixes do not belong here. Each lesson must be actionable: specify **what** to change in the template, **where** (template file/component), and **why**. Delete the section entirely if there are no template-level lessons—empty or vague lessons create noise.
 
+**Lessons only reach the template repo if they appear in the PR description**—lessons mentioned only in chat are never propagated by `phone-home.yaml` and are permanently lost.
+
 ## Code Style
 
 - Fail loudly: throw errors over logging warnings for critical issues
@@ -25,6 +27,7 @@ Use the `/pr-creation` skill. Before writing a PR description, check for `CONT
 - Un-nest conditionals; combine related checks
 - Smart quotes (U+201C/U+201D/U+2018/U+2019): use Unicode escapes in code, centralize constants, ask user to verify output
 - Fail loudly with clear error messages, only remove error reporting if user asks specifically
+- Shell scripts: never use `|| true` to silence an expected non-zero exit—it silently swallows unexpected failures too. Branch on the exit code instead: `cmd; rc=$?; [ "${rc:-0}" -le N ] || exit "$rc"`.
 
 ## Self-Critique Loop
 
@@ -42,12 +45,17 @@ Stop only when a full pass turns up **nothing** worth changing. Cap at ~5 pas
   - Trigger on `pull_request` directly, not `workflow_run`—with `workflow_run` the triggered job runs against the base branch (not the PR HEAD), log context must be fetched as an artifact, and the mismatch makes diagnosing failures error-prone.
   - Gate on a non-bot actor (e.g., `github.event.pull_request.user.type != 'Bot'`) from day one—bot-authored PRs (dependabot, etc.) are rejected by `claude-code-action`, so the workflow burns CI minutes and accomplishes nothing.
   - Don’t ship a static “recoverable” allowlist (lint/format/docstring)—it either duplicates pre-commit or requires human judgment about why a rule fires in this codebase. Let `claude-code-action` decide whether a failure has a tractable mechanical fix.
+- Use `uv` (not `pip`) for Python tool installs in CI; use `uv python install <version>` instead of `actions/setup-python`’s tool-cache when pinning a specific Python version—this removes the runner-image dependency entirely.
+- When `.pre-commit-config.yaml` pins `default_language_version`, the CI workflow must install that exact Python version explicitly—runner images drop versions on their own schedule. Keep the two in sync.
 
 ## Testing
 
 - Never skip or weaken tests unless asked
 - Parametrize for compactness; prefer exact equality assertions
 - For interaction features/bugs: add Playwright e2e tests (mobile + desktop, verify visual state)
+
+- Python tests: resolve the repo root via `git rev-parse --show-toplevel`, not `Path(__file__).resolve().parent.parent`—depth-based parent-walking silently breaks when test files are moved.
+- Python tests: don’t add `from __future__ import annotations` unless you need runtime annotation introspection (`typing.get_type_hints()`, Pydantic, etc.)—`dict[str, str]`, `X | None`, etc. work natively in Python 3.9+.
 
 ### Hook Errors
 
