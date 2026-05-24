@@ -71,17 +71,21 @@ fi
 # Bot username is "socket-security[bot]" (as of 2025); if Socket changes
 # their bot name this will silently return no results.
 socket_found=false
+socket_tmp=$(mktemp)
 for pr_num in $(gh api "repos/${REPO}/pulls?state=open&per_page=5" --jq '.[].number' 2>/dev/null); do
-  socket_bodies=$(gh api "repos/${REPO}/issues/${pr_num}/comments?per_page=30" \
+  # Fetch once into a temp file; avoids a second API call and command
+  # substitution (which strips trailing newlines and merges multi-comment output).
+  gh api "repos/${REPO}/issues/${pr_num}/comments?per_page=30" \
     --jq '.[] | select(.user.login == "socket-security[bot]") | .body' \
-    2>/dev/null || true)
-  if [ -n "$socket_bodies" ]; then
+    >"$socket_tmp" 2>/dev/null || true
+  if [ -s "$socket_tmp" ]; then
     socket_found=true
     echo "### PR #${pr_num}" >>"$REPORT_PATH"
-    printf '%s' "$socket_bodies" >>"$REPORT_PATH"
+    cat "$socket_tmp" >>"$REPORT_PATH"
     echo "" >>"$REPORT_PATH"
   fi
 done
+rm -f "$socket_tmp"
 if [ "$socket_found" = "false" ]; then
   echo "_No Socket.dev alerts found in recent open PRs._" >>"$REPORT_PATH"
 fi

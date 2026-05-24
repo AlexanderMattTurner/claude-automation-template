@@ -44,7 +44,7 @@ for file in "$@"; do
   fi
 
   # Check for YAML frontmatter closing delimiter
-  if ! awk '/^---$/{n++} n==2{found=1; exit} END{exit !found}' "$file"; then
+  if ! awk '/^---$/{n++} END{exit (n<2)}' "$file"; then
     echo "ERROR: $file missing closing '---' YAML frontmatter delimiter" >&2
     errors=$((errors + 1))
     continue

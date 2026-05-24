@@ -108,9 +108,21 @@ echo "$TEMPLATE_SHA" >.template-version
 # File processing
 #############################################
 
-# Resolve a single file's sync outcome: 3-way merge if a merge base exists,
-# else fall through to applying the template version with a conflict marker
-# for review.
+# Resolve a single file's sync outcome using a 3-way merge strategy:
+#
+#   base     = the file at PREV_SHA in the template (last known common ancestor)
+#   local    = the current file in the child repo
+#   template = the file at HEAD in the template
+#
+# Decision tree:
+#   1. File is new in template → copy it in.
+#   2. Files are already identical → no-op.
+#   3. No merge base (first sync or lost history) → apply template, record conflict.
+#   4. Template is unchanged since base → local diverged alone; keep local.
+#   5. Local is unchanged since base → template advanced alone; adopt template.
+#   6. Both sides changed → attempt a 3-way merge:
+#      a. Clean merge → write merged result.
+#      b. Conflict → write conflict markers for Claude to resolve.
 process_file() {
   local rel_path="$1"
   local template_file="_template/$rel_path"
@@ -119,20 +131,19 @@ process_file() {
   parent_dir=$(dirname "$rel_path")
   [ "$parent_dir" != "." ] && mkdir -p "$parent_dir"
 
-  # New file: just copy it in.
+  # Case 1: new file in template.
   if [ ! -f "$rel_path" ]; then
     cp "$template_file" "$rel_path"
     echo "Added: $rel_path"
     return
   fi
 
-  # Identical: nothing to do.
+  # Case 2: already identical.
   if diff -q "$rel_path" "$template_file" >/dev/null 2>&1; then
     return
   fi
 
-  # No merge base means first sync or lost history — fall through to the
-  # "apply template, raise conflict" branch.
+  # Case 3: no merge base — first sync or history unavailable.
   if [ -z "$PREV_SHA" ]; then
     record_no_base_conflict "$rel_path" "$template_file"
     return
@@ -148,14 +159,14 @@ process_file() {
     return
   fi
 
-  # Template hasn't changed since last sync — keep local.
+  # Case 4: template unchanged since base — local diverged alone; keep local.
   if diff -q "$base_file" "$template_file" >/dev/null 2>&1; then
     echo "Unchanged in template: $rel_path (keeping local version)"
     rm -f "$base_file"
     return
   fi
 
-  # Local hasn't changed since last sync — adopt template.
+  # Case 5: local unchanged since base — template advanced alone; adopt it.
   if diff -q "$base_file" "$rel_path" >/dev/null 2>&1; then
     cp "$template_file" "$rel_path"
     echo "Updated: $rel_path (local was unmodified)"
@@ -163,7 +174,7 @@ process_file() {
     return
   fi
 
-  # Both sides changed — try a 3-way merge.
+  # Case 6: both sides changed — attempt a 3-way merge.
   local merge_result="$WORK_DIR/merge_result_${safe_name}"
   cp "$rel_path" "$merge_result"
 
@@ -176,7 +187,7 @@ process_file() {
     return
   fi
 
-  # merge-file produced conflict markers — keep them for Claude to resolve.
+  # Case 6b: conflict markers produced — keep them for Claude to resolve.
   cp "$merge_result" "$rel_path"
   echo "CONFLICT (merge markers): $rel_path"
   echo "$rel_path" >>"$CONFLICT_FILES"
