@@ -64,10 +64,11 @@ def test_fails_for_classic_pat_missing_workflow_scope(tmp_path: Path) -> None:
 
 
 def test_fails_when_curl_errors(tmp_path: Path) -> None:
-    """Network failure from curl → exit non-zero (must not silently pass)."""
+    """Network failure from curl → exit 1 with a diagnostic, not silent."""
     result = run_scope_check(
         tmp_path,
         ["curl: (6) Could not resolve host: api.github.com"],
         curl_exit=6,
     )
-    assert result.returncode != 0
+    assert result.returncode == 1
+    assert "Could not query GitHub" in result.stderr
