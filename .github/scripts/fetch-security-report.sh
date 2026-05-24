@@ -72,6 +72,7 @@ fi
 # their bot name this will silently return no results.
 socket_found=false
 socket_tmp=$(mktemp)
+trap 'rm -f "$socket_tmp"' EXIT
 for pr_num in $(gh api "repos/${REPO}/pulls?state=open&per_page=5" --jq '.[].number' 2>/dev/null); do
   # Fetch once into a temp file; avoids a second API call and command
   # substitution (which strips trailing newlines and merges multi-comment output).
@@ -85,7 +86,6 @@ for pr_num in $(gh api "repos/${REPO}/pulls?state=open&per_page=5" --jq '.[].num
     echo "" >>"$REPORT_PATH"
   fi
 done
-rm -f "$socket_tmp"
 if [ "$socket_found" = "false" ]; then
   echo "_No Socket.dev alerts found in recent open PRs._" >>"$REPORT_PATH"
 fi
