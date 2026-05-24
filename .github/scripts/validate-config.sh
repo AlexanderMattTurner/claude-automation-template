@@ -41,8 +41,8 @@ for f in .hooks/* .claude/hooks/*; do
   if [ ! -x "$f" ]; then
     error "$f is not executable"
   fi
-  if ! bash -n "$f" 2>/dev/null; then
-    error "$f has a bash syntax error"
+  if ! bash_err=$(bash -n "$f" 2>&1); then
+    error "$f has a bash syntax error: $bash_err"
   fi
 done
 

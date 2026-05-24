@@ -70,21 +70,19 @@ fi
 
 # Bot username is "socket-security[bot]" (as of 2025); if Socket changes
 # their bot name this will silently return no results.
-SOCKET_FOUND=false
+socket_found=false
 for pr_num in $(gh api "repos/${REPO}/pulls?state=open&per_page=5" --jq '.[].number' 2>/dev/null); do
-  # Fetch comments once and reuse the result for both the presence check and
-  # content extraction, halving the number of API calls.
   socket_bodies=$(gh api "repos/${REPO}/issues/${pr_num}/comments?per_page=30" \
     --jq '.[] | select(.user.login == "socket-security[bot]") | .body' \
     2>/dev/null || true)
   if [ -n "$socket_bodies" ]; then
-    SOCKET_FOUND=true
+    socket_found=true
     echo "### PR #${pr_num}" >>"$REPORT_PATH"
-    printf '%s\n' "$socket_bodies" >>"$REPORT_PATH"
+    printf '%s' "$socket_bodies" >>"$REPORT_PATH"
     echo "" >>"$REPORT_PATH"
   fi
 done
-if [ "$SOCKET_FOUND" = "false" ]; then
+if [ "$socket_found" = "false" ]; then
   echo "_No Socket.dev alerts found in recent open PRs._" >>"$REPORT_PATH"
 fi
 
