@@ -5,7 +5,8 @@
 # Inputs (env):
 #   SYNC_PATHS        Space-separated paths to sync from the template
 #                     (path names containing spaces are NOT supported)
-#   EXCLUDE_PATHS     Space-separated paths to exclude (subset of SYNC_PATHS)
+#   EXCLUDE_PATHS     Space-separated paths to exclude (whole SYNC_PATHS entries
+#                     or individual file paths within synced directories)
 #   GITHUB_OUTPUT     Path to GitHub Actions output file
 #
 # Assumes a sibling `_template/` directory containing a checkout of the
@@ -248,6 +249,7 @@ for path in $SYNC_PATHS; do
   if [ -n "$PREV_SHA" ]; then
     while IFS= read -r prev_file; do
       case "$prev_file" in "$path" | "$path/"*) ;; *) continue ;; esac
+      is_excluded "$prev_file" && continue
       if [ ! -f "_template/$prev_file" ]; then
         echo "DELETED in template: $prev_file"
         echo "$prev_file" >>"$DELETED_FILES"
@@ -263,6 +265,7 @@ for path in $SYNC_PATHS; do
   if [ -d "_template/$path" ]; then
     while IFS= read -r template_file; do
       rel_path="${template_file#_template/}"
+      is_excluded "$rel_path" && continue
       process_file "$rel_path"
     done < <(find "_template/$path" -type f)
   else

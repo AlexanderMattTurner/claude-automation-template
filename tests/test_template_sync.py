@@ -262,6 +262,52 @@ def test_excluded_paths_are_not_synced(workdir: Path) -> None:
     assert not (child / "other" / "b.txt").exists()
 
 
+def test_per_file_excludes_within_synced_directory(workdir: Path) -> None:
+    """Individual files within a synced directory can be excluded."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "keep.txt", "keep this\n")
+    write(template / "config" / "skip.txt", "skip this\n")
+    commit_all(template)
+
+    result, output_file = run_sync(
+        child,
+        template,
+        sync_paths="config",
+        exclude_paths="config/skip.txt",
+    )
+    assert result.returncode == 0, result.stderr
+
+    assert (child / "config" / "keep.txt").read_text() == "keep this\n"
+    assert not (child / "config" / "skip.txt").exists()
+
+
+def test_per_file_exclude_suppresses_deletion_report(workdir: Path) -> None:
+    """Files excluded by EXCLUDE_PATHS should not be reported as deleted."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "a.txt", "x\n")
+    write(template / "config" / "b.txt", "y\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / "a.txt", "x\n")
+    write(child / "config" / "b.txt", "y\n")
+    (child / ".template-version").write_text(prev_sha)
+    commit_all(child)
+    (template / "config" / "b.txt").unlink()
+    commit_all(template)
+
+    result, output_file = run_sync(
+        child,
+        template,
+        sync_paths="config",
+        exclude_paths="config/b.txt",
+    )
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_deletions"] == "false"
+
+
 def test_writes_template_version_with_trailing_newline(workdir: Path) -> None:
     """The .template-version file MUST end with a trailing newline; the
     `test_no_changes_when_files_identical` invariant depends on it."""
