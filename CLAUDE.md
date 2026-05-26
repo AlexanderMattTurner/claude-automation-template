@@ -39,6 +39,8 @@ Stop only when a full pass turns up **nothing** worth changing. Cap at ~5 pas
 
 ## CI / GitHub Actions
 
+- **Extract significant inline scripts** from workflow YAML into standalone files under `.github/scripts/` so they can be linted, type-checked, and tested independently. Inline scripts in `run:` or `script:` blocks are invisible to linters, shellcheck, `@ts-check`, and test frameworks. Rule of thumb: if the inline block exceeds ~10 lines or contains branching logic, extract it. Shell scripts go in `.github/scripts/*.sh`; JS scripts used by `actions/github-script` go in `.github/scripts/*.js` (with `@ts-check` and JSDoc types) and are loaded via `require('./.github/scripts/foo.js')`. Keep trivial glue (single commands, simple output-setting) inline.
+- **Pin all third-party GitHub Actions to commit SHAs** (with a `# vX.Y` comment). Mutable version tags let a compromised maintainer silently replace code. Example: `uses: actions/checkout@de0fac2...dd # v6`.
 - Add the `ci:full-tests` label to PRs that modify Playwright tests or interaction behavior, so CI actually runs Playwright on the PR.
 - **`paths` filter pitfall**: if a workflow uses `paths` on one trigger (e.g., `push`) but not the other (e.g., `pull_request`), the triggers fire on different sets of changes, leading to confusing behavior. Always keep `paths` filters consistent across both `push` and `pull_request` triggers.
 - **Autofix workflow pitfalls**: When building a workflow that auto-fixes CI failures:
