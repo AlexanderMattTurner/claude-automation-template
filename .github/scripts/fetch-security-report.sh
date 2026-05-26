@@ -58,7 +58,8 @@ gh_api_section \
 # Skip when there's no Node project — setup-base-env leaves pnpm uninstalled
 # in that case, and `pnpm audit` would error out instead of returning "clean".
 if [ -f package.json ]; then
-  pnpm audit 2>&1 | head -100 >>"$REPORT_PATH"; pnpm_rc=${PIPESTATUS[0]}
+  pnpm audit 2>&1 | head -100 >>"$REPORT_PATH"
+  pnpm_rc=${PIPESTATUS[0]}
   # Exit 0 = clean, exit 1 = vulnerabilities found (expected); higher = real error
   [ "${pnpm_rc:-0}" -le 1 ] || echo "_pnpm audit encountered an error (exit code $pnpm_rc); output above may be incomplete._" >>"$REPORT_PATH"
 else
