@@ -35,29 +35,5 @@ if [ -f "$git_root/.pre-commit-config.yaml" ] && command -v pre-commit >/dev/nul
   exit 0
 fi
 
-# Strategy 3: run available formatters directly on staged files
-staged=$(git diff --cached --name-only --diff-filter=ACMR)
-[ -z "$staged" ] && exit 0
-
-run_on() {
-  local pattern="$1"
-  shift
-  local matched
-  matched=$(echo "$staged" | grep -E "$pattern" || true)
-  [ -z "$matched" ] && return 0
-  echo "$matched" | xargs "$@"
-  echo "$matched" | xargs git add
-}
-
-if command -v ruff >/dev/null 2>&1; then
-  run_on '\.py$' ruff check --fix
-  run_on '\.py$' ruff format
-fi
-
-if command -v shfmt >/dev/null 2>&1; then
-  run_on '(\.(sh|bash)$|^\.hooks/)' shfmt -i 2 -w
-fi
-
-if command -v prettier >/dev/null 2>&1; then
-  run_on '\.(json|ya?ml|md|css|scss|[jt]sx?)$' prettier --write
-fi
+# No lint-staged or pre-commit available — skip gracefully
+echo "Warning: No lint-staged or pre-commit found. Skipping pre-commit formatting." >&2
