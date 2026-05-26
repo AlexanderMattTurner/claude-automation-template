@@ -71,6 +71,29 @@ jobs:
               console.log('Lessons section only contains template skeleton, skipping');
               return;
             }
+
+            // Reject if content contains patterns that look like secrets —
+            // prevents accidental credential leakage to the template repo.
+            const secretPatterns = [
+              /(?:api[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|secret[_-]?key)\s*[:=]\s*\S+/i,
+              /\b(?:sk|pk|rk)[-_](?:live|test|prod)[a-zA-Z0-9_-]{10,}\b/,
+              /\bghp_[a-zA-Z0-9]{36,}\b/,
+              /\bgho_[a-zA-Z0-9]{36,}\b/,
+              /\bghu_[a-zA-Z0-9]{36,}\b/,
+              /\bghs_[a-zA-Z0-9]{36,}\b/,
+              /\bghr_[a-zA-Z0-9]{36,}\b/,
+              /\bAKIA[0-9A-Z]{16}\b/,
+              /\bAIza[0-9A-Za-z_-]{35}\b/,
+              /\bxox[bporas]-[a-zA-Z0-9-]{10,}\b/,
+              /-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----/,
+            ];
+            for (const pattern of secretPatterns) {
+              if (pattern.test(filtered)) {
+                console.log(`Lessons section appears to contain a secret (matched ${pattern}), refusing to phone home`);
+                return;
+              }
+            }
+
             lessons = filtered;
 
             // Check if this is about the template itself (skip to avoid self-referential issues)

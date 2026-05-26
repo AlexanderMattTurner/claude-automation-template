@@ -20,3 +20,15 @@ updates:
       npm-tracked:
         patterns:
           - "*"
+
+  # Track GitHub Actions versions — mutable version tags (e.g. @v4) let a
+  # compromised action maintainer silently replace code. Dependabot PRs for
+  # actions surface version changes for review.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-all:
+        patterns:
+          - "*"
