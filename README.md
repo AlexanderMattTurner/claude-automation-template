@@ -151,17 +151,3 @@ Add it as a repository secret named **`TEMPLATE_SYNC_TOKEN`**.
 ├── pyproject.toml          # Python project config (ruff, pytest)
 └── setup.sh                # One-command setup script
 ```
-
-## Troubleshooting
-
-**Git hooks not running?**
-Check that `core.hooksPath` is set: `git config core.hooksPath`. It should return `.hooks`. If not, run `pnpm install` (the `postinstall` script configures it) or set it manually with `git config core.hooksPath .hooks`.
-
-**Pre-push checks failing on unconfigured scripts?**
-The pre-push hook detects placeholder scripts in `package.json` (those that echo `ERROR: Configure...`) and skips them. Replace a placeholder with a real command and the corresponding check will start running.
-
-**Claude session setup failing?**
-The `SessionStart` hook installs tools like shfmt and shellcheck. If it fails, check the error output—it usually means a network issue or missing `uv`. You can re-run it manually: `.claude/hooks/session-setup.sh`.
-
-**Template sync PR has conflicts?**
-The sync workflow asks Claude to resolve conflicts, preserving your customizations. If it can’t, the PR will contain conflict markers for you to resolve manually. Look for header comments in your customized files like `"IMPORTANT: This file has project-specific customizations"`—the sync respects these.
