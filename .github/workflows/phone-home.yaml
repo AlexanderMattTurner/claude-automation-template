@@ -22,17 +22,21 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'phone-home')
     runs-on: ubuntu-latest
     steps:
-      - name: Extract and submit improvements
-        env:
-          GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
-        uses: actions/github-script@v9
+      - name: Extract lessons from PR body
+        id: extract
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
-          github-token: ${{ env.GH_TOKEN }}
           script: |
+            const fs = require('fs');
             const prBody = context.payload.pull_request.body || '';
-            const prTitle = context.payload.pull_request.title;
-            const prUrl = context.payload.pull_request.html_url;
             const repo = `${context.repo.owner}/${context.repo.repo}`;
+
+            // Skip if this is the template repo itself
+            const templateRepo = process.env.TEMPLATE_REPO;
+            if (repo === templateRepo) {
+              console.log('This IS the template repo, skipping phone-home');
+              return;
+            }
 
             // Extract "Lessons Learned" section from PR body
             const lessonsMatch = prBody.match(/## Lessons Learned\s*\n([\s\S]*?)(?=\n## |\n---|\s*$)/i);
@@ -72,38 +76,42 @@ jobs:
               return;
             }
 
-            // Reject if content contains patterns that look like secrets —
-            // prevents accidental credential leakage to the template repo.
-            const secretPatterns = [
-              /(?:api[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|secret[_-]?key)\s*[:=]\s*\S+/i,
-              /\b(?:sk|pk|rk)[-_](?:live|test|prod)[a-zA-Z0-9_-]{10,}\b/,
-              /\bghp_[a-zA-Z0-9]{36,}\b/,
-              /\bgho_[a-zA-Z0-9]{36,}\b/,
-              /\bghu_[a-zA-Z0-9]{36,}\b/,
-              /\bghs_[a-zA-Z0-9]{36,}\b/,
-              /\bghr_[a-zA-Z0-9]{36,}\b/,
-              /\bAKIA[0-9A-Z]{16}\b/,
-              /\bAIza[0-9A-Za-z_-]{35}\b/,
-              /\bxox[bporas]-[a-zA-Z0-9-]{10,}\b/,
-              /-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----/,
-            ];
-            for (const pattern of secretPatterns) {
-              if (pattern.test(filtered)) {
-                console.log(`Lessons section appears to contain a secret (matched ${pattern}), refusing to phone home`);
-                return;
-              }
-            }
+            // Write lessons to a temp file for gitleaks scanning
+            fs.mkdirSync('/tmp/phone-home', { recursive: true });
+            fs.writeFileSync('/tmp/phone-home/lessons.txt', filtered);
 
-            lessons = filtered;
+            core.setOutput('has_lessons', 'true');
+            core.setOutput('pr_title', context.payload.pull_request.title);
+            core.setOutput('pr_url', context.payload.pull_request.html_url);
+            core.setOutput('source_repo', repo);
 
-            // Check if this is about the template itself (skip to avoid self-referential issues)
-            const templateRepo = process.env.TEMPLATE_REPO;
-            if (repo === templateRepo) {
-              console.log('This IS the template repo, skipping phone-home');
-              return;
-            }
+      - name: Scan lessons for leaked secrets
+        if: steps.extract.outputs.has_lessons == 'true'
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          curl --proto '=https' -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar xz -C /usr/local/bin gitleaks
+          gitleaks detect --no-git -s /tmp/phone-home -v
 
-            // Build the issue body
+      - name: Submit to template repo
+        if: steps.extract.outputs.has_lessons == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ steps.extract.outputs.pr_title }}
+          PR_URL: ${{ steps.extract.outputs.pr_url }}
+          SOURCE_REPO: ${{ steps.extract.outputs.source_repo }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          github-token: ${{ env.GH_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const lessons = fs.readFileSync('/tmp/phone-home/lessons.txt', 'utf8');
+            const prTitle = process.env.PR_TITLE;
+            const prUrl = process.env.PR_URL;
+            const repo = process.env.SOURCE_REPO;
+
             const issueBody = [
               `## Improvement Suggestion from \`${repo}\``,
               '',
@@ -118,8 +126,7 @@ jobs:
               `*Automatically submitted by the phone-home workflow from \`${repo}\`.*`,
             ].join('\n');
 
-            // Open an issue on the template repo (without labels first, then add them separately)
-            const [templateOwner, templateRepoName] = templateRepo.split('/');
+            const [templateOwner, templateRepoName] = process.env.TEMPLATE_REPO.split('/');
             let issue;
             try {
               issue = await github.rest.issues.create({
@@ -130,16 +137,13 @@ jobs:
               });
               console.log(`Created issue on template repo: ${issue.data.html_url}`);
             } catch (error) {
-              // If we don't have permission to create issues on the template repo,
-              // log it but don't fail the workflow
-              console.log(`Could not create issue on ${templateRepo}: ${error.message}`);
+              console.log(`Could not create issue on ${process.env.TEMPLATE_REPO}: ${error.message}`);
               console.log('This is expected if TEMPLATE_SYNC_TOKEN is not configured.');
               console.log('To enable phone-home, add a TEMPLATE_SYNC_TOKEN secret with');
               console.log('permission to create issues on the template repository.');
               return;
             }
 
-            // Try to add labels separately — if they don't exist, the issue is still created
             try {
               await github.rest.issues.addLabels({
                 owner: templateOwner,
