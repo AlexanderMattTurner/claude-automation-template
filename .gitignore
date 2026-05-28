@@ -22,6 +22,10 @@ out/
 # Claude Code local settings (written by SessionStart hook in web sessions)
 .claude/settings.local.json
 
+# Claude Code personal notes (recurring nitpicks / review feedback, never committed)
+CLAUDE.local.md
+.claude/CLAUDE.local.md
+
 # OS
 .DS_Store
 Thumbs.db

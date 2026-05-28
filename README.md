@@ -70,6 +70,14 @@ These run inside Claude Code sessions (local CLI or cloud), not in CI.
 | `update-pr`            | Updates an existing PR with new changes and optionally revises the description  |
 | `conventional-commits` | Guides Claude through properly formatted commits with secret detection          |
 | `markdown-block`       | Outputs content in a fenced code block so users can copy raw markdown           |
+| `peer-review`          | Runs the read-only `code-reviewer` agent on the diff, then triages and fixes    |
+| `explore-plan`         | Enforces the Explore → Plan → Review → Verify discipline for non-trivial work   |
+
+### Claude Subagents (`.claude/agents/`)
+
+| Agent           | What it does                                                                         |
+| --------------- | ------------------------------------------------------------------------------------ |
+| `code-reviewer` | Read-only reviewer (Read/Grep/Glob, `model: opus`)—unbiased second opinion on a diff |
 
 ### GitHub Actions (`.github/workflows/`)
 
@@ -85,6 +93,28 @@ These run inside Claude Code sessions (local CLI or cloud), not in CI.
 | `pre-commit.yaml`                  | Runs pre-commit hooks in CI                                           |
 | `validate-config.yaml`             | Validates `.claude/` and `.hooks/` config on every push               |
 | `dependabot-auto-merge.yaml`       | Auto-merges minor/patch Dependabot PRs after CI passes                |
+
+### MCP Servers (`.mcp.json`)
+
+Team-shared [MCP servers](https://modelcontextprotocol.io/) live in `.mcp.json` at the repo root. A starter `.mcp.json.example` is included with GitHub, Context7, and Playwright entries:
+
+```bash
+cp .mcp.json.example .mcp.json   # then edit, set any referenced env vars, and run /mcp to verify
+```
+
+**Resist tool bloat**—each server expands Claude’s reasoning overhead, so enable only the ones you actually use and add more on demand. Personal (non-shared) servers belong in `~/.claude.json`, not the committed `.mcp.json`.
+
+### Session Tuning (`.claude/settings.json` env)
+
+The `env` block in `.claude/settings.json` sets defaults tuned for long-running web/automation sessions:
+
+| Variable                                     | Why                                                                    |
+| -------------------------------------------- | ---------------------------------------------------------------------- |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000`     | Compacts earlier to curb context rot on long sessions (tune to taste)  |
+| `CLAUDE_CODE_AUTO_BACKGROUND_TASKS=1`        | Auto-backgrounds long-running commands instead of blocking the session |
+| `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` | Disables autoupdater/telemetry/error reporting (CI- and web-safe)      |
+
+See the [Claude Code environment variables reference](https://code.claude.com/docs/en/env-vars) for the full list.
 
 ## How the Pieces Fit Together
 
@@ -138,8 +168,10 @@ Add it as a repository secret named **`TEMPLATE_SYNC_TOKEN`**.
 .
 ├── .claude/
 │   ├── hooks/              # Claude session hooks (SessionStart, PreToolUse)
-│   ├── skills/             # Claude skills (pr-creation, conventional-commits, ...)
-│   └── settings.json       # Claude Code hook configuration
+│   ├── skills/             # Claude skills (pr-creation, peer-review, explore-plan, ...)
+│   ├── agents/             # Claude subagents (code-reviewer)
+│   └── settings.json       # Claude Code hooks + session env tuning
+├── .mcp.json.example       # Starter team-shared MCP servers (copy to .mcp.json)
 ├── .hooks/                 # Git hooks (pre-commit, commit-msg, lint-skills)
 ├── .github/
 │   ├── workflows/          # CI workflows

@@ -10,6 +10,10 @@ pnpm dev / pnpm build / pnpm test / pnpm lint  # If configured in package.json
 
 Use pnpm (not npm) for all package operations.
 
+## Personal Notes
+
+Keep recurring personal nitpicks and review-feedback patterns in `CLAUDE.local.md` (gitignored), separate from the committed project rules here. Prune entries as the habits become automatic, and promote anything that should apply team-wide into this file.
+
 ## Git Workflow
 
 Commits MUST use [Conventional Commits](https://www.conventionalcommits.org/) (`<type>(<scope>): <desc>`). The `commit-msg` hook enforces this. Types: feat, fix, refactor, docs, test, chore, ci, style, perf, build. Use `!` for breaking changes.
