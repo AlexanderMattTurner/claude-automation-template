@@ -1,4 +1,5 @@
 ---
+# prettier-ignore
 name: code-reviewer
 description: >
   Read-only reviewer that inspects the current diff or branch for correctness bugs and

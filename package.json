@@ -21,6 +21,9 @@
     "*.json": [
       "prettier --write"
     ],
+    "*.json.example": [
+      "prettier --write --parser json"
+    ],
     "*.{js,jsx,ts,tsx}": [
       "prettier --write"
     ],
