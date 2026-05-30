@@ -69,12 +69,16 @@ print(path)
   tool_path=$(printf '%s\n' "$parsed" | sed -n '2p')
 fi
 
-# Lexical + symlink-resolving containment check.
+# Lexical + symlink-resolving containment check. Fails closed: any error
+# (missing parent dir, cd failure, unset args) returns non-zero so the
+# caller falls through to the "ask" default.
 is_under() {
-  local candidate="$1" parent="$2" resolved
+  local candidate="$1" parent="$2" parent_dir resolved
   [ -n "$candidate" ] && [ -n "$parent" ] || return 1
   case "$candidate" in *..*) return 1 ;; esac
-  resolved=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P)/$(basename "$candidate")
+  parent_dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || return 1
+  [ -n "$parent_dir" ] || return 1
+  resolved="$parent_dir/$(basename "$candidate")"
   case "$resolved" in
     "$parent"/*) return 0 ;;
     *) return 1 ;;

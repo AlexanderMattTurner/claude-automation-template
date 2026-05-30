@@ -10,6 +10,7 @@ A GitHub template that makes [Claude Code](https://docs.anthropic.com/en/docs/cl
 
 - **A solid starting CLAUDE.md**—upholds high code quality standards, including a self-critique loop that catches bugs before they leave the editor
 - **Pre-push verification**—build, lint, type checks, and tests run automatically before every `git push` or `gh pr create`
+- **Deadlock-proof session hooks**—every hook is syntax-checked at session start, wrapped in a launcher that degrades to “ask” on parse failure, and commits with conflict markers are rejected up front
 - **Skill-driven PR flow**—the `pr-creation` skill runs an iterative compress-critique-fix loop on the diff, then watches CI and fixes failures before reporting back
 - **Enforced code quality**—Conventional Commits (via commitlint), Prettier formatting, and lint-staged run on every commit
 - **`@claude` GitHub integration**—mention Claude in issues or PR comments and it responds with full repo context
