@@ -47,24 +47,9 @@ project_dir="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
 tool_name=""
 tool_path=""
-if command -v python3 &>/dev/null; then
-  parsed=$(
-    printf '%s' "$payload" | python3 -c '
-import json, os, sys
-project_dir = sys.argv[1]
-try:
-    data = json.loads(sys.stdin.read())
-except Exception:
-    sys.exit(0)
-name = data.get("tool_name", "") or ""
-ti = data.get("tool_input", {}) or {}
-path = ti.get("file_path") or ti.get("notebook_path") or ""
-if path and not os.path.isabs(path):
-    path = os.path.join(project_dir, path)
-print(name)
-print(path)
-' "$project_dir" 2>/dev/null
-  )
+parser="$(dirname "$0")/safe-launch-parse.py"
+if command -v python3 &>/dev/null && [ -f "$parser" ]; then
+  parsed=$(printf '%s' "$payload" | python3 "$parser" "$project_dir" 2>/dev/null)
   tool_name=$(printf '%s\n' "$parsed" | sed -n '1p')
   tool_path=$(printf '%s\n' "$parsed" | sed -n '2p')
 fi
@@ -80,22 +65,22 @@ is_under() {
   [ -n "$parent_dir" ] || return 1
   resolved="$parent_dir/$(basename "$candidate")"
   case "$resolved" in
-    "$parent"/*) return 0 ;;
-    *) return 1 ;;
+  "$parent"/*) return 0 ;;
+  *) return 1 ;;
   esac
 }
 
 case "$tool_name" in
-  Edit | Write | MultiEdit | NotebookEdit)
-    for safe in "$project_dir/.claude/hooks" "$project_dir/.hooks"; do
-      [ -d "$safe" ] || continue
-      safe_resolved=$(cd "$safe" && pwd -P)
-      if is_under "$tool_path" "$safe_resolved"; then
-        echo "safe-launch: allowing self-repair edit under ${safe#"$project_dir/"}" >&2
-        exit 0
-      fi
-    done
-    ;;
+Edit | Write | MultiEdit | NotebookEdit)
+  for safe in "$project_dir/.claude/hooks" "$project_dir/.hooks"; do
+    [ -d "$safe" ] || continue
+    safe_resolved=$(cd "$safe" && pwd -P)
+    if is_under "$tool_path" "$safe_resolved"; then
+      echo "safe-launch: allowing self-repair edit under ${safe#"$project_dir/"}" >&2
+      exit 0
+    fi
+  done
+  ;;
 esac
 
 # Default: surface the failure as an "ask" decision so the user can choose.

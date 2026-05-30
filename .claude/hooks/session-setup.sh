@@ -60,18 +60,18 @@ _check_hook_syntax() {
     [ -d "$dir" ] || continue
     while IFS= read -r -d '' file; do
       case "$file" in
-        *.sh | *.bash)
-          if ! out=$(bash -n "$file" 2>&1); then
-            warn "hook has bash syntax error: ${file#"$PROJECT_DIR/"}"
-            [ -n "$out" ] && echo "$out" >&2
-          fi
-          ;;
-        *.py)
-          if command -v python3 &>/dev/null && ! out=$(python3 -m py_compile "$file" 2>&1); then
-            warn "hook has python syntax error: ${file#"$PROJECT_DIR/"}"
-            [ -n "$out" ] && echo "$out" >&2
-          fi
-          ;;
+      *.sh | *.bash)
+        if ! out=$(bash -n "$file" 2>&1); then
+          warn "hook has bash syntax error: ${file#"$PROJECT_DIR/"}"
+          [ -n "$out" ] && echo "$out" >&2
+        fi
+        ;;
+      *.py)
+        if command -v python3 &>/dev/null && ! out=$(python3 -m py_compile "$file" 2>&1); then
+          warn "hook has python syntax error: ${file#"$PROJECT_DIR/"}"
+          [ -n "$out" ] && echo "$out" >&2
+        fi
+        ;;
       esac
     done < <(find "$dir" -maxdepth 1 -type f -print0)
   done

@@ -34,16 +34,30 @@ else
   error ".claude/settings.json not found"
 fi
 
-# 2. All hook scripts are executable and syntactically valid bash
+# 2. Hook scripts are syntactically valid. Files with a shebang must be
+# executable (they're invoked directly); language-helper files without a
+# shebang are loaded by another hook and don't need +x.
 echo "Checking hook script permissions and syntax..."
 for f in .hooks/* .claude/hooks/*; do
   [ -f "$f" ] || continue
-  if [ ! -x "$f" ]; then
-    error "$f is not executable"
+  has_shebang=0
+  IFS= read -r first_line <"$f" || true
+  case "$first_line" in '#!'*) has_shebang=1 ;; esac
+  if [ "$has_shebang" = "1" ] && [ ! -x "$f" ]; then
+    error "$f has a shebang but is not executable"
   fi
-  if ! bash_err=$(bash -n "$f" 2>&1); then
-    error "$f has a bash syntax error: $bash_err"
-  fi
+  case "$f" in
+  *.py)
+    if ! py_err=$(python3 -m py_compile "$f" 2>&1); then
+      error "$f has a python syntax error: $py_err"
+    fi
+    ;;
+  *)
+    if ! bash_err=$(bash -n "$f" 2>&1); then
+      error "$f has a bash syntax error: $bash_err"
+    fi
+    ;;
+  esac
 done
 
 # Summary
