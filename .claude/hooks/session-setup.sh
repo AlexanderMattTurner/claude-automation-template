@@ -47,6 +47,39 @@ webi_install_if_missing() {
 }
 
 #######################################
+# Hook syntax validation
+#######################################
+
+# A hook script with a syntax error (e.g. unresolved merge conflict markers)
+# exits non-zero before any logic runs, which Claude Code treats as a block.
+# Surface broken hooks at session start so they can be fixed before the first
+# tool call dies with no explanation.
+_check_hook_syntax() {
+  local dir file out
+  for dir in "$PROJECT_DIR/.claude/hooks" "$PROJECT_DIR/.hooks"; do
+    [ -d "$dir" ] || continue
+    while IFS= read -r -d '' file; do
+      case "$file" in
+        *.sh | *.bash)
+          if ! out=$(bash -n "$file" 2>&1); then
+            warn "hook has bash syntax error: ${file#"$PROJECT_DIR/"}"
+            [ -n "$out" ] && echo "$out" >&2
+          fi
+          ;;
+        *.py)
+          if command -v python3 &>/dev/null && ! out=$(python3 -m py_compile "$file" 2>&1); then
+            warn "hook has python syntax error: ${file#"$PROJECT_DIR/"}"
+            [ -n "$out" ] && echo "$out" >&2
+          fi
+          ;;
+      esac
+    done < <(find "$dir" -maxdepth 1 -type f -print0)
+  done
+}
+
+_check_hook_syntax
+
+#######################################
 # PATH setup
 #######################################
 

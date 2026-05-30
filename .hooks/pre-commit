@@ -6,6 +6,14 @@ set -euo pipefail
 
 git_root=$(git rev-parse --show-toplevel)
 
+# Reject unresolved merge conflict markers (and whitespace errors) in staged
+# content. A hook file left with <<<<<<< markers is a bash syntax error that
+# can block every Claude tool call until it's manually repaired.
+if ! git diff --cached --check; then
+  echo "pre-commit: refusing commit — fix the issues above" >&2
+  exit 1
+fi
+
 if [ -d "$git_root/.venv/bin" ]; then
   export PATH="$git_root/.venv/bin:$PATH"
 fi
