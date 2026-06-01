@@ -110,3 +110,37 @@ def test_rejects_hook_with_syntax_error(tmp_path: Path, copy_script) -> None:
     result = run_validator(tmp_path, copy_script)
     assert result.returncode == 1
     assert "has a bash syntax error" in result.stdout + result.stderr
+
+
+def _pretooluse_settings(cmd: str) -> dict:
+    return {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "Bash(git push*)",
+                    "hooks": [{"type": "command", "command": cmd}],
+                }
+            ]
+        }
+    }
+
+
+def test_pretooluse_without_safe_launch_fails(tmp_path: Path, copy_script) -> None:
+    """PreToolUse hooks that bypass safe-launch.sh must be rejected."""
+    cmd = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/pre-push-check.sh'
+    write_settings(tmp_path, _pretooluse_settings(cmd))
+    make_hook(tmp_path, ".claude/hooks/pre-push-check.sh")
+    result = run_validator(tmp_path, copy_script)
+    assert result.returncode == 1
+    assert "safe-launch.sh" in result.stdout + result.stderr
+
+
+def test_pretooluse_with_safe_launch_passes(tmp_path: Path, copy_script) -> None:
+    """PreToolUse hooks properly wrapped with safe-launch.sh must pass."""
+    cmd = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/safe-launch.sh "$CLAUDE_PROJECT_DIR"/.claude/hooks/pre-push-check.sh'
+    write_settings(tmp_path, _pretooluse_settings(cmd))
+    make_hook(tmp_path, ".claude/hooks/safe-launch.sh")
+    make_hook(tmp_path, ".claude/hooks/pre-push-check.sh")
+    result = run_validator(tmp_path, copy_script)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All checks passed" in result.stdout

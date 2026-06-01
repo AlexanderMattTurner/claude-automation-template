@@ -42,7 +42,7 @@ parse_error=$(bash -n "$target" 2>&1)
 echo "safe-launch: target hook failed to parse — degrading open: $target" >&2
 [ -n "$parse_error" ] && echo "$parse_error" >&2
 
-payload=$(cat)
+payload=$(head -c 10485760)
 project_dir="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
 tool_name=""

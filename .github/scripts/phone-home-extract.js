@@ -26,7 +26,7 @@ module.exports = async ({ context, core }) => {
   }
 
   const lessonsMatch = prBody.match(
-    /## Lessons Learned\s*\n([\s\S]*?)(?=\n## |\n---|\s*$)/i,
+    /(?:^|\n)#{2,3} Lessons Learned[ \t]*\n([\s\S]*?)(?=\n#{2,6} |\n---|\s*$)/i,
   );
   if (!lessonsMatch) {
     console.log(

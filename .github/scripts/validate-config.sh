@@ -60,6 +60,19 @@ for f in .hooks/* .claude/hooks/*; do
   esac
 done
 
+# 3. All PreToolUse hook commands must be wrapped with safe-launch.sh so a
+# syntax error in the underlying hook can never lock the session.
+echo "Checking PreToolUse hooks use safe-launch.sh..."
+if [ -f .claude/settings.json ]; then
+  pretooluse_cmds=$(jq -r '.hooks.PreToolUse // [] | .[] | .hooks[] | select(.type == "command") | .command' .claude/settings.json 2>/dev/null || true)
+  while IFS= read -r cmd; do
+    [ -z "$cmd" ] && continue
+    if ! echo "$cmd" | grep -q "safe-launch.sh"; then
+      error "PreToolUse hook is not wrapped with safe-launch.sh (risks session lockout on parse error): $cmd"
+    fi
+  done <<<"$pretooluse_cmds"
+fi
+
 # Summary
 echo ""
 if [ "$errors" -gt 0 ]; then

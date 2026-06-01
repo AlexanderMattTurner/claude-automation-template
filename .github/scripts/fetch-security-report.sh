@@ -107,6 +107,10 @@ elif command -v uuidgen >/dev/null 2>&1; then
 else
   report_sentinel="REPORT_EOF_$$_${RANDOM}_${RANDOM}"
 fi
+report_size=$(wc -c <"$REPORT_PATH" | tr -d '[:space:]')
+if [ "$report_size" -gt 50000 ]; then
+  echo "::warning::Security report is ${report_size} bytes; truncating to 50 KB for \$GITHUB_ENV. Full report is at $REPORT_PATH on the runner."
+fi
 {
   echo "SECURITY_REPORT<<${report_sentinel}"
   head -c 50000 "$REPORT_PATH"
