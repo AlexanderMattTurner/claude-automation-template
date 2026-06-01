@@ -126,13 +126,15 @@ def _pretooluse_settings(cmd: str) -> dict:
 
 
 def test_pretooluse_without_safe_launch_fails(tmp_path: Path, copy_script) -> None:
-    """PreToolUse hooks that bypass safe-launch.sh must be rejected."""
+    """PreToolUse hooks that bypass safe-launch.sh must be rejected. Both hook
+    files exist so the failure isolates check 3, not the missing-file check."""
     cmd = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/pre-push-check.sh'
     write_settings(tmp_path, _pretooluse_settings(cmd))
+    make_hook(tmp_path, ".claude/hooks/safe-launch.sh")
     make_hook(tmp_path, ".claude/hooks/pre-push-check.sh")
     result = run_validator(tmp_path, copy_script)
     assert result.returncode == 1
-    assert "safe-launch.sh" in result.stdout + result.stderr
+    assert "not invoked through safe-launch.sh" in result.stdout + result.stderr
 
 
 def test_pretooluse_with_safe_launch_passes(tmp_path: Path, copy_script) -> None:

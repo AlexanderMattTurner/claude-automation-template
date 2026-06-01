@@ -25,6 +25,10 @@ module.exports = async ({ context, core }) => {
     return;
   }
 
+  // Opening anchor allows only h2/h3 ("## "/"### ") so we extract lessons
+  // written at heading level, not an inline "#### Lessons Learned" note. The
+  // terminating lookahead is deliberately wider (#{2,6}) so ANY following
+  // heading ends the section. Don't widen the opening anchor to match.
   const lessonsMatch = prBody.match(
     /(?:^|\n)#{2,3} Lessons Learned[ \t]*\n([\s\S]*?)(?=\n#{2,6} |\n---|\s*$)/i,
   );

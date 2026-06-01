@@ -42,6 +42,9 @@ parse_error=$(bash -n "$target" 2>&1)
 echo "safe-launch: target hook failed to parse — degrading open: $target" >&2
 [ -n "$parse_error" ] && echo "$parse_error" >&2
 
+# Cap the read at 10 MiB so a pathological payload can't OOM the degraded path.
+# (No timeout: stdin is the in-flight PreToolUse payload, already fully buffered
+# by Claude Code before the hook runs, so the read can't stall.)
 payload=$(head -c 10485760)
 project_dir="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 

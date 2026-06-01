@@ -60,16 +60,20 @@ for f in .hooks/* .claude/hooks/*; do
   esac
 done
 
-# 3. All PreToolUse hook commands must be wrapped with safe-launch.sh so a
-# syntax error in the underlying hook can never lock the session.
+# 3. Every PreToolUse hook must be invoked *through* safe-launch.sh so a syntax
+# error in the underlying hook can never lock the session. We check the first
+# token (the program actually executed), not a substring, so a command that
+# merely mentions "safe-launch.sh" in an argument can't pass by accident.
 echo "Checking PreToolUse hooks use safe-launch.sh..."
 if [ -f .claude/settings.json ]; then
-  pretooluse_cmds=$(jq -r '.hooks.PreToolUse // [] | .[] | .hooks[] | select(.type == "command") | .command' .claude/settings.json 2>/dev/null || true)
+  pretooluse_cmds=$(jq -r '.hooks.PreToolUse // [] | .[] | .hooks[] | select(.type == "command") | .command' .claude/settings.json)
   while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
-    if ! echo "$cmd" | grep -q "safe-launch.sh"; then
-      error "PreToolUse hook is not wrapped with safe-launch.sh (risks session lockout on parse error): $cmd"
-    fi
+    read -ra tokens <<<"$cmd"
+    case "${tokens[0]}" in
+    */safe-launch.sh | safe-launch.sh) ;;
+    *) error "PreToolUse hook is not invoked through safe-launch.sh (risks session lockout on parse error): $cmd" ;;
+    esac
   done <<<"$pretooluse_cmds"
 fi
 

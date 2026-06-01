@@ -12,8 +12,17 @@ pytestmark = pytest.mark.skipif(
     shutil.which("node") is None, reason="node not available"
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(
+    subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+)
 SCRIPT = REPO_ROOT / ".github" / "scripts" / "phone-home-extract.js"
+# The script hardcodes this output dir, so these tests must run serially
+# (no pytest-xdist); the autouse fixture clears it before/after each test.
 PHONE_HOME_DIR = Path("/tmp/phone-home")
 
 
@@ -23,10 +32,15 @@ def run_extract(
     repo: str = "owner/repo",
     template_repo: str = "tmpl/repo",
 ) -> tuple[dict, subprocess.CompletedProcess]:
-    """Invoke phone-home-extract.js with a mock github-script environment."""
+    """Invoke phone-home-extract.js with a mock github-script environment.
+
+    The captured core.setOutput() values are written to a dedicated JSON file
+    (not stdout) so the script's own console.log lines can't corrupt them."""
     wrapper = tmp_path / "run.js"
+    out_file = tmp_path / "outputs.json"
     wrapper.write_text(
         f"""
+const fs = require("fs");
 const extract = require({json.dumps(str(SCRIPT))});
 const outputs = {{}};
 const core = {{ setOutput: (k, v) => {{ outputs[k] = v; }} }};
@@ -42,7 +56,7 @@ const context = {{
   repo: {{ owner: repoOwner, repo: repoName }},
 }};
 extract({{ context, core }}).then(() => {{
-  process.stdout.write(JSON.stringify(outputs) + "\\n");
+  fs.writeFileSync(process.env.OUT_FILE, JSON.stringify(outputs));
 }}).catch((err) => {{
   process.stderr.write(err.message + "\\n");
   process.exit(1);
@@ -54,16 +68,19 @@ extract({{ context, core }}).then(() => {{
         "PR_BODY": pr_body,
         "REPO": repo,
         "TEMPLATE_REPO": template_repo,
+        "OUT_FILE": str(out_file),
     }
     result = subprocess.run(
         ["node", str(wrapper)], env=env, capture_output=True, text=True
     )
     outputs: dict = {}
-    if result.returncode == 0 and result.stdout.strip():
+    if result.returncode == 0 and out_file.exists():
         try:
-            outputs = json.loads(result.stdout.strip())
-        except json.JSONDecodeError:
-            pass
+            outputs = json.loads(out_file.read_text())
+        except json.JSONDecodeError as exc:
+            pytest.fail(
+                f"wrapper wrote unparseable JSON {out_file.read_text()!r}: {exc}"
+            )
     return outputs, result
 
 
@@ -86,20 +103,26 @@ def test_extracts_lessons_with_double_hash(tmp_path: Path) -> None:
     outputs, result = run_extract(tmp_path, pr_body)
     assert result.returncode == 0, result.stderr
     assert outputs.get("has_lessons") == "true"
-    assert (PHONE_HOME_DIR / "lessons.txt").read_text() != ""
+    content = (PHONE_HOME_DIR / "lessons.txt").read_text()
+    assert "Use jq instead of node for JSON parsing." in content
+    assert "Nothing." not in content  # the following ## section must terminate
 
 
 def test_extracts_lessons_with_triple_hash(tmp_path: Path) -> None:
-    """### Lessons Learned (3 hashes) must also be recognised."""
+    """### Lessons Learned (3 hashes) must be recognised and terminated by the
+    next heading, regardless of that heading's level."""
     pr_body = (
         "## Summary\n\nSome changes.\n\n"
         "### Lessons Learned\n\n"
         "- Always validate input before processing.\n\n"
-        "### Notes\n\nNone.\n"
+        "### Notes\n\nnoise-after-section.\n"
     )
     outputs, result = run_extract(tmp_path, pr_body)
     assert result.returncode == 0, result.stderr
     assert outputs.get("has_lessons") == "true"
+    content = (PHONE_HOME_DIR / "lessons.txt").read_text()
+    assert "Always validate input before processing." in content
+    assert "noise-after-section." not in content
 
 
 def test_lessons_not_cut_short_by_internal_blank_line(tmp_path: Path) -> None:
@@ -111,7 +134,8 @@ def test_lessons_not_cut_short_by_internal_blank_line(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert outputs.get("has_lessons") == "true"
     content = (PHONE_HOME_DIR / "lessons.txt").read_text()
-    assert "Second bullet" in content
+    assert "First bullet." in content
+    assert "Second bullet after blank line." in content
 
 
 def test_skips_when_no_lessons_section(tmp_path: Path) -> None:

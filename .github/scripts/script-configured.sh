@@ -12,4 +12,4 @@ set -euo pipefail
 
 # Use jq so the script name is never interpolated into an expression string.
 val=$(jq -re --arg name "$1" '.scripts[$name]' package.json 2>/dev/null) || exit 1
-! echo "$val" | grep -q 'ERROR: Configure'
+! grep -q 'ERROR: Configure' <<<"$val"
