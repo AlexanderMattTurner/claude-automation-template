@@ -1,0 +1,54 @@
+name: Hook lifecycle
+
+# Runs the full Claude hook lifecycle (session setup -> pre-commit -> pre-push)
+# on a clean checkout, so a broken hook is caught in CI rather than in a session.
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".claude/hooks/**"
+      - ".hooks/**"
+      - "setup.sh"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".pre-commit-config.yaml"
+      - ".github/scripts/run-hook-lifecycle.sh"
+      - ".github/workflows/hook-lifecycle.yaml"
+  pull_request:
+    paths:
+      - ".claude/hooks/**"
+      - ".hooks/**"
+      - "setup.sh"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".pre-commit-config.yaml"
+      - ".github/scripts/run-hook-lifecycle.sh"
+      - ".github/workflows/hook-lifecycle.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  hook-lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup base environment
+        uses: ./.github/actions/setup-base-env
+        with:
+          setup-python: "true"
+
+      # The hooks shell out to ruff, which real session environments provide on
+      # PATH but bare runners do not (it is not a project dependency). Pin it to
+      # the same version as .pre-commit-config.yaml so the two stay in sync.
+      - name: Provision ruff
+        run: uv tool install "ruff==0.14.5"
+
+      - name: Run hook lifecycle
+        run: bash .github/scripts/run-hook-lifecycle.sh
