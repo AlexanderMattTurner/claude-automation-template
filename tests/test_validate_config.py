@@ -99,13 +99,14 @@ def test_fails_when_settings_missing(tmp_path: Path, copy_script) -> None:
 
 
 def test_fails_when_settings_json_is_malformed(tmp_path: Path, copy_script) -> None:
-    """Corrupted settings.json must be reported as an error, not silently pass."""
-    (tmp_path / ".claude").mkdir()
+    """Corrupted settings.json must be reported as an error for both jq call sites,
+    not silently swallowed."""
+    (tmp_path / ".claude").mkdir(exist_ok=True)
     (tmp_path / ".claude" / "settings.json").write_text("{not valid json}")
     make_hook(tmp_path, ".hooks/pre-commit", executable=True)
     result = run_validator(tmp_path, copy_script)
     assert result.returncode == 1
-    assert "could not be parsed" in result.stdout + result.stderr
+    assert (result.stdout + result.stderr).count("could not be parsed") == 2
 
 
 def test_rejects_hook_with_syntax_error(tmp_path: Path, copy_script) -> None:

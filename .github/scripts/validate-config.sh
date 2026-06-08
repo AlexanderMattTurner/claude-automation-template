@@ -69,7 +69,10 @@ done
 # merely mentions "safe-launch.sh" in an argument can't pass by accident.
 echo "Checking PreToolUse hooks use safe-launch.sh..."
 if [ -f .claude/settings.json ]; then
-  pretooluse_cmds=$(jq -r '.hooks.PreToolUse // [] | .[] | .hooks[] | select(.type == "command") | .command' .claude/settings.json 2>/dev/null) || pretooluse_cmds=""
+  if ! pretooluse_cmds=$(jq -r '.hooks.PreToolUse // [] | .[] | .hooks[] | select(.type == "command") | .command' .claude/settings.json 2>/dev/null); then
+    error ".claude/settings.json could not be parsed (invalid JSON?)"
+    pretooluse_cmds=""
+  fi
   while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
     read -ra tokens <<<"$cmd"
