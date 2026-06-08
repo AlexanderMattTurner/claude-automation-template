@@ -1,7 +1,7 @@
 #!/bin/bash
 # One-command setup for the Claude automation template
 
-set -e
+set -euo pipefail
 
 echo "Setting up Claude automation template..."
 

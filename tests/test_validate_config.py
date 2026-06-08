@@ -1,7 +1,5 @@
 """Tests for .github/scripts/validate-config.sh."""
 
-from __future__ import annotations
-
 import json
 import subprocess
 from pathlib import Path
@@ -98,6 +96,16 @@ def test_fails_when_settings_missing(tmp_path: Path, copy_script) -> None:
     result = run_validator(tmp_path, copy_script)
     assert result.returncode == 1
     assert ".claude/settings.json not found" in result.stdout
+
+
+def test_fails_when_settings_json_is_malformed(tmp_path: Path, copy_script) -> None:
+    """Corrupted settings.json must be reported as an error, not silently pass."""
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "settings.json").write_text("{not valid json}")
+    make_hook(tmp_path, ".hooks/pre-commit", executable=True)
+    result = run_validator(tmp_path, copy_script)
+    assert result.returncode == 1
+    assert "could not be parsed" in result.stdout + result.stderr
 
 
 def test_rejects_hook_with_syntax_error(tmp_path: Path, copy_script) -> None:

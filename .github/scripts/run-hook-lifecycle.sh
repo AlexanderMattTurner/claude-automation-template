@@ -19,9 +19,9 @@ git config user.name "CI"
 # 1. Session setup. Mirror the Claude harness: hand it an env file and source
 #    the PATH/GH_REPO exports it records, so tools it installs (shfmt, ruff via
 #    uv, jq, ...) are on PATH for the hooks that run afterwards.
-export CLAUDE_ENV_FILE="${RUNNER_TEMP:-/tmp}/claude_env_$$"
-setup_log="${RUNNER_TEMP:-/tmp}/session-setup_$$.log"
-: >"$CLAUDE_ENV_FILE"
+CLAUDE_ENV_FILE=$(mktemp "${RUNNER_TEMP:-/tmp}/claude_env_XXXXXX")
+export CLAUDE_ENV_FILE
+setup_log=$(mktemp "${RUNNER_TEMP:-/tmp}/session-setup_XXXXXX.log")
 trap 'rm -f "$CLAUDE_ENV_FILE" "$setup_log"' EXIT
 
 echo "::group::session-setup.sh"

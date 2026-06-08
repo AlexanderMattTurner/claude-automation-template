@@ -5,8 +5,6 @@ exits non-zero when TOKEN is unset. This module covers the actual scope-check
 behaviour by injecting a fake `curl` that returns controlled header output.
 """
 
-from __future__ import annotations
-
 import os
 import subprocess
 from pathlib import Path

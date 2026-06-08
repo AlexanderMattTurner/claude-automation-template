@@ -14,7 +14,10 @@ echo ""
 # 1. All hook scripts referenced in .claude/settings.json exist on disk
 echo "Checking Claude hook script paths..."
 if [ -f .claude/settings.json ]; then
-  commands=$(jq -r '.. | objects | select(.command?) | .command' .claude/settings.json 2>/dev/null || true)
+  if ! commands=$(jq -r '.. | objects | select(.command?) | .command' .claude/settings.json 2>/dev/null); then
+    error ".claude/settings.json could not be parsed (invalid JSON?)"
+    commands=""
+  fi
   while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
     # shellcheck disable=SC2016  # literal $CLAUDE_PROJECT_DIR matched by sed
@@ -66,7 +69,7 @@ done
 # merely mentions "safe-launch.sh" in an argument can't pass by accident.
 echo "Checking PreToolUse hooks use safe-launch.sh..."
 if [ -f .claude/settings.json ]; then
-  pretooluse_cmds=$(jq -r '.hooks.PreToolUse // [] | .[] | .hooks[] | select(.type == "command") | .command' .claude/settings.json)
+  pretooluse_cmds=$(jq -r '.hooks.PreToolUse // [] | .[] | .hooks[] | select(.type == "command") | .command' .claude/settings.json 2>/dev/null) || pretooluse_cmds=""
   while IFS= read -r cmd; do
     [ -z "$cmd" ] && continue
     read -ra tokens <<<"$cmd"
