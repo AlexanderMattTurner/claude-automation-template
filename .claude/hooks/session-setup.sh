@@ -105,6 +105,7 @@ fi
 # so local hooks format identically to CI). Skip for non-Python repos.
 if { [ -f "$PROJECT_DIR/pyproject.toml" ] || [ -f "$PROJECT_DIR/uv.lock" ]; } && command -v uv &>/dev/null; then
   uv_install_if_missing ruff "ruff==0.14.5"
+  uv_install_if_missing zizmor "zizmor==1.25.2"
 fi
 
 #######################################

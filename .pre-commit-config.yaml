@@ -46,6 +46,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: zizmor
+        name: zizmor (GitHub Actions security audit)
+        entry: zizmor
+        language: python
+        additional_dependencies: ["zizmor==1.25.2"]
+        pass_filenames: false
+        args: [".github/"]
+        files: ^\.github/
+
       - id: validate-config
         name: validate Claude hook configuration
         entry: bash .github/scripts/validate-config.sh
