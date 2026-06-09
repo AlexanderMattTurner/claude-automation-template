@@ -6,12 +6,10 @@ on:
   push:
     branches: ["main"]
     paths:
-      - ".github/workflows/**"
-      - ".github/actions/**"
+      - ".github/**"
   pull_request:
     paths:
-      - ".github/workflows/**"
-      - ".github/actions/**"
+      - ".github/**"
 
 permissions:
   contents: read
