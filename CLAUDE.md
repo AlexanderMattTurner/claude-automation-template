@@ -1,9 +1,10 @@
 # CLAUDE.md
 
 ## Working style
-- No running commentary or filler — don't narrate tool use, restate my request, or recap after each step. Just do the work.
+
+- No running commentary or filler—don’t narrate tool use, restate my request, or recap after each step. Just do the work.
 - Save all explanation for the END: a short overview of what changed and how it fits, plus anything I need to run/use it. Proportional to the change.
-- Be direct. Flag real risks once; skip caveats I didn't ask for. Don't claim it works unless you ran it or read the code.
+- Be direct. Flag real risks once; skip caveats I didn’t ask for. Don’t claim it works unless you ran it or read the code.
 
 ## Commands
 
@@ -17,7 +18,7 @@ Use pnpm (not npm) for all package operations.
 
 ## Personal Notes
 
-Keep recurring personal nitpicks and review-feedback patterns in `CLAUDE.local.md` (gitignored), separate from the committed project rules here. Prune entries as the habits become automatic, and promote anything that should apply team-wide into this file. 
+Keep recurring personal nitpicks and review-feedback patterns in `CLAUDE.local.md` (gitignored), separate from the committed project rules here. Prune entries as the habits become automatic, and promote anything that should apply team-wide into this file.
 
 ## Git Workflow
 
@@ -25,7 +26,7 @@ Commits MUST use [Conventional Commits](https://www.conventionalcommits.org/) (`
 
 ## Pull Requests
 
-Use the `/pr-creation` skill. For contributions to others' repos, before writing a PR description, check for `CONTRIBUTING.md` or `.github/PULL_REQUEST_TEMPLATE.md` in the target repo and follow its conventions. **Never** include `claude.ai` URLs, session links, or AI-tool attribution links in PRs. Include a `## Lessons Learned` section **only** for generalizable changes to the template files (e.g., `.claude/`, `.hooks/`, `.github/workflows/`, `CLAUDE.md`, `setup.sh`) that would benefit other downstream repos—the `phone-home.yaml` workflow propagates these to the template repo on merge. Repo-specific fixes do not belong here. Each lesson must be actionable: specify **what** to change in the template, **where** (template file/component), and **why**. Delete the section entirely if there are no template-level lessons—empty or vague lessons create noise.
+Use the `/pr-creation` skill. For contributions to others’ repos, before writing a PR description, check for `CONTRIBUTING.md` or `.github/PULL_REQUEST_TEMPLATE.md` in the target repo and follow its conventions. **Never** include `claude.ai` URLs, session links, or AI-tool attribution links in PRs. Include a `## Lessons Learned` section **only** for generalizable changes to the template files (e.g., `.claude/`, `.hooks/`, `.github/workflows/`, `CLAUDE.md`, `setup.sh`) that would benefit other downstream repos—the `phone-home.yaml` workflow propagates these to the template repo on merge. Repo-specific fixes do not belong here. Each lesson must be actionable: specify **what** to change in the template, **where** (template file/component), and **why**. Delete the section entirely if there are no template-level lessons—empty or vague lessons create noise.
 
 **Skip the `## Lessons Learned` section entirely when the PR targets the `claude-automation-template` repo itself.** `phone-home.yaml` propagates lessons _from_ downstream repos _into_ the template; a change made directly in the template is already there, so a lessons section here propagates nothing and is pure noise.
 
@@ -60,6 +61,7 @@ Stop only when a full pass turns up **nothing** worth changing. Cap at ~5 pas
   - Don’t ship a static “recoverable” allowlist (lint/format/docstring)—it either duplicates pre-commit or requires human judgment about why a rule fires in this codebase. Let `claude-code-action` decide whether a failure has a tractable mechanical fix.
 - Use `uv` (not `pip`) for Python tool installs in CI; use `uv python install <version>` instead of `actions/setup-python`’s tool-cache when pinning a specific Python version—this removes the runner-image dependency entirely.
 - When `.pre-commit-config.yaml` pins `default_language_version`, the CI workflow must install that exact Python version explicitly—runner images drop versions on their own schedule. Keep the two in sync.
+- **Required checks: gate on an `if: always()` summary job, never the underlying job.** A job that is skipped (e.g. by a `paths` filter or `if:`) or cancelled posts no status, so a directly-Required job leaves PRs stuck “pending” forever. Add a summary job that `needs:` the real job(s), runs with `if: always()`, and fails via `if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')` + `run: exit 1`—then mark that summary job Required. Give each workflow’s summary job a distinct name (branch protection matches by name, so duplicates collide). Caveat: if the whole workflow is skipped by a `paths` filter, the summary job is skipped too—drop the `paths` filter on any workflow whose gate you mark Required.
 
 ## Testing
 

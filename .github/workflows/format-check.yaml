@@ -25,3 +25,16 @@ jobs:
 
       - name: Check tracked symlinks are portable
         run: bash .github/scripts/check-symlinks.sh
+
+  # Stable Required check: runs even when `format` is cancelled/skipped, so a
+  # protected branch never gets stuck on a check that never reports. Each
+  # workflow's gate has a distinct name so it can be marked Required without
+  # colliding with the others in branch-protection settings.
+  format-check-passed:
+    if: always()
+    needs: [format]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job did not pass
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

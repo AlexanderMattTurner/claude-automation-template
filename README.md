@@ -95,6 +95,12 @@ These run inside Claude Code sessions (local CLI or cloud), not in CI.
 | `validate-config.yaml`             | Validates `.claude/` and `.hooks/` config on every push               |
 | `dependabot-auto-merge.yaml`       | Auto-merges minor/patch Dependabot PRs after CI passes                |
 
+#### Required checks & branch protection
+
+Each PR-gating workflow (`format-check`, `lint`, `node-tests`, `pre-commit`, `validate-config`) ends with an `if: always()` summary job—`format-check-passed`, `lint-passed`, `node-tests-passed`, `pre-commit-passed`, `validate-config-passed`—that `needs:` the real job(s) and passes only when they all succeed (or skip). **Mark these `*-passed` jobs as Required in branch protection, not the underlying jobs.** A job that is cancelled or skipped never reports a status to GitHub, so a directly-Required job can leave a PR stuck “pending” forever; the always-running summary job (`if: always()` plus a `contains(needs.*.result, …)` guard) reports a definitive pass/fail instead.
+
+> **Caveat:** the summary job only helps when its workflow runs at all. `lint`, `node-tests`, and `validate-config` use `paths` filters, so on a PR that doesn’t touch their paths the _entire_ workflow (summary job included) is skipped and posts nothing. If you mark those `*-passed` checks Required, drop the workflow’s `paths` filter (let the job run and short-circuit internally) so the gate always reports.
+
 ### MCP Servers (`.mcp.json`)
 
 Team-shared [MCP servers](https://modelcontextprotocol.io/) live in `.mcp.json` at the repo root. A starter `.mcp.json.example` is included with GitHub, Context7, and Playwright entries:

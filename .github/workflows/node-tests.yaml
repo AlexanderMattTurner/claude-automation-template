@@ -46,3 +46,14 @@ jobs:
       - name: Run tests
         if: steps.check.outputs.configured == 'true'
         run: pnpm test
+
+  # Stable Required check: runs even when `test` is cancelled/skipped, so a
+  # protected branch never gets stuck on a check that never reports.
+  node-tests-passed:
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job did not pass
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

@@ -37,3 +37,14 @@ jobs:
 
       - name: Test Claude hooks
         run: uv run --extra dev pytest tests/
+
+  # Stable Required check: runs even when `validate` is cancelled/skipped, so a
+  # protected branch never gets stuck on a check that never reports.
+  validate-config-passed:
+    if: always()
+    needs: [validate]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job did not pass
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
