@@ -167,9 +167,17 @@ if [[ "$remote_url" =~ 127\.0\.0\.1.*/git/ ]]; then
 {
   "permissions": {
     "allow": [
-      "Edit .claude/**",
-      "Write .claude/**",
-      "Read .claude/**"
+      "Edit(.claude/**)",
+      "Write(.claude/**)",
+      "Read(.claude/**)",
+      "Bash(pnpm build)",
+      "Bash(pnpm check:*)",
+      "Bash(pnpm format)",
+      "Bash(pnpm install)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pre-commit run:*)",
+      "Bash(uv run pytest:*)"
     ]
   }
 }
