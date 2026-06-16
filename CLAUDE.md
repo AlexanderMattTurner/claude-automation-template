@@ -49,6 +49,8 @@ Each pass, hunt for: bugs, broken or missed edge cases, weakened/skipped/delete
 
 Stop only when a full pass turns up **nothing** worth changing. Cap at ~5 passes; if you’re still finding real issues at pass 5, say so and ask the user rather than silently giving up. Skip the loop for trivial edits (typo fixes, single-line config tweaks, pure questions)—say so explicitly when you skip.
 
+After completing any non-trivial task, briefly reflect on how you could have iterated faster. Consider: which investigations or tool calls could have run in parallel? Were there full sweeps you ran locally that CI would have caught anyway—could a targeted check (single file, single test, quick lint) have been faster? Could you have pushed earlier and delegated validation to CI? State each insight as one concrete line; skip this for trivial tasks.
+
 ## CI / GitHub Actions
 
 - **Extract significant inline scripts** from workflow YAML into standalone files under `.github/scripts/` so they can be linted, type-checked, and tested independently. Inline scripts in `run:` or `script:` blocks are invisible to linters, shellcheck, `@ts-check`, and test frameworks. Rule of thumb: if the inline block exceeds ~10 lines or contains branching logic, extract it. Shell scripts go in `.github/scripts/*.sh`; JS scripts used by `actions/github-script` go in `.github/scripts/*.js` (with `@ts-check` and JSDoc types) and are loaded via `require('./.github/scripts/foo.js')`. Keep trivial glue (single commands, simple output-setting) inline.
