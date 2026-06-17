@@ -79,9 +79,14 @@ trap 'rm -f "$socket_tmp"' EXIT
 for pr_num in $(gh api "repos/${REPO}/pulls?state=open&per_page=5" --jq '.[].number' 2>/dev/null); do
   # Fetch once into a temp file; avoids a second API call and command
   # substitution (which strips trailing newlines and merges multi-comment output).
-  gh api "repos/${REPO}/issues/${pr_num}/comments?per_page=30" \
+  if ! gh api "repos/${REPO}/issues/${pr_num}/comments?per_page=30" \
     --jq '.[] | select(.user.login == "socket-security[bot]") | .body' \
-    >"$socket_tmp" 2>/dev/null || true
+    >"$socket_tmp" 2>/dev/null; then
+    # Tolerate a single PR's comment fetch failing (permissions/transient API
+    # error) — it must not abort the whole security report. Reset to empty so a
+    # prior iteration's content can't leak into this PR's section.
+    : >"$socket_tmp"
+  fi
   if [ -s "$socket_tmp" ]; then
     socket_found=true
     {

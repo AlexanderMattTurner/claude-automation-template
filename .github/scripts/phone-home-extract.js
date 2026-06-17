@@ -19,8 +19,13 @@ const PHONE_HOME_DIR = "/tmp/phone-home";
 module.exports = async ({ context, core }) => {
   const prBody = context.payload.pull_request.body || "";
   const repo = `${context.repo.owner}/${context.repo.repo}`;
+  const templateRepo = process.env.TEMPLATE_REPO;
 
-  if (repo === process.env.TEMPLATE_REPO) {
+  if (!templateRepo) {
+    throw new Error("TEMPLATE_REPO env var is required");
+  }
+
+  if (repo === templateRepo) {
     console.log("This IS the template repo, skipping phone-home");
     return;
   }

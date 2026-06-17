@@ -94,11 +94,11 @@ echo "Current template version: $TEMPLATE_SHA"
 
 if [ -n "$PREV_SHA" ] && [ "$PREV_SHA" != "$TEMPLATE_SHA" ]; then
   if git -C _template cat-file -e "$PREV_SHA" 2>/dev/null; then
-    CHANGELOG=$(git -C _template log --oneline "$PREV_SHA..$TEMPLATE_SHA" || true)
+    CHANGELOG=$(git -C _template log --oneline "$PREV_SHA..$TEMPLATE_SHA")
   else
     echo "::warning::Previous template SHA $PREV_SHA not found in template history (likely rewritten by force-push or rebase)"
     CHANGELOG="Previous SHA \`$PREV_SHA\` no longer exists in template history (force-push/rebase). Showing last 20 commits instead:"$'\n'
-    CHANGELOG+=$(git -C _template log --oneline -20 "$TEMPLATE_SHA" || true)
+    CHANGELOG+=$(git -C _template log --oneline -20 "$TEMPLATE_SHA")
   fi
   [ -n "$CHANGELOG" ] && emit_multiline_output "changelog" "$CHANGELOG"
 fi
@@ -224,7 +224,12 @@ record_no_base_conflict() {
     echo "<summary>Diff (old local → new template)</summary>"
     echo ""
     echo "\`\`\`diff"
-    diff -u "$rel_path" "$template_file" | head -500 || true
+    # diff exits 0 (identical) or 1 (differs); anything higher is a real error.
+    # Capture into a variable so truncating with `head` can't SIGPIPE the diff.
+    diff_rc=0
+    diff_out=$(diff -u "$rel_path" "$template_file") || diff_rc=$?
+    [ "${diff_rc:-0}" -le 1 ] || exit "${diff_rc}"
+    head -500 <<<"$diff_out"
     echo "\`\`\`"
     echo "</details>"
     echo ""
@@ -240,7 +245,9 @@ record_no_base_conflict() {
 # longer exists at the current template HEAD. This avoids false positives for
 # project-specific files that were never in the template.
 if [ -n "$PREV_SHA" ]; then
-  git -C _template ls-tree -r --name-only "$PREV_SHA" 2>/dev/null >"$PREV_TEMPLATE_FILES" || true
+  if ! git -C _template ls-tree -r --name-only "$PREV_SHA" 2>/dev/null >"$PREV_TEMPLATE_FILES"; then
+    : >"$PREV_TEMPLATE_FILES"  # PREV_SHA not in template history; treat as no prior files
+  fi
 fi
 
 for path in $SYNC_PATHS; do

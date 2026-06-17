@@ -44,7 +44,10 @@ echo "Checking hook script permissions and syntax..."
 for f in .hooks/* .claude/hooks/*; do
   [ -f "$f" ] || continue
   has_shebang=0
-  IFS= read -r first_line <"$f" || true
+  # read returns 1 at EOF (empty file = no shebang, fine); >1 is a real error.
+  rc=0
+  IFS= read -r first_line <"$f" || rc=$?
+  [ "${rc:-0}" -le 1 ] || error "Failed to read $f (exit $rc)"
   case "$first_line" in '#!'*) has_shebang=1 ;; esac
   if [ "$has_shebang" = "1" ] && [ ! -x "$f" ]; then
     error "$f has a shebang but is not executable"

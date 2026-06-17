@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Smoke-test the full Claude hook lifecycle on a clean checkout, in the order a
 # real session hits them: session setup -> pre-commit -> pre-push checks.
 #

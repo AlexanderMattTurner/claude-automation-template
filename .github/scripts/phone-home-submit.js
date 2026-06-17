@@ -16,10 +16,16 @@ const PHONE_HOME_DIR = "/tmp/phone-home";
  */
 module.exports = async ({ github }) => {
   const lessons = fs.readFileSync(`${PHONE_HOME_DIR}/lessons.txt`, "utf8");
-  const prTitle = /** @type {string} */ (process.env.PR_TITLE);
-  const prUrl = /** @type {string} */ (process.env.PR_URL);
-  const repo = /** @type {string} */ (process.env.SOURCE_REPO);
-  const templateRepo = /** @type {string} */ (process.env.TEMPLATE_REPO);
+  const prTitle = process.env.PR_TITLE;
+  const prUrl = process.env.PR_URL;
+  const repo = process.env.SOURCE_REPO;
+  const templateRepo = process.env.TEMPLATE_REPO;
+
+  if (!prTitle || !prUrl || !repo || !templateRepo) {
+    throw new Error(
+      "Missing required env vars: PR_TITLE, PR_URL, SOURCE_REPO, TEMPLATE_REPO must all be set",
+    );
+  }
 
   const issueBody = [
     `## Improvement Suggestion from \`${repo}\``,
