@@ -9,20 +9,6 @@ version: 2
 # monitoring with explicit opt-in for packages you actively care about.
 
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "monthly"
-    versioning-strategy: auto
-    allow:
-      - dependency-name: "punctilio"
-    groups:
-      npm-tracked:
-        patterns:
-          - "*"
-    cooldown:
-      default-days: 7
-
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
