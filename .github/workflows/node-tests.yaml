@@ -1,23 +1,14 @@
 name: Node tests
 
+# This workflow runs unconditionally (no workflow-level `paths:` filter) so its
+# `node-tests-passed` summary gate always reports a status and can be marked
+# Required. The `decide` job determines whether the relevant files changed;
+# `test` runs only when they did, and is skipped (not failed) otherwise.
+
 on:
   push:
     branches: ["main"]
-    paths:
-      - "**/*.ts"
-      - "**/*.tsx"
-      - "**/*.js"
-      - "**/*.jsx"
-      - "package.json"
-      - ".github/workflows/node-tests.yaml"
   pull_request:
-    paths:
-      - "**/*.ts"
-      - "**/*.tsx"
-      - "**/*.js"
-      - "**/*.jsx"
-      - "package.json"
-      - ".github/workflows/node-tests.yaml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -27,7 +18,30 @@ permissions:
   contents: read
 
 jobs:
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.filter.outputs.run }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Determine if relevant paths changed
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: >
+          bash .github/scripts/paths-changed.sh
+          '*.ts' '*.tsx' '*.js' '*.jsx' 'package.json'
+          '.github/workflows/node-tests.yaml' '.github/scripts/paths-changed.sh'
+
   test:
+    needs: [decide]
+    if: needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -52,11 +66,12 @@ jobs:
         if: steps.check.outputs.configured == 'true'
         run: pnpm test
 
-  # Stable Required check: runs even when `test` is cancelled/skipped, so a
-  # protected branch never gets stuck on a check that never reports.
+  # Stable Required check: always runs (even when `test` is skipped, cancelled,
+  # or `decide` fails), so a protected branch never gets stuck on a check that
+  # never reports. A skipped `test` (decide said no) is not a failure.
   node-tests-passed:
     if: always()
-    needs: [test]
+    needs: [decide, test]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

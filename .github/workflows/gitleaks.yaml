@@ -25,3 +25,17 @@ jobs:
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Stable Required check: always runs (even when `gitleaks` is cancelled), so a
+  # protected branch never gets stuck on a check that never reports. This
+  # workflow has no `paths:` filter, so the gate exists for a stable Required
+  # name and to guard against the job being skipped or cancelled.
+  gitleaks-passed:
+    if: always()
+    needs: [gitleaks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if any required job did not pass
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

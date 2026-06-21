@@ -1,21 +1,14 @@
 name: Validate config
+
+# This workflow runs unconditionally (no workflow-level `paths:` filter) so its
+# `validate-config-passed` summary gate always reports a status and can be
+# marked Required. The `decide` job determines whether the relevant files
+# changed; `validate` runs only when they did, and is skipped otherwise.
+
 on:
   push:
-    paths:
-      - ".claude/**"
-      - ".hooks/**"
-      - ".github/workflows/**"
-      - "tests/**"
-      - "pyproject.toml"
-      - "uv.lock"
+    branches: ["main"]
   pull_request:
-    paths:
-      - ".claude/**"
-      - ".hooks/**"
-      - ".github/workflows/**"
-      - "tests/**"
-      - "pyproject.toml"
-      - "uv.lock"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -25,7 +18,30 @@ permissions:
   contents: read
 
 jobs:
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.filter.outputs.run }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Determine if relevant paths changed
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: >
+          bash .github/scripts/paths-changed.sh
+          '.claude' '.hooks' '.github/workflows' '.github/scripts'
+          'tests' 'pyproject.toml' 'uv.lock'
+
   validate:
+    needs: [decide]
+    if: needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -44,11 +60,13 @@ jobs:
       - name: Test Claude hooks
         run: uv run --extra dev pytest tests/
 
-  # Stable Required check: runs even when `validate` is cancelled/skipped, so a
-  # protected branch never gets stuck on a check that never reports.
+  # Stable Required check: always runs (even when `validate` is skipped,
+  # cancelled, or `decide` fails), so a protected branch never gets stuck on a
+  # check that never reports. A skipped `validate` (decide said no) is not a
+  # failure.
   validate-config-passed:
     if: always()
-    needs: [validate]
+    needs: [decide, validate]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
