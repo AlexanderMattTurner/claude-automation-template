@@ -13,14 +13,21 @@ SESSION_SETUP = REPO_ROOT / ".claude" / "hooks" / "session-setup.sh"
 SAFE_LAUNCH_PARSE = REPO_ROOT / ".claude" / "hooks" / "safe-launch-parse.py"
 
 
-def _run_parser(payload: dict, project_dir: str = "/project") -> tuple[str, str]:
-    """Run safe-launch-parse.py with *payload* on stdin; return (tool_name, path)."""
-    result = subprocess.run(
+def _run_parser_raw(
+    stdin: str, project_dir: str = "/project"
+) -> subprocess.CompletedProcess:
+    """Run safe-launch-parse.py with raw *stdin* bytes; return the completed process."""
+    return subprocess.run(
         [sys.executable, str(SAFE_LAUNCH_PARSE), project_dir],
-        input=json.dumps(payload),
+        input=stdin,
         capture_output=True,
         text=True,
     )
+
+
+def _run_parser(payload: dict, project_dir: str = "/project") -> tuple[str, str]:
+    """Run safe-launch-parse.py with *payload* on stdin; return (tool_name, path)."""
+    result = _run_parser_raw(json.dumps(payload), project_dir)
     lines = result.stdout.splitlines()
     tool_name = lines[0] if len(lines) > 0 else ""
     path = lines[1] if len(lines) > 1 else ""
@@ -82,7 +89,7 @@ def _run_parser(payload: dict, project_dir: str = "/project") -> tuple[str, str]
             "Bash",
             "",
         ),
-        # Malformed JSON handled by the caller (parser should still exit 0)
+        # Empty but valid JSON object → empty tool name and path
         (
             {},
             "",
@@ -102,6 +109,19 @@ def test_safe_launch_parse(
         )
     else:
         assert path == ""
+
+
+@pytest.mark.parametrize(
+    "stdin",
+    ["not json at all", "", "{unterminated", "[1, 2, 3"],
+    ids=["text", "empty", "brace", "array"],
+)
+def test_safe_launch_parse_malformed_json_exits_zero(stdin: str) -> None:
+    """Non-JSON stdin must exit 0 with empty output so safe-launch.sh falls
+    through to its fail-safe "ask" default rather than erroring."""
+    result = _run_parser_raw(stdin)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""
 
 
 @pytest.fixture

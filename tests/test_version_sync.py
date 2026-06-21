@@ -1,63 +1,75 @@
-"""Contract test: tool version pins in session-setup.sh must match .pre-commit-config.yaml.
+"""Contract test: tool version pins must agree across every file that pins them.
 
-Versioned tools (ruff, zizmor) are pinned in two places:
-  - .claude/hooks/session-setup.sh (uv_install_if_missing calls)
-  - .pre-commit-config.yaml (rev: and additional_dependencies:)
+Versioned tools are pinned in more than one place, and a mismatch makes local
+hooks behave differently from CI:
 
-A mismatch causes local hooks to format differently from CI.  This test is the
-machine-checkable form of the comment in session-setup.sh that says "keep in sync".
+  ruff:
+    - .claude/hooks/session-setup.sh   (uv_install_if_missing ruff "ruff==X")
+    - .pre-commit-config.yaml          (ruff-pre-commit rev: vX)
+
+  zizmor:
+    - .claude/hooks/session-setup.sh   (uv_install_if_missing zizmor "zizmor==X")
+    - .pre-commit-config.yaml          (additional_dependencies: ["zizmor==X"])
+    - .github/workflows/zizmor.yaml    (uvx zizmor==X)
+
+This test is the machine-checkable form of the "keep in sync" comment in
+session-setup.sh. Each case is checked independently so a failure names the
+exact file pair that drifted.
 """
 
 import re
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SESSION_SETUP = REPO_ROOT / ".claude" / "hooks" / "session-setup.sh"
 PRE_COMMIT_CFG = REPO_ROOT / ".pre-commit-config.yaml"
+ZIZMOR_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "zizmor.yaml"
 
 
-def _session_setup_pin(tool: str) -> str:
-    """Return the pinned version string for *tool* from session-setup.sh."""
-    text = SESSION_SETUP.read_text()
-    # Matches: uv_install_if_missing ruff "ruff==0.14.5"
-    m = re.search(
-        rf'uv_install_if_missing\s+{re.escape(tool)}\s+"[^"]*?==([^"]+)"',
-        text,
-    )
-    assert m, f"Could not find uv_install_if_missing {tool} pin in session-setup.sh"
+def _search(pattern: str, path: Path, *, flags: int = 0) -> str:
+    """Return the first capture group of *pattern* in *path*, or fail loudly.
+
+    Failing when the pattern matches nothing keeps the test from passing
+    vacuously if a source file is restructured and a pin moves or disappears.
+    """
+    m = re.search(pattern, path.read_text(), flags)
+    assert m, f"Pattern {pattern!r} matched nothing in {path}"
     return m.group(1)
 
 
-def test_ruff_version_matches_pre_commit() -> None:
-    """ruff pin in session-setup.sh must match the ruff-pre-commit rev: in .pre-commit-config.yaml."""
-    setup_ver = _session_setup_pin("ruff")
-
-    text = PRE_COMMIT_CFG.read_text()
-    # The ruff-pre-commit repo uses a tag like "v0.14.5"
-    m = re.search(r"astral-sh/ruff-pre-commit.*?rev:\s+v?(\S+)", text, re.DOTALL)
-    assert m, "Could not find astral-sh/ruff-pre-commit rev: in .pre-commit-config.yaml"
-    precommit_ver = m.group(1)
-
-    assert setup_ver == precommit_ver, (
-        f"ruff version mismatch: session-setup.sh pins {setup_ver!r} "
-        f"but .pre-commit-config.yaml uses {precommit_ver!r}. "
-        "Update both together."
+def _session_setup_pin(tool: str) -> str:
+    """Version pinned for *tool* by an uv_install_if_missing call in session-setup.sh."""
+    return _search(
+        rf'uv_install_if_missing\s+{re.escape(tool)}\s+"[^"]*?==([^"]+)"',
+        SESSION_SETUP,
     )
 
 
-def test_zizmor_version_matches_pre_commit() -> None:
-    """zizmor pin in session-setup.sh must match the additional_dependencies in .pre-commit-config.yaml."""
-    setup_ver = _session_setup_pin("zizmor")
+def _ruff_pins() -> dict[str, str]:
+    # rev: sits on the line directly under the repo:, so no DOTALL — keeping the
+    # match line-local prevents .* from skipping across to another repo's rev:.
+    return {
+        "session-setup.sh": _session_setup_pin("ruff"),
+        ".pre-commit-config.yaml": _search(
+            r"astral-sh/ruff-pre-commit\s+rev:\s+v?(\S+)", PRE_COMMIT_CFG
+        ),
+    }
 
-    text = PRE_COMMIT_CFG.read_text()
-    m = re.search(r"zizmor==(\S+?)\"", text)
-    assert m, (
-        "Could not find zizmor== pin in .pre-commit-config.yaml additional_dependencies"
-    )
-    precommit_ver = m.group(1)
 
-    assert setup_ver == precommit_ver, (
-        f"zizmor version mismatch: session-setup.sh pins {setup_ver!r} "
-        f"but .pre-commit-config.yaml uses {precommit_ver!r}. "
-        "Update both together."
+def _zizmor_pins() -> dict[str, str]:
+    return {
+        "session-setup.sh": _session_setup_pin("zizmor"),
+        ".pre-commit-config.yaml": _search(r'zizmor==([^"\]]+)"', PRE_COMMIT_CFG),
+        "zizmor.yaml": _search(r"uvx zizmor==(\S+)", ZIZMOR_WORKFLOW),
+    }
+
+
+@pytest.mark.parametrize("pins_fn", [_ruff_pins, _zizmor_pins], ids=["ruff", "zizmor"])
+def test_version_pins_agree(pins_fn) -> None:
+    pins = pins_fn()
+    unique = set(pins.values())
+    assert len(unique) == 1, (
+        f"Version pins disagree across files: {pins}. Update them together."
     )
