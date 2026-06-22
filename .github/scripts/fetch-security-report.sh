@@ -57,11 +57,11 @@ gh_api_section \
 } >>"$REPORT_PATH"
 # Skip when there's no Node project — setup-base-env leaves pnpm uninstalled
 # in that case, and `pnpm audit` would error out instead of returning "clean".
-if [ -f package.json ]; then
+if [[ -f package.json ]]; then
   pnpm audit 2>&1 | head -100 >>"$REPORT_PATH"
   pnpm_rc=${PIPESTATUS[0]}
   # Exit 0 = clean, exit 1 = vulnerabilities found (expected); higher = real error
-  [ "${pnpm_rc:-0}" -le 1 ] || echo "_pnpm audit encountered an error (exit code $pnpm_rc); output above may be incomplete._" >>"$REPORT_PATH"
+  [[ "${pnpm_rc:-0}" -le 1 ]] || echo "_pnpm audit encountered an error (exit code $pnpm_rc); output above may be incomplete._" >>"$REPORT_PATH"
 else
   echo "_Skipped: no package.json (not a Node project)._" >>"$REPORT_PATH"
 fi
@@ -87,7 +87,7 @@ for pr_num in $(gh api "repos/${REPO}/pulls?state=open&per_page=5" --jq '.[].num
     # prior iteration's content can't leak into this PR's section.
     : >"$socket_tmp"
   fi
-  if [ -s "$socket_tmp" ]; then
+  if [[ -s "$socket_tmp" ]]; then
     socket_found=true
     {
       echo "### PR #${pr_num}"
@@ -96,7 +96,7 @@ for pr_num in $(gh api "repos/${REPO}/pulls?state=open&per_page=5" --jq '.[].num
     } >>"$REPORT_PATH"
   fi
 done
-if [ "$socket_found" = "false" ]; then
+if [[ "$socket_found" = "false" ]]; then
   echo "_No Socket.dev alerts found in recent open PRs._" >>"$REPORT_PATH"
 fi
 
@@ -105,7 +105,7 @@ cat "$REPORT_PATH"
 # Use a random sentinel to prevent delimiter injection — report content comes
 # from external sources (advisory descriptions, bot comments) that an attacker
 # could craft to contain a static sentinel and inject arbitrary env vars.
-if [ -r /proc/sys/kernel/random/uuid ]; then
+if [[ -r /proc/sys/kernel/random/uuid ]]; then
   report_sentinel="REPORT_EOF_$(cat /proc/sys/kernel/random/uuid)"
 elif command -v uuidgen >/dev/null 2>&1; then
   report_sentinel="REPORT_EOF_$(uuidgen)"
@@ -113,7 +113,7 @@ else
   report_sentinel="REPORT_EOF_$$_${RANDOM}_${RANDOM}"
 fi
 report_size=$(wc -c <"$REPORT_PATH" | tr -d '[:space:]')
-if [ "$report_size" -gt 50000 ]; then
+if [[ "$report_size" -gt 50000 ]]; then
   echo "::warning::Security report is ${report_size} bytes; truncating to 50 KB for \$GITHUB_ENV. Full report is at $REPORT_PATH on the runner."
 fi
 {

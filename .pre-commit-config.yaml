@@ -29,13 +29,23 @@ repos:
     rev: v0.11.0.1
     hooks:
       - id: shellcheck
-        args: [-x, -P, .claude/hooks]
+        # Enable one optional check beyond the defaults: require [[ ]] over
+        # [ ] in bash/ksh.
+        args: [-x, -P, .claude/hooks, -o, require-double-brackets]
 
   - repo: https://github.com/scop/pre-commit-shfmt
     rev: v3.12.0-2
     hooks:
       - id: shfmt
         args: [-i, "2", -w]
+
+  # Lints workflow/action correctness and runs shellcheck on inline `run:`
+  # blocks that the standalone shellcheck hook can't see. Python-wrapped so it
+  # needs no Go toolchain in the Python-only pre-commit CI job.
+  - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
+    rev: v1.7.12.24
+    hooks:
+      - id: actionlint
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.5
@@ -67,3 +77,10 @@ repos:
         entry: bash .hooks/lint-skills.sh
         language: system
         files: ^\.claude/skills/.*\.md$
+
+      - id: validate-changelog-fragments
+        name: validate changelog.d fragment names
+        entry: "bash -c 'node .github/scripts/assemble-changelog.mjs --check'"
+        language: system
+        pass_filenames: false
+        files: ^changelog\.d/
