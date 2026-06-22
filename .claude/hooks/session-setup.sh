@@ -15,7 +15,7 @@ warn() {
   echo "WARNING: $1" >&2
   SETUP_WARNINGS=$((SETUP_WARNINGS + 1))
 }
-is_root() { [ "$(id -u)" = "0" ]; }
+is_root() { [[ "$(id -u)" = "0" ]]; }
 
 # Install a command via uv if missing
 uv_install_if_missing() {
@@ -57,19 +57,19 @@ webi_install_if_missing() {
 _check_hook_syntax() {
   local dir file out
   for dir in "$PROJECT_DIR/.claude/hooks" "$PROJECT_DIR/.hooks"; do
-    [ -d "$dir" ] || continue
+    [[ -d "$dir" ]] || continue
     while IFS= read -r -d '' file; do
       case "$file" in
       *.sh | *.bash)
         if ! out=$(bash -n "$file" 2>&1); then
           warn "hook has bash syntax error: ${file#"$PROJECT_DIR/"}"
-          [ -n "$out" ] && echo "$out" >&2
+          [[ -n "$out" ]] && echo "$out" >&2
         fi
         ;;
       *.py)
         if command -v python3 &>/dev/null && ! out=$(python3 -m py_compile "$file" 2>&1); then
           warn "hook has python syntax error: ${file#"$PROJECT_DIR/"}"
-          [ -n "$out" ] && echo "$out" >&2
+          [[ -n "$out" ]] && echo "$out" >&2
         fi
         ;;
       esac
@@ -84,7 +84,7 @@ _check_hook_syntax
 #######################################
 
 export PATH="$HOME/.local/bin:$PATH"
-if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+if [[ -n "${CLAUDE_ENV_FILE:-}" ]]; then
   echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >>"$CLAUDE_ENV_FILE"
 fi
 
@@ -103,7 +103,7 @@ fi
 # Python projects: the pre-commit and pre-push hooks shell out to ruff, which
 # isn't a project dependency. Install it (pinned to match .pre-commit-config.yaml
 # so local hooks format identically to CI). Skip for non-Python repos.
-if { [ -f "$PROJECT_DIR/pyproject.toml" ] || [ -f "$PROJECT_DIR/uv.lock" ]; } && command -v uv &>/dev/null; then
+if { [[ -f "$PROJECT_DIR/pyproject.toml" ]] || [[ -f "$PROJECT_DIR/uv.lock" ]]; } && command -v uv &>/dev/null; then
   uv_install_if_missing ruff "ruff==0.14.5"
   uv_install_if_missing zizmor "zizmor==1.25.2"
 fi
@@ -117,7 +117,7 @@ git config core.hooksPath .hooks
 
 # Pre-fetch the base branch so diffs against $CLAUDE_CODE_BASE_REF work
 # immediately (e.g. when creating PRs). Failure is non-fatal.
-if [ -n "${CLAUDE_CODE_BASE_REF:-}" ]; then
+if [[ -n "${CLAUDE_CODE_BASE_REF:-}" ]]; then
   git fetch origin "$CLAUDE_CODE_BASE_REF" --quiet 2>/dev/null ||
     warn "Failed to fetch base branch $CLAUDE_CODE_BASE_REF"
 fi
@@ -128,7 +128,7 @@ fi
 
 if ! command -v gh &>/dev/null; then
   warn "gh CLI not found"
-elif [ -z "${GH_TOKEN:-}" ]; then
+elif [[ -z "${GH_TOKEN:-}" ]]; then
   warn "GH_TOKEN is not set — GitHub CLI requires authentication"
 fi
 
@@ -141,13 +141,13 @@ fi
 # The gh CLI can't detect the GitHub repo from this, so we extract
 # owner/repo and export GH_REPO to make all gh commands work.
 
-if [ -z "${GH_REPO:-}" ]; then
+if [[ -z "${GH_REPO:-}" ]]; then
   remote_url=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null)
   if [[ "$remote_url" =~ /git/([^/]+/[^/]+)$ ]]; then
     GH_REPO="${BASH_REMATCH[1]}"
     GH_REPO="${GH_REPO%.git}"
     export GH_REPO
-    if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+    if [[ -n "${CLAUDE_ENV_FILE:-}" ]]; then
       echo "export GH_REPO=\"$GH_REPO\"" >>"$CLAUDE_ENV_FILE"
     fi
   fi
@@ -162,7 +162,7 @@ fi
 remote_url="${remote_url:-$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null)}"
 if [[ "$remote_url" =~ 127\.0\.0\.1.*/git/ ]]; then
   local_settings="$PROJECT_DIR/.claude/settings.local.json"
-  if [ ! -f "$local_settings" ]; then
+  if [[ ! -f "$local_settings" ]]; then
     cat >"$local_settings" <<'SETTINGS'
 {
   "permissions": {
@@ -189,7 +189,7 @@ fi
 # Project dependencies
 #######################################
 
-if [ -f "$PROJECT_DIR/package.json" ]; then
+if [[ -f "$PROJECT_DIR/package.json" ]]; then
   # Always run install (git hooks are configured in package.json postinstall)
   if command -v pnpm &>/dev/null; then
     pnpm install --silent || warn "Failed to install Node dependencies"
@@ -198,17 +198,17 @@ if [ -f "$PROJECT_DIR/package.json" ]; then
   fi
 fi
 
-if [ -f "$PROJECT_DIR/uv.lock" ] && command -v uv &>/dev/null; then
+if [[ -f "$PROJECT_DIR/uv.lock" ]] && command -v uv &>/dev/null; then
   uv sync --quiet || warn "Failed to sync Python dependencies"
   # Add .venv/bin to PATH so Python tools are available to hooks
-  if [ -d "$PROJECT_DIR/.venv/bin" ]; then
+  if [[ -d "$PROJECT_DIR/.venv/bin" ]]; then
     export PATH="$PROJECT_DIR/.venv/bin:$PATH"
-    if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+    if [[ -n "${CLAUDE_ENV_FILE:-}" ]]; then
       echo "export PATH=\"$PROJECT_DIR/.venv/bin:\$PATH\"" >>"$CLAUDE_ENV_FILE"
     fi
   fi
 fi
 
-if [ "$SETUP_WARNINGS" -gt 0 ]; then
+if [[ "$SETUP_WARNINGS" -gt 0 ]]; then
   echo "Setup done with $SETUP_WARNINGS warning(s) — see above" >&2
 fi
