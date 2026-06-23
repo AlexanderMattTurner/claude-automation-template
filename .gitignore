@@ -43,3 +43,6 @@ __pycache__/
 *.pyc
 .venv/
 .uv/
+
+# org-bootstrap local config (holds org name + settings; secrets stay in env)
+org-bootstrap/config.sh
