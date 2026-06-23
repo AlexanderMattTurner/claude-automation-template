@@ -33,6 +33,10 @@ webi_install_if_missing() {
   if ! command -v "$cmd" &>/dev/null; then
     local installer
     installer=$(mktemp "${TMPDIR:-/tmp}/webi-${cmd}-XXXXXX.sh")
+    # webi.sh serves a per-tool bootstrap generated on the fly, so there is no
+    # stable digest to pin; we harden with HTTPS-only (--proto =https), the
+    # shebang check below, and a version-pinned $pkg instead.
+    # pin-exempt: webi.sh bootstrap is generated per-request, no stable digest
     if curl --proto '=https' -fsSL "https://webi.sh/$pkg" -o "$installer" 2>/dev/null; then
       if head -n 1 "$installer" | grep -q '^#!'; then
         sh "$installer" >/dev/null 2>&1 || warn "Failed to install $cmd"

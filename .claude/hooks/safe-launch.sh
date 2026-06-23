@@ -24,7 +24,9 @@
 set -uo pipefail
 
 target="${1:-}"
-shift || true
+# Drop the target arg only when present; `|| true` would also swallow an
+# unexpected shift failure (CLAUDE.md: branch on the condition instead).
+[[ $# -gt 0 ]] && shift
 
 if [[ -z "$target" ]] || [[ ! -f "$target" ]]; then
   echo "safe-launch: missing target hook: $target" >&2

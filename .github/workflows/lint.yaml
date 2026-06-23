@@ -1,23 +1,13 @@
 name: Lint
 
+# No paths filter: lint-passed is a required status check, so the workflow must
+# always fire and report — a path-gated required check hangs at
+# "Expected — Waiting" forever when a PR doesn't touch the filtered paths. The
+# lint job no-ops when no lint/check script is configured, so it stays cheap.
 on:
   push:
     branches: ["main"]
-    paths:
-      - "**/*.ts"
-      - "**/*.tsx"
-      - "**/*.js"
-      - "**/*.jsx"
-      - "package.json"
-      - ".github/workflows/lint.yaml"
   pull_request:
-    paths:
-      - "**/*.ts"
-      - "**/*.tsx"
-      - "**/*.js"
-      - "**/*.jsx"
-      - "package.json"
-      - ".github/workflows/lint.yaml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -64,7 +54,7 @@ jobs:
 
   # Stable Required check: runs even when `lint` is cancelled/skipped, so a
   # protected branch never gets stuck on a check that never reports.
-  lint-passed:
+  lint-passed: # required-check: true
     if: always()
     needs: [lint]
     runs-on: ubuntu-latest

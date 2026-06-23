@@ -1,23 +1,13 @@
 name: Node tests
 
+# No paths filter: node-tests-passed is a required status check, so the workflow
+# must always fire and report — a path-gated required check hangs at
+# "Expected — Waiting" forever when a PR doesn't touch the filtered paths. The
+# test job no-ops when no test script is configured, so it stays cheap.
 on:
   push:
     branches: ["main"]
-    paths:
-      - "**/*.ts"
-      - "**/*.tsx"
-      - "**/*.js"
-      - "**/*.jsx"
-      - "package.json"
-      - ".github/workflows/node-tests.yaml"
   pull_request:
-    paths:
-      - "**/*.ts"
-      - "**/*.tsx"
-      - "**/*.js"
-      - "**/*.jsx"
-      - "package.json"
-      - ".github/workflows/node-tests.yaml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -54,7 +44,7 @@ jobs:
 
   # Stable Required check: runs even when `test` is cancelled/skipped, so a
   # protected branch never gets stuck on a check that never reports.
-  node-tests-passed:
+  node-tests-passed: # required-check: true
     if: always()
     needs: [test]
     runs-on: ubuntu-latest

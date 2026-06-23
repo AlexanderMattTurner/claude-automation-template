@@ -17,7 +17,7 @@ on:
       - ".pre-commit-config.yaml"
       - ".github/scripts/run-hook-lifecycle.sh"
       - ".github/workflows/hook-lifecycle.yaml"
-  pull_request:
+  pull_request: # not-required-check: single advisory job, path-gated, no required reporter
     paths:
       - ".claude/hooks/**"
       - ".hooks/**"

@@ -54,6 +54,20 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  # Honesty + identity CI lints: catch a green check that hides a failed
+  # command (pipefail/|| true/2>/dev/null), a path-filtered required check that
+  # hangs forever, or a mutable base-image/download pin. Tier 2 adds the
+  # required-check-shape lints this template's workflows already follow
+  # (classified always() reporters, explicit concurrency, externalized run
+  # blocks). check-claude-model enforces an explicit --model on the
+  # claude-code-action steps this template ships.
+  - repo: https://github.com/alexander-turner/ci-truth-serum
+    rev: 55b3c2af0b83f77f15eba92aac743bdf8ff254be # newest (no tag cut yet)
+    hooks:
+      - id: check-tier1
+      - id: check-tier2
+      - id: check-claude-model
+
   - repo: local
     hooks:
       - id: zizmor
