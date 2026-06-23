@@ -68,7 +68,10 @@ env:
   #   .github/scripts/lib/retry.bash
   # (CHANGELOG.md lives outside SYNC_PATHS and never syncs, so a versioned
   # consumer must create it to bootstrap the flow.)
-  EXCLUDE_PATHS: ""
+  # The security-vulnerability-scan workflow + prompt are intentionally NOT
+  # propagated to downstream repos; each consumer owns its own security-scan
+  # cadence and model pin, so the template stops overwriting them on sync.
+  EXCLUDE_PATHS: ".github/workflows/security-vulnerability-scan.yaml .github/prompts/security-vulnerability-scan.md"
 
 concurrency:
   group: template-sync
