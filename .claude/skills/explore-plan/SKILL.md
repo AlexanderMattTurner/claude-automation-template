@@ -26,6 +26,18 @@ Before multi-file changes, write an explicit plan: the problem, the approach, th
 touch, and the existing helpers/patterns to reuse (search for them—do not invent new code when a
 utility already exists). A written plan is reviewable and catches wrong premises before they cost edits.
 
+### Before executing: parallelize where independent
+
+Once the plan lists concrete files/steps, check whether any of them are independent before
+running them serially. Independent research (tracing unrelated modules, checking multiple call
+sites) fans out to parallel `Explore` agents. Independent implementation (edits to separate files
+with no shared state or ordering dependency) can run as parallel `Agent` calls—use
+`isolation: "worktree"` if they'd otherwise touch the same files concurrently. Steps stay serial
+when one depends on another's output (e.g., a schema change before the code that reads it) or when
+review/verify must see the prior step's result first. Only reach for the `Workflow` tool when the
+user has explicitly opted into multi-agent orchestration (see its tool description)—otherwise use
+direct parallel `Agent` calls in a single message.
+
 ## 3. Review (fresh, unbiased)
 
 Have the plan—and later the diff—reviewed with no implementation bias. Use the `peer-review`
