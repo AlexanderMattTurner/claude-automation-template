@@ -13,7 +13,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'dev'", specifier = ">=7" }]
+requires-dist = [{ name = "pytest", marker = "extra == 'dev'", specifier = ">=7,<10" }]
 provides-extras = ["dev"]
 
 [[package]]

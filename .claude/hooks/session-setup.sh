@@ -124,6 +124,9 @@ fi
 # Python projects: the pre-commit and pre-push hooks shell out to ruff, which
 # isn't a project dependency. Install it (pinned to match .pre-commit-config.yaml
 # so local hooks format identically to CI). Skip for non-Python repos.
+# VERSION PINS: keep in sync with .pre-commit-config.yaml (ruff-pre-commit rev:
+# and zizmor additional_dependencies:). A contract test in tests/test_version_sync.py
+# enforces this.
 if { [[ -f "$PROJECT_DIR/pyproject.toml" ]] || [[ -f "$PROJECT_DIR/uv.lock" ]]; } && command -v uv &>/dev/null; then
   uv_install_if_missing ruff "ruff==0.14.5"
   uv_install_if_missing zizmor "zizmor==1.25.2"

@@ -5,6 +5,12 @@
 # adds wider hygiene checks (shellcheck, large-file detection, JSON/YAML
 # validity, etc.) that aren't covered there.
 
+# Pin the Python interpreter used by all Python-based hooks so local runs and
+# CI produce identical environments. Must match the python-version in
+# .github/workflows/pre-commit.yaml and the .python-version file.
+default_language_version:
+  python: python3.11
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
