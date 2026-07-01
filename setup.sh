@@ -9,8 +9,13 @@ echo "Setting up Claude automation template..."
 git config core.hooksPath .hooks
 
 if [[ -f package.json ]]; then
-  # Install pnpm if not available
-  if ! command -v pnpm &>/dev/null; then
+  # Route through corepack so the pnpm version actually used matches the
+  # "packageManager" pin in package.json — a bare `pnpm` on PATH (e.g. from
+  # `npm install -g pnpm`) bypasses that pin and can rewrite the lockfile
+  # into an off-version format.
+  if command -v corepack &>/dev/null; then
+    corepack enable
+  else
     echo "Installing pnpm..."
     npm install -g pnpm
   fi
