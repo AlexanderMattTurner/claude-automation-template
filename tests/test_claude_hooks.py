@@ -92,7 +92,14 @@ def test_gh_repo_extraction(
     if expected is None:
         assert exports == [], f"expected no GH_REPO export, got: {exports}"
     else:
-        assert exports == [f'export GH_REPO="{expected}"']
+        assert len(exports) == 1, f"expected exactly one GH_REPO export, got: {exports}"
+        sourced = subprocess.run(
+            ["bash", "-c", f"{exports[0]}; printf '%s' \"$GH_REPO\""],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert sourced.stdout == expected
 
 
 def test_preserves_pre_set_gh_repo(sandbox: Path) -> None:
