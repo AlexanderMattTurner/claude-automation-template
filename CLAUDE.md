@@ -5,6 +5,7 @@
 - No running commentary or filler—don’t narrate tool use, restate my request, or recap after each step. Just do the work.
 - Save all explanation for the END: a short overview of what changed and how it fits, plus anything I need to run/use it. Proportional to the change.
 - Be direct. Flag real risks once; skip caveats I didn’t ask for. Don’t claim it works unless you ran it or read the code.
+- **Before executing any plan—mine or one already written—check which steps are independent and run those in parallel instead of serially.** This applies whether the step is research (parallel `Explore`/read-only agents) or implementation (parallel `Agent` calls across separate files, using `isolation: "worktree"` if they'd otherwise collide). Keep steps serial only when one genuinely depends on another's output, or when a review/verify gate must see the prior step's result first.
 
 ## Commands
 

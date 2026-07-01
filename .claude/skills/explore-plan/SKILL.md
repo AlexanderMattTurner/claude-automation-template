@@ -28,6 +28,7 @@ utility already exists). A written plan is reviewable and catches wrong premises
 
 ### Before executing: parallelize where independent
 
+This isn't limited to the planning step—apply it to executing any plan (see `CLAUDE.md`).
 Once the plan lists concrete files/steps, check whether any of them are independent before
 running them serially. Independent research (tracing unrelated modules, checking multiple call
 sites) fans out to parallel `Explore` agents. Independent implementation (edits to separate files
