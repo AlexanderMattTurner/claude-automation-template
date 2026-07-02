@@ -17,6 +17,13 @@ hooks behave differently from CI:
     - .pre-commit-config.yaml          (default_language_version: python:)
     - .github/workflows/pre-commit.yaml (actions/setup-python python-version:)
 
+  ci-truth-serum (the workflow-honesty lints and their ruleset apply tool):
+    - .pre-commit-config.yaml          (rev: <sha> on the ci-truth-serum repo)
+    - .github/workflows/sync-required-checks.yaml (pip install git+...@<sha>)
+    A mismatch means the lint that classifies required-check annotations and
+    the tool that applies them to the branch ruleset parse with different
+    versions.
+
 This test is the machine-checkable form of the "keep in sync" comments in
 session-setup.sh and .pre-commit-config.yaml. Each case is checked
 independently so a failure names the exact file pair that drifted.
@@ -33,6 +40,9 @@ PRE_COMMIT_CFG = REPO_ROOT / ".pre-commit-config.yaml"
 ZIZMOR_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "zizmor.yaml"
 PYTHON_VERSION_FILE = REPO_ROOT / ".python-version"
 PRE_COMMIT_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "pre-commit.yaml"
+SYNC_REQUIRED_CHECKS_WORKFLOW = (
+    REPO_ROOT / ".github" / "workflows" / "sync-required-checks.yaml"
+)
 
 
 def _search(pattern: str, path: Path, *, flags: int = 0) -> str:
@@ -85,10 +95,22 @@ def _python_pins() -> dict[str, str]:
     }
 
 
+def _ci_truth_serum_pins() -> dict[str, str]:
+    return {
+        ".pre-commit-config.yaml": _search(
+            r"alexander-turner/ci-truth-serum\s+rev:\s+(\S+)", PRE_COMMIT_CFG
+        ),
+        "sync-required-checks.yaml": _search(
+            r"ci-truth-serum @ git\+https://github\.com/alexander-turner/ci-truth-serum@(\S+)\"",
+            SYNC_REQUIRED_CHECKS_WORKFLOW,
+        ),
+    }
+
+
 @pytest.mark.parametrize(
     "pins_fn",
-    [_ruff_pins, _zizmor_pins, _python_pins],
-    ids=["ruff", "zizmor", "python"],
+    [_ruff_pins, _zizmor_pins, _python_pins, _ci_truth_serum_pins],
+    ids=["ruff", "zizmor", "python", "ci-truth-serum"],
 )
 def test_version_pins_agree(pins_fn) -> None:
     pins = pins_fn()
