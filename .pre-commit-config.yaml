@@ -70,7 +70,7 @@ repos:
   # and global-stdio-swap Python lints. Tier aggregates over per-check ids so a
   # check added upstream to a tier applies here with no config change.
   - repo: https://github.com/alexander-turner/ci-truth-serum
-    rev: 421e708a4fa98df667c708fdb4c43570ab620bb6 # newest (no tag cut yet)
+    rev: e438c361e232fa2f69ab36ff9a29a1e639e0c5a7 # main
     hooks:
       - id: check-tier1
       - id: check-tier2
