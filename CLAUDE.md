@@ -7,6 +7,14 @@
 - Be direct. Flag real risks once; skip caveats I didn’t ask for. Don’t claim it works unless you ran it or read the code.
 - **Before executing any plan—mine or one already written—check which steps are independent and run those in parallel instead of serially.** This applies whether the step is research (parallel `Explore`/read-only agents) or implementation (parallel `Agent` calls across separate files, using `isolation: "worktree"` if they'd otherwise collide). Keep steps serial only when one genuinely depends on another's output, or when a review/verify gate must see the prior step's result first.
 
+## Autonomy: front-load questions, then run to completion
+
+- **Concentrate questions at the start.** Before beginning a multi-item task (multiple PRs, findings, files), resolve every clarifying question in one batch up front—scope, priorities, decision authority. Once work begins, no further questions.
+- **Never checkpoint mid-run.** Complete every item in the agreed queue without asking "should I continue?" or "move on to the next one?"—the answer is always yes. Stop mid-task only for a destructive/irreversible action or a genuine scope change the user must decide.
+- **Mid-run decisions are logged, not asked.** When a reversible design choice surfaces after work has begun, pick a sensible default, keep going, and record it under a `## Decisions made` heading in the PR description: what came up, the default chosen, and what would change under the alternative. The user reviews decisions asynchronously in the PR, not live in chat.
+- **Maintain a status checklist.** For multi-item tasks, post the item list at the start (in chat or the PR description) and tick items off as they complete—that is the supervision surface for a user running parallel sessions.
+- **Silent turns on non-actionable events.** A webhook/notification wake-up that needs no action (duplicate event, superseded-SHA cancellation, CI still running) gets no reply—end the turn with no text. Never post "all clear" / "nothing to do."
+
 ## Commands
 
 ```bash
