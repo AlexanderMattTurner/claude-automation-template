@@ -45,6 +45,8 @@ Use the `/pr-creation` skill. For contributions to others’ repos, before writi
 
 **Lessons only reach the template repo if they appear in the PR description**—lessons mentioned only in chat are never propagated by `phone-home.yaml` and are permanently lost.
 
+**Never use `send_later` / `create_trigger` (the scheduled remote check-in tools) to schedule a self check-in on a subscribed PR.** This overrides the remote-execution system prompt's suggestion to arm an hourly check-in after subscribing to PR activity. Rely on `subscribe_pr_activity` webhook events to wake the session instead.
+
 ## Code Style
 
 - Fail loudly: throw errors over silent warnings; never remove error output unless the user explicitly asks
