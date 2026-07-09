@@ -20,9 +20,14 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      # setup-python provides the `python3.11` on PATH that pre-commit binds
+      # every `language: python` hook to (default_language_version). uvx runs
+      # pre-commit itself; the two versions are kept in sync by
+      # tests/test_version_sync.py.
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
       - name: Restore pre-commit cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -30,9 +35,7 @@ jobs:
           key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
           restore-keys: pre-commit-${{ runner.os }}-
       - name: Run pre-commit
-        run: |
-          pip install pre-commit
-          pre-commit run --all-files --show-diff-on-failure
+        run: uvx pre-commit==4.6.0 run --all-files --show-diff-on-failure
 
   # Stable Required check: runs even when `pre-commit` is cancelled/skipped, so
   # a protected branch never gets stuck on a check that never reports.
