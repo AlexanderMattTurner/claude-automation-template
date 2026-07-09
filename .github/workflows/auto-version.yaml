@@ -44,7 +44,7 @@ jobs:
         # remote rejects with a 403 and silently strands every release: npm is
         # published but the docs commit and tag never land, so the next run
         # re-reads the climbing npm version and bumps again.
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6.0.2 # zizmor: ignore[artipacked]
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 # zizmor: ignore[artipacked]
         with:
           # Need full history so `git describe`/`git log` can find the last tag.
           fetch-depth: 0
