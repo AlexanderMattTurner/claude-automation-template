@@ -95,6 +95,7 @@ These run inside Claude Code sessions (local CLI or cloud), not in CI.
 | `validate-config.yaml`             | Validates `.claude/` and `.hooks/` config on every push               |
 | `dependabot-auto-merge.yaml`       | Auto-merges minor/patch Dependabot PRs after CI passes                |
 | `auto-version.yaml`                | Post-merge, publishes to npm and tags `vX.Y.Z` (non-private packages) |
+| `ci-failure-notify.yaml`           | Files a `ci-failure` issue when a post-merge or scheduled run fails   |
 
 #### Required checks & branch protection
 
