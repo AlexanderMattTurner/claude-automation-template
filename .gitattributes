@@ -1,0 +1,9 @@
+# Lockfiles are derived artifacts — never let git line-merge them into an
+# inconsistent state (one that matches neither parent's manifest).
+uv.lock          -merge
+pnpm-lock.yaml   -merge
+package-lock.json -merge
+yarn.lock        -merge
+Cargo.lock       -merge
+poetry.lock      -merge
+Gemfile.lock     -merge
