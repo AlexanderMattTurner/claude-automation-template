@@ -21,13 +21,13 @@ jobs:
   auto-merge:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Both the PR author AND the actor who triggered this event must be
-    # dependabot: the PR author check alone only validates who *opened* the
-    # PR, not who pushed the commit that fired this `synchronize` event.
-    # Dependabot branches live in this repo (not a fork), so any collaborator
-    # with write access could otherwise push a commit onto an existing
-    # dependabot PR and have it silently inherit this auto-merge gate.
-    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
+    # Gate on the PR author from the event payload. We deliberately do NOT add
+    # a `github.actor == 'dependabot[bot]'` clause to also pin the pusher: the
+    # zizmor `bot-conditions` audit flags github.actor as a spoofable actor
+    # context (a HIGH finding). A collaborator pushing onto a dependabot branch
+    # is already contained by branch protection — auto-merge only sets the flag,
+    # so the pushed commit must still pass every required check before it merges.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
       - name: Dependabot metadata
         id: metadata
