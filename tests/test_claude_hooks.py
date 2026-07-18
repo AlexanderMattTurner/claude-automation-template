@@ -199,9 +199,20 @@ def run_session_setup(
         ),
         ("https://github.com/owner/repo.git", None),
         ("https://evil.com/notgit/owner/repo", None),
+        # A hostile origin whose path genuinely ends in /git/owner/repo must
+        # NOT set GH_REPO: only the real local-proxy host authority may, or
+        # every subsequent gh command is redirected at the attacker's repo.
+        ("https://evil.com/git/evil-owner/evil-repo", None),
         ("git@github.com:owner/repo.git", None),
     ],
-    ids=["proxy", "proxy-with-.git", "github-https", "hostile-substring", "ssh"],
+    ids=[
+        "proxy",
+        "proxy-with-.git",
+        "github-https",
+        "hostile-substring",
+        "hostile-git-path",
+        "ssh",
+    ],
 )
 def test_gh_repo_extraction(
     sandbox: Path, remote_url: str, expected: str | None
