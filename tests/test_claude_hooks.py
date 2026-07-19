@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SESSION_SETUP = REPO_ROOT / ".claude" / "hooks" / "session-setup.sh"
 SAFE_LAUNCH_PARSE = REPO_ROOT / ".claude" / "hooks" / "safe-launch-parse.py"
 SAFE_LAUNCH = REPO_ROOT / ".claude" / "hooks" / "safe-launch.sh"
+PRE_PUSH_CHECK = REPO_ROOT / ".claude" / "hooks" / "pre-push-check.sh"
+LIB_CHECKS = REPO_ROOT / ".claude" / "hooks" / "lib-checks.sh"
 
 
 def _run_parser_raw(
@@ -301,6 +304,86 @@ def test_safe_launch_degraded_path_allows_real_self_repair(
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == ""
     assert "allowing self-repair edit" in result.stderr
+
+
+@pytest.fixture
+def pre_push_sandbox(tmp_path: Path) -> Path:
+    """Project dir containing a copy of pre-push-check.sh and lib-checks.sh."""
+    hooks_dir = tmp_path / ".claude" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    for src in (PRE_PUSH_CHECK, LIB_CHECKS):
+        dst = hooks_dir / src.name
+        dst.write_bytes(src.read_bytes())
+        dst.chmod(0o755)
+    return tmp_path
+
+
+def _minimal_path(tmp_path: Path) -> str:
+    """A PATH exposing only `dirname` (needed by pre-push-check.sh itself),
+    so jq/ruff/uv are guaranteed absent regardless of what's installed on
+    the host."""
+    bin_dir = tmp_path / "minimal-bin"
+    bin_dir.mkdir(exist_ok=True)
+    found = shutil.which("dirname")
+    assert found
+    (bin_dir / "dirname").symlink_to(found)
+    return str(bin_dir)
+
+
+def _run_pre_push_check(project_dir: Path, path: str) -> subprocess.CompletedProcess:
+    launcher = project_dir / ".claude" / "hooks" / "pre-push-check.sh"
+    bash = shutil.which("bash")
+    assert bash
+    env = dict(os.environ)
+    env["PATH"] = path
+    return subprocess.run(
+        [bash, str(launcher)],
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def test_pre_push_check_fails_loudly_when_jq_missing(
+    pre_push_sandbox: Path,
+) -> None:
+    """A configured package.json with no `jq` on PATH must fail the check,
+    not silently skip all Node checks (there's no way to tell what's
+    configured without jq)."""
+    (pre_push_sandbox / "package.json").write_text('{"scripts": {}}')
+    result = _run_pre_push_check(pre_push_sandbox, _minimal_path(pre_push_sandbox))
+    assert result.returncode == 1
+    assert "jq is required" in result.stderr
+
+
+def test_pre_push_check_fails_loudly_when_ruff_and_uv_missing(
+    pre_push_sandbox: Path,
+) -> None:
+    """A Python project with neither `ruff` nor `uv` on PATH must fail the
+    check, not silently skip the ruff check."""
+    (pre_push_sandbox / "pyproject.toml").write_text("")
+    result = _run_pre_push_check(pre_push_sandbox, _minimal_path(pre_push_sandbox))
+    assert result.returncode == 1
+    assert "Neither ruff nor uv" in result.stderr
+
+
+def test_pre_push_check_runs_ruff_when_available(
+    pre_push_sandbox: Path,
+) -> None:
+    """A Python project with `ruff` on PATH must actually invoke it with the
+    exact expected argv (catches quoting/word-splitting regressions in the
+    argv-based run_check)."""
+    (pre_push_sandbox / "pyproject.toml").write_text("")
+    path = _minimal_path(pre_push_sandbox)
+    bin_dir = Path(path)
+    marker = pre_push_sandbox / "ruff-invoked-with-args.txt"
+    fake_ruff = bin_dir / "ruff"
+    fake_ruff.write_text(f'#!/bin/bash\nprintf "%s\\n" "$@" > "{marker}"\n')
+    fake_ruff.chmod(0o755)
+    result = _run_pre_push_check(pre_push_sandbox, path)
+    assert result.returncode == 0, result.stderr
+    assert marker.read_text().splitlines() == ["check", "."]
 
 
 def test_preserves_pre_set_gh_repo(sandbox: Path) -> None:

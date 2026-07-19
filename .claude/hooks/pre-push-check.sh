@@ -35,10 +35,15 @@ fi
 
 # Python checks
 if [[ -f pyproject.toml ]] || [[ -f uv.lock ]]; then
-  RUFF_CMD=(ruff check .)
-  [[ -f uv.lock ]] && exists uv && RUFF_CMD=(uv run ruff check .)
-
-  { exists ruff || { [[ -f uv.lock ]] && exists uv; }; } && run_check "ruff" "${RUFF_CMD[@]}"
+  if [[ -f uv.lock ]] && exists uv; then
+    run_check "ruff" uv run ruff check .
+  elif exists ruff; then
+    run_check "ruff" ruff check .
+  else
+    echo "=== ruff FAILED ===" >&2
+    echo "Neither ruff nor uv (with uv.lock) is available to run Python checks." >&2
+    FAILED=1
+  fi
 fi
 
 exit $FAILED
