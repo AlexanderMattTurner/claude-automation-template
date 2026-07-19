@@ -5,12 +5,9 @@ without manipulating `sys.path` or relying on the conftest plugin loader.
 """
 
 import os
-import re
 import shutil
 import subprocess
 from pathlib import Path
-
-import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -60,20 +57,6 @@ def commit_all(repo: Path, message: str = "fixture") -> str:
         check=True,
     )
     return sha.stdout.strip()
-
-
-def hook_exclude_re(hook_id: str) -> "re.Pattern[str]":
-    """The `exclude` regex of the pre-commit hook `hook_id`, read from
-    .pre-commit-config.yaml — the one authoritative scope definition, so a test
-    driving a lint over the tree skips exactly what the hook skips."""
-    config = yaml.safe_load(
-        (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    )
-    for repo in config["repos"]:
-        for hook in repo.get("hooks", []):
-            if hook.get("id") == hook_id:
-                return re.compile(hook.get("exclude", r"^$"))
-    raise AssertionError(f"hook {hook_id!r} not found in .pre-commit-config.yaml")
 
 
 _SCRIPT_DIRS = [
