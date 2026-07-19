@@ -130,3 +130,46 @@ repos:
         entry: bash .hooks/lint-skills.sh
         language: system
         files: ^\.claude/skills/.*\.md$
+
+      - id: check-drift-guards
+        name: require @pytest.mark.drift_guard justification on drift-guard tests
+        entry: python3 .github/scripts/check-drift-guards.py
+        language: system
+        files: ^tests/.*\.py$
+        # The lint's own test file is deliberately full of drift-guard-shaped
+        # fixtures and test names; it is testing the detector, not guarding drift.
+        exclude: ^tests/test_check_drift_guards\.py$
+
+      - id: check-historical-comments
+        name: ban historical narration in code comments
+        entry: python3 .github/scripts/check-historical-comments.py
+        language: system
+        types_or: [shell, python, javascript]
+        # The check and its test carry the banned phrases as data, not as comments.
+        exclude: '^(?:\.github/scripts/check-historical-comments\.py|tests/test_check_historical_comments\.py)$'
+
+      - id: check-graceful-handwave
+        name: ban "graceful" hand-waves in comments and docs
+        entry: python3 .github/scripts/check-graceful-handwave.py
+        language: system
+        types_or: [shell, python, javascript, markdown, yaml]
+        # The check and its test carry the banned word as data (it is their
+        # subject); CHANGELOG.md's released entries are an immutable audit
+        # record that can't be reworded.
+        exclude: '^(?:\.github/scripts/check-graceful-handwave\.py|tests/test_check_graceful_handwave\.py|CHANGELOG\.md)$'
+
+      - id: check-doc-line-refs
+        name: ban fragile source-line-number refs in docs
+        entry: python3 .github/scripts/check-doc-line-refs.py
+        language: system
+        # The script self-scopes to the in-scope docs via `git ls-files` (docs/**
+        # and root *.md), so it takes no file args; the `files:` filter only
+        # decides whether the whole-tree scan runs this commit.
+        pass_filenames: false
+        files: (\.md$|^\.github/scripts/check-doc-line-refs\.py$)
+
+      - id: check-flag-arity-guard
+        name: require an arity guard on value-taking CLI flag arms
+        entry: node .github/scripts/check-flag-arity-guard.mjs
+        language: system
+        types: [shell]

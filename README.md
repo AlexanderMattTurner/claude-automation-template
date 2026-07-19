@@ -42,7 +42,7 @@ A GitHub template that makes [Claude Code](https://docs.anthropic.com/en/docs/cl
 
 4. **Customize for your project:**
    - Edit **`CLAUDE.md`**—add project-specific context, architecture notes, and conventions for Claude.
-   - Edit **`package.json`**—wire up your `dev`, `build`, `test`, `lint`, and `check` scripts. Unconfigured scripts are detected and skipped gracefully, so nothing breaks on first push.
+   - Edit **`package.json`**—wire up your `dev`, `build`, `test`, `lint`, and `check` scripts. Unconfigured scripts are detected and skipped (the CI job reports success without running them), so nothing breaks on first push.
 
 ## What’s Included
 
@@ -88,8 +88,8 @@ These run inside Claude Code sessions (local CLI or cloud), not in CI.
 | `template-sync.yaml`               | Daily sync from template repo with 3-way merge and conflict detection |
 | `phone-home.yaml`                  | Propagates “Lessons Learned” from merged PRs back to the template     |
 | `security-vulnerability-scan.yaml` | Weekly security sweep—collects alerts, opens a rollup fix PR          |
-| `node-tests.yaml`                  | Runs `pnpm test` (skips gracefully if unconfigured)                   |
-| `lint.yaml`                        | Runs `pnpm lint` and `pnpm check` (skips gracefully if unconfigured)  |
+| `node-tests.yaml`                  | Runs `pnpm test` (no-op success if unconfigured)                      |
+| `lint.yaml`                        | Runs `pnpm lint` and `pnpm check` (no-op success if unconfigured)     |
 | `format-check.yaml`                | Checks Prettier formatting                                            |
 | `pre-commit.yaml`                  | Runs pre-commit hooks in CI                                           |
 | `validate-config.yaml`             | Validates `.claude/` and `.hooks/` config on every push               |

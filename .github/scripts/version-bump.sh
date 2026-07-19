@@ -118,8 +118,8 @@ fi
 # `head -c` cap is byte-based and can split a multibyte UTF-8 character at the
 # tail; if it does, the only consequence is that `jq -n --arg` rejects the
 # invalid sequence and the Claude prose step falls back to the plain commit list
-# (the version decision never uses $COMMITS), so a corrupted tail degrades
-# gracefully rather than failing the release.
+# (the version decision never uses $COMMITS), so a corrupted tail costs only
+# the generated prose — the release itself still completes.
 COMMITS=$(echo "$COMMITS_RAW" | head -20 | cut -c1-100 | head -c 2000)
 
 if [[ -z "$COMMITS" ]]; then

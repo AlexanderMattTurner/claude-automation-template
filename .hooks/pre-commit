@@ -1,6 +1,7 @@
 #!/bin/bash
 # Pre-commit hook: Format and lint staged files via lint-staged.
-# Skips gracefully when lint-staged is not installed (non-Node projects).
+# When lint-staged is not installed (non-Node projects), exits 0 without
+# formatting — CI's pre-commit run still covers the pushed files.
 
 set -euo pipefail
 
