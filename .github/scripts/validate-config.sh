@@ -58,6 +58,11 @@ for f in .hooks/* .claude/hooks/*; do
       error "$f has a python syntax error: $py_err"
     fi
     ;;
+  *.mjs | *.cjs | *.js)
+    if ! node_err=$(node --check "$f" 2>&1); then
+      error "$f has a JavaScript syntax error: $node_err"
+    fi
+    ;;
   *)
     if ! bash_err=$(bash -n "$f" 2>&1); then
       error "$f has a bash syntax error: $bash_err"
