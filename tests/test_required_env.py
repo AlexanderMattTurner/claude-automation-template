@@ -25,6 +25,10 @@ CASES = [
     ("request-claude-resolve.sh", ["PR_NUM"]),
     # template-sync.sh requires GITHUB_OUTPUT
     ("template-sync.sh", ["GITHUB_OUTPUT"]),
+    # cancel-pr-runs.sh requires REPO, HEAD_REF, HEAD_SHA, GH_TOKEN
+    ("cancel-pr-runs.sh", ["REPO", "HEAD_REF", "HEAD_SHA", "GH_TOKEN"]),
+    # label-merge-conflicts.sh requires GH_TOKEN and REPO
+    ("label-merge-conflicts.sh", ["GH_TOKEN", "REPO"]),
 ]
 
 

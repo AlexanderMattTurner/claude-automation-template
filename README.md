@@ -82,20 +82,23 @@ These run inside Claude Code sessions (local CLI or cloud), not in CI.
 
 ### GitHub Actions (`.github/workflows/`)
 
-| Workflow                           | What it does                                                          |
-| ---------------------------------- | --------------------------------------------------------------------- |
-| `claude.yaml`                      | Responds to `@claude` mentions in issues and PR comments              |
-| `template-sync.yaml`               | Daily sync from template repo with 3-way merge and conflict detection |
-| `phone-home.yaml`                  | Propagates “Lessons Learned” from merged PRs back to the template     |
-| `security-vulnerability-scan.yaml` | Weekly security sweep—collects alerts, opens a rollup fix PR          |
-| `node-tests.yaml`                  | Runs `pnpm test` (skips gracefully if unconfigured)                   |
-| `lint.yaml`                        | Runs `pnpm lint` and `pnpm check` (skips gracefully if unconfigured)  |
-| `format-check.yaml`                | Checks Prettier formatting                                            |
-| `pre-commit.yaml`                  | Runs pre-commit hooks in CI                                           |
-| `validate-config.yaml`             | Validates `.claude/` and `.hooks/` config on every push               |
-| `dependabot-auto-merge.yaml`       | Auto-merges minor/patch Dependabot PRs after CI passes                |
-| `auto-version.yaml`                | Post-merge, publishes to npm and tags `vX.Y.Z` (non-private packages) |
-| `ci-failure-notify.yaml`           | Files a `ci-failure` issue when a post-merge or scheduled run fails   |
+| Workflow                           | What it does                                                           |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| `claude.yaml`                      | Responds to `@claude` mentions in issues and PR comments               |
+| `template-sync.yaml`               | Daily sync from template repo with 3-way merge and conflict detection  |
+| `phone-home.yaml`                  | Propagates “Lessons Learned” from merged PRs back to the template      |
+| `security-vulnerability-scan.yaml` | Weekly security sweep—collects alerts, opens a rollup fix PR           |
+| `node-tests.yaml`                  | Runs `pnpm test` (skips gracefully if unconfigured)                    |
+| `lint.yaml`                        | Runs `pnpm lint` and `pnpm check` (skips gracefully if unconfigured)   |
+| `format-check.yaml`                | Checks Prettier formatting                                             |
+| `pre-commit.yaml`                  | Runs pre-commit hooks in CI                                            |
+| `validate-config.yaml`             | Validates `.claude/` and `.hooks/` config on every push                |
+| `dependabot-auto-merge.yaml`       | Auto-merges minor/patch Dependabot PRs after CI passes                 |
+| `auto-version.yaml`                | Post-merge, publishes to npm and tags `vX.Y.Z` (non-private packages)  |
+| `ci-failure-notify.yaml`           | Files a `ci-failure` issue when a post-merge or scheduled run fails    |
+| `cancel-on-pr-close.yaml`          | Cancels in-flight CI runs when a PR closes or merges                   |
+| `merge-conflict-labeler.yaml`      | Labels conflicting PRs `merge-conflict`; clears the label on resolve   |
+| `history-integrity.yaml`           | Flags a PR force-push that silently dropped a previously pushed commit |
 
 #### Required checks & branch protection
 
