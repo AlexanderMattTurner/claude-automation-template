@@ -81,7 +81,7 @@ repos:
   # and global-stdio-swap Python lints. Tier aggregates over per-check ids so a
   # check added upstream to a tier applies here with no config change.
   - repo: https://github.com/alexander-turner/ci-truth-serum
-    rev: ea23549db2d54ebd4391c34f817364db97aeeabe # main
+    rev: 154466ba42b5548263a7d21921b346b39e9df82e # main
     hooks:
       - id: check-tier1
       # check-path-gate-deps and check-failure-notifier-coverage are Tier 2
