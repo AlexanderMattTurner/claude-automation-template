@@ -176,6 +176,12 @@ def run_session_setup(
             "CLAUDE_PROJECT_DIR": str(sandbox),
             "CLAUDE_ENV_FILE": str(env_file),
             "GH_TOKEN": "fake",
+            # Ignore ambient host git config: a Claude Code web session
+            # installs a global url.insteadOf rewrite that makes
+            # `git remote get-url` return a proxy URL for a plain
+            # github.com remote, flipping the GH_REPO cases.
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
         }
     )
     if extra_env:

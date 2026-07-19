@@ -109,16 +109,55 @@ def test_fails_when_settings_json_is_malformed(tmp_path: Path, copy_script) -> N
     assert (result.stdout + result.stderr).count("could not be parsed") == 3
 
 
-def test_rejects_hook_with_syntax_error(tmp_path: Path, copy_script) -> None:
-    """Hook scripts with bash syntax errors must be caught with a useful message."""
+@pytest.mark.parametrize(
+    "rel_path, body, expected_substring",
+    [
+        # unclosed [[ is a bash syntax error
+        (".hooks/bad.sh", "#!/usr/bin/env bash\nif [[\n", "has a bash syntax error"),
+        # bare `def` with no name is a python syntax error
+        (
+            ".claude/hooks/bad.py",
+            "#!/usr/bin/env python3\ndef\n",
+            "has a python syntax error",
+        ),
+        # a JSDoc comment with `(` is fine for node but chokes bash -n; the
+        # validator must pick node --check for a .mjs hook, not bash.
+        (
+            ".claude/hooks/bad.mjs",
+            "#!/usr/bin/env node\nexport const x = (\n",
+            "has a JavaScript syntax error",
+        ),
+    ],
+    ids=["bash", "python", "mjs"],
+)
+def test_rejects_hook_with_syntax_error(
+    tmp_path: Path, copy_script, rel_path: str, body: str, expected_substring: str
+) -> None:
+    """Each interpreter arm catches a syntax error in its own language with a
+    useful message — a Node (.mjs) hook is checked with node, not bash -n."""
     write_settings(tmp_path, {"hooks": {}})
-    path = tmp_path / ".hooks" / "bad.sh"
+    path = tmp_path / rel_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("#!/usr/bin/env bash\nif [[\n")  # unclosed [[ is a syntax error
+    path.write_text(body)
     path.chmod(0o755)
     result = run_validator(tmp_path, copy_script)
     assert result.returncode == 1
-    assert "has a bash syntax error" in result.stdout + result.stderr
+    assert expected_substring in result.stdout + result.stderr
+
+
+def test_accepts_valid_mjs_hook(tmp_path: Path, copy_script) -> None:
+    """A syntactically valid .mjs hook (JSDoc comments and all) passes — the
+    regression guard for parallelism-nudge.mjs tripping the bash arm."""
+    write_settings(tmp_path, {"hooks": {}})
+    path = tmp_path / ".claude" / "hooks" / "ok.mjs"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "#!/usr/bin/env node\n/** doc (Task/Agent) */\nexport const x = 1;\n"
+    )
+    path.chmod(0o755)
+    result = run_validator(tmp_path, copy_script)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All checks passed" in result.stdout
 
 
 def _pretooluse_settings(cmd: str) -> dict:
