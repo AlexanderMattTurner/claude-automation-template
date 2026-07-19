@@ -22,6 +22,8 @@ def main() -> int:
         data = json.loads(sys.stdin.read())
     except (json.JSONDecodeError, ValueError):
         return 0
+    if not isinstance(data, dict):
+        return 0
     name = data.get("tool_name", "") or ""
     tool_input = data.get("tool_input", {}) or {}
     path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
