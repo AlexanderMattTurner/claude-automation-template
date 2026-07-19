@@ -42,7 +42,9 @@ def _serial_transcript(turns: int, extra_lines: list[str] | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _run_hook(transcript: Path, tmp_dir: Path, session: str = "sess") -> subprocess.CompletedProcess:
+def _run_hook(
+    transcript: Path, tmp_dir: Path, session: str = "sess"
+) -> subprocess.CompletedProcess:
     payload = {
         "hook_event_name": "PostToolUse",
         "tool_name": "Bash",
@@ -67,7 +69,9 @@ def test_nudges_on_serial_streak_then_sentinel_silences(tmp_path: Path) -> None:
     assert first.returncode == 0
     body = json.loads(first.stdout)["hookSpecificOutput"]
     assert body["hookEventName"] == "PostToolUse"
-    assert f"{SERIAL_TOOL_TURN_THRESHOLD} tool-calling turns" in body["additionalContext"]
+    assert (
+        f"{SERIAL_TOOL_TURN_THRESHOLD} tool-calling turns" in body["additionalContext"]
+    )
     second = _run_hook(transcript, tmp_path)
     assert second.returncode == 0
     assert second.stdout == ""
