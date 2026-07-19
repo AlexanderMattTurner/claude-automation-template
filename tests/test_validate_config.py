@@ -99,14 +99,14 @@ def test_fails_when_settings_missing(tmp_path: Path, copy_script) -> None:
 
 
 def test_fails_when_settings_json_is_malformed(tmp_path: Path, copy_script) -> None:
-    """Corrupted settings.json must be reported as an error for both jq call sites,
+    """Corrupted settings.json must be reported as an error for every jq call site,
     not silently swallowed."""
     (tmp_path / ".claude").mkdir(exist_ok=True)
     (tmp_path / ".claude" / "settings.json").write_text("{not valid json}")
     make_hook(tmp_path, ".hooks/pre-commit", executable=True)
     result = run_validator(tmp_path, copy_script)
     assert result.returncode == 1
-    assert (result.stdout + result.stderr).count("could not be parsed") == 2
+    assert (result.stdout + result.stderr).count("could not be parsed") == 3
 
 
 def test_rejects_hook_with_syntax_error(tmp_path: Path, copy_script) -> None:
@@ -126,7 +126,7 @@ def _pretooluse_settings(cmd: str) -> dict:
         "hooks": {
             "PreToolUse": [
                 {
-                    "matcher": "Bash(git push*)",
+                    "matcher": "Bash",
                     "hooks": [{"type": "command", "command": cmd}],
                 }
             ]
@@ -150,6 +150,53 @@ def test_pretooluse_with_safe_launch_passes(tmp_path: Path, copy_script) -> None
     """PreToolUse hooks properly wrapped with safe-launch.sh must pass."""
     cmd = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/safe-launch.sh "$CLAUDE_PROJECT_DIR"/.claude/hooks/pre-push-check.sh'
     write_settings(tmp_path, _pretooluse_settings(cmd))
+    make_hook(tmp_path, ".claude/hooks/safe-launch.sh")
+    make_hook(tmp_path, ".claude/hooks/pre-push-check.sh")
+    result = run_validator(tmp_path, copy_script)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "All checks passed" in result.stdout
+
+
+def test_matcher_with_command_syntax_fails(tmp_path: Path, copy_script) -> None:
+    """A matcher shaped like 'Bash(git push*)' filters on the literal tool name
+    and can never match, silently disabling the hook. It must be rejected."""
+    settings = {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "Bash(git push*|gh pr create*)",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": '"$CLAUDE_PROJECT_DIR"/.claude/hooks/safe-launch.sh "$CLAUDE_PROJECT_DIR"/.claude/hooks/pre-push-check.sh',
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+    write_settings(tmp_path, settings)
+    make_hook(tmp_path, ".claude/hooks/safe-launch.sh")
+    make_hook(tmp_path, ".claude/hooks/pre-push-check.sh")
+    result = run_validator(tmp_path, copy_script)
+    assert result.returncode == 1
+    assert "looks like command-content syntax" in result.stdout + result.stderr
+
+
+def test_matcher_plain_tool_name_passes(tmp_path: Path, copy_script) -> None:
+    """A plain tool-name matcher (optionally alternated with '|') is valid."""
+    cmd = '"$CLAUDE_PROJECT_DIR"/.claude/hooks/safe-launch.sh "$CLAUDE_PROJECT_DIR"/.claude/hooks/pre-push-check.sh'
+    settings = {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "Edit|Write",
+                    "hooks": [{"type": "command", "command": cmd}],
+                }
+            ]
+        }
+    }
+    write_settings(tmp_path, settings)
     make_hook(tmp_path, ".claude/hooks/safe-launch.sh")
     make_hook(tmp_path, ".claude/hooks/pre-push-check.sh")
     result = run_validator(tmp_path, copy_script)
