@@ -37,7 +37,8 @@ for file in "$@"; do
   [[ "$grandparent" != "skills" || "$basename_file" != "SKILL.md" ]] && continue
 
   # Check for YAML frontmatter opening delimiter
-  if ! head -1 "$file" | grep -q '^---$'; then
+  first_line="$(head -1 "$file")"
+  if ! grep -q '^---$' <<<"$first_line"; then
     echo "ERROR: $file missing YAML frontmatter (must start with ---)" >&2
     errors=$((errors + 1))
     continue

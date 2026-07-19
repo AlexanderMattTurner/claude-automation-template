@@ -60,6 +60,17 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  # Fail on an internal Markdown link that points at a missing repo-relative
+  # file (link rot from a moved or renamed target). `--offline` resolves only
+  # local file links and skips every http(s)/mailto link, so the check is
+  # deterministic and never flakes on a slow or unreachable external site.
+  - repo: https://github.com/lycheeverse/lychee
+    rev: lychee-v0.24.2
+    hooks:
+      - id: lychee
+        args: [--offline, --no-progress]
+        types: [markdown]
+
   # Honesty + identity CI lints: catch a green check that hides a failed
   # command (pipefail/|| true/2>/dev/null), a path-filtered required check that
   # hangs forever, or a mutable base-image/download pin. Tier 2 adds the
@@ -70,11 +81,31 @@ repos:
   # and global-stdio-swap Python lints. Tier aggregates over per-check ids so a
   # check added upstream to a tier applies here with no config change.
   - repo: https://github.com/alexander-turner/ci-truth-serum
-    rev: e438c361e232fa2f69ab36ff9a29a1e639e0c5a7 # main
+    rev: ea23549db2d54ebd4391c34f817364db97aeeabe # main
     hooks:
       - id: check-tier1
+      # check-path-gate-deps and check-failure-notifier-coverage are Tier 2
+      # members but are listed explicitly below (the notifier check needs
+      # --require-notifier, which the aggregate can't pass), so skip them here to
+      # avoid running each twice.
       - id: check-tier2
+        args:
+          [
+            --skip,
+            check_path_gate_deps,
+            --skip,
+            check_failure_notifier_coverage,
+          ]
       - id: check-extras
+      # A gated job whose decide filters omit a composite/script dependency fails
+      # open — the job skips exactly when that dependency changes and the reporter
+      # goes green.
+      - id: check-path-gate-deps
+      # The notifier's workflow_run list is a derived copy of the tree's
+      # push/schedule workflows; --require-notifier fails loud if this repo's
+      # ci-failure-notify.yaml is ever deleted or its list drifts.
+      - id: check-failure-notifier-coverage
+        args: [--require-notifier]
 
   - repo: local
     hooks:

@@ -10,7 +10,7 @@ name: Sync required status checks
 #
 # Runs only post-merge on main (and on demand). It mutates branch protection, so
 # it needs a token with `administration: write`; the stock GITHUB_TOKEN cannot
-# edit rulesets. Provide it as the RULESET_SYNC_TOKEN secret — the job fails loud
+# edit rulesets. Provide it as the RULESET_SYNC_TOKEN_ORG secret — the job fails loud
 # if it is absent. Not a required check itself (no pull_request trigger).
 on:
   push:
@@ -42,18 +42,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
       - name: Install the apply tool (ci-truth-serum)
         # Pin to the same ci-truth-serum commit the pre-commit hook uses so the
         # lint and the apply step share one parser version.
-        run: python3 -m pip install --user "ci-truth-serum @ git+https://github.com/alexander-turner/ci-truth-serum@e438c361e232fa2f69ab36ff9a29a1e639e0c5a7"
+        run: python3 -m pip install --user "ci-truth-serum @ git+https://github.com/alexander-turner/ci-truth-serum@ea23549db2d54ebd4391c34f817364db97aeeabe"
 
       - name: Sync required status checks
         env:
-          GH_TOKEN: ${{ secrets.RULESET_SYNC_TOKEN }}
+          GH_TOKEN: ${{ secrets.RULESET_SYNC_TOKEN_ORG }}
           REPO: ${{ github.repository }}
           CHECK_ONLY: ${{ inputs.check-only }}
         run: |
