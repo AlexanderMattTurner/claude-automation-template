@@ -158,6 +158,13 @@ def run_session_setup(
             "CLAUDE_PROJECT_DIR": str(sandbox),
             "CLAUDE_ENV_FILE": str(env_file),
             "GH_TOKEN": "fake",
+            # Isolate from the host's global/system git config: a
+            # url.insteadOf rewrite (e.g. a Claude web session's repo proxy)
+            # would rewrite the remote URL a test just set, flipping the
+            # GH_REPO extraction expectations. Global writes land in a
+            # sandbox-local file so the run stays hermetic both ways.
+            "GIT_CONFIG_GLOBAL": str(sandbox / "gitconfig-global"),
+            "GIT_CONFIG_SYSTEM": os.devnull,
         }
     )
     if extra_env:
