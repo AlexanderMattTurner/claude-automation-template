@@ -53,6 +53,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/drop-superseded-ci-events.mjs",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

@@ -11,3 +11,12 @@ the default branch, `auto-version.yaml` publishes to npm and promotes the
 the prose from the release's commits.
 
 ## Unreleased
+
+### Added
+
+- `drop-superseded-ci-events.mjs` UserPromptSubmit hook: when a subscribed PR
+  delivers a red CI-failure webhook whose HeadSHA no longer heads any remote
+  branch (a newer push already superseded that run), the turn is ended before
+  the model runs instead of burning a full-context turn to conclude "ignore it".
+  Fails open on any uncertainty (unparsable payload, git unavailable, or the SHA
+  still being a live head).
