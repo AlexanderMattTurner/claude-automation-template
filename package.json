@@ -15,6 +15,9 @@
     "check": "echo 'ERROR: Configure check script in package.json' && exit 1",
     "format": "prettier --write ."
   },
+  "dependencies": {
+    "agent-control-plane-core": "0.2.2"
+  },
   "lint-staged": {
     "*.{css,scss}": [
       "prettier --write"
