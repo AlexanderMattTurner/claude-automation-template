@@ -14,16 +14,20 @@
  *
  * Posture: fail OPEN. This is an advisory noise filter, not a defense — a
  * mis-dropped real failure would hide signal, so the event passes through on any
- * uncertainty: unparsable payload, git unavailable, ls-remote failure or
- * timeout, or the SHA still being a live head (of any branch: cheap, and a head
- * match is exactly the "still current" case).
+ * uncertainty: the control-plane package unavailable (fresh clone / cold start),
+ * an unparsable payload, git unavailable, ls-remote failure or timeout, or the
+ * SHA still being a live head (of any branch: cheap, and a head match is exactly
+ * the "still current" case).
  *
- * Dependency-free on purpose: the template ships no node_modules, so the hook
- * must run on a bare `node` from a fresh clone.
+ * The verdict crosses the agent boundary through agent-control-plane-core (via
+ * lib-control-plane.mjs) so the Claude hook wire-format lives in one place, not
+ * hand-rolled here.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { pathToFileURL } from "node:url";
+
+import { readStdinJson, errMessage, isMain } from "./lib-hook-io.mjs";
+import { controlPlane, runJudgeCli } from "./lib-control-plane.mjs";
 
 const pExecFile = promisify(execFile);
 
@@ -77,30 +81,32 @@ export async function remoteHeads() {
 }
 
 /**
- * Decide the hook response for one raw UserPromptSubmit payload: a block body
- * for a red-CI webhook whose HeadSHA heads no remote branch, or null to pass
- * everything else through untouched.
- * @param {any} payload parsed hook stdin JSON
+ * judgeDropSupersededCiEvent EVENT [LIST_HEADS] — ALLOW everything except a
+ * red-CI webhook whose HeadSHA heads no remote branch, which is DENYed.
+ * @param {any} event normalized control-plane event
  * @param {() => Promise<string>} [listHeads] injectable head lister
- * @returns {Promise<{ decision: "block", reason: string } | null>}
+ * @returns {Promise<{ decision: string, reason?: string }>}
  */
 export async function judgeDropSupersededCiEvent(
-  payload,
+  event,
   listHeads = remoteHeads,
 ) {
-  if (typeof payload !== "object" || payload === null) return null;
-  if (payload.hook_event_name !== "UserPromptSubmit") return null;
-  const parsed = parseCiFailureEvent(String(payload.prompt ?? ""));
-  if (!parsed) return null;
+  const { Decision, EventKind } = controlPlane();
+  // Advisory filter: anything it cannot positively identify as stale passes,
+  // including payloads the adapter cannot classify as a prompt submission.
+  if (event.event !== EventKind.PROMPT_SUBMIT)
+    return { decision: Decision.ALLOW };
+  const parsed = parseCiFailureEvent(String(event.input.prompt ?? ""));
+  if (!parsed) return { decision: Decision.ALLOW };
   let heads;
   try {
     heads = await listHeads();
   } catch {
-    return null;
+    return { decision: Decision.ALLOW };
   }
-  if (isCurrentHead(parsed.sha, heads)) return null;
+  if (isCurrentHead(parsed.sha, heads)) return { decision: Decision.ALLOW };
   return {
-    decision: "block",
+    decision: Decision.DENY,
     reason:
       `Dropped superseded CI-failure event: ${parsed.sha.slice(0, 12)} is no ` +
       "longer the head of any remote branch, so a newer push already replaced " +
@@ -108,21 +114,29 @@ export async function judgeDropSupersededCiEvent(
   };
 }
 
-async function readStdin() {
-  const chunks = [];
-  for await (const chunk of process.stdin) chunks.push(chunk);
-  return Buffer.concat(chunks).toString("utf8");
+/**
+ * @param {() => Promise<any> | any} read
+ * @param {(chunk: string) => void} write
+ * @param {() => Promise<string>} [listHeads]
+ * @returns {Promise<void>}
+ */
+export async function main(read, write, listHeads = remoteHeads) {
+  await runJudgeCli(
+    "drop-superseded-ci-events",
+    (event) => judgeDropSupersededCiEvent(event, listHeads),
+    {
+      readInput: read,
+      write,
+      // Fail-open posture: on any hook error the event passes through untouched
+      // (no stdout = no verdict); it is never blocked blind.
+      onError: (err) =>
+        process.stderr.write(
+          `drop-superseded-ci-events passing event through: ${errMessage(err)}\n`,
+        ),
+    },
+  );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
-  try {
-    const payload = JSON.parse(await readStdin());
-    const response = await judgeDropSupersededCiEvent(payload);
-    if (response !== null) process.stdout.write(JSON.stringify(response));
-  } catch {
-    process.exit(0); // Advisory only: never block the agent on a hook fault.
-  }
+if (isMain(import.meta.url)) {
+  void main(readStdinJson, (chunk) => process.stdout.write(chunk));
 }

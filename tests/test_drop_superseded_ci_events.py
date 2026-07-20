@@ -4,14 +4,23 @@ Each test drives the real hook as a subprocess against a real local git remote
 (a bare repo reached over file://, so no network) and asserts the observable
 outcome: the block JSON on stdout for a superseded SHA, or silence (pass-through)
 for a live head, a non-CI prompt, or any failure the hook must fail OPEN on.
+
+The hook crosses the agent boundary through the agent-control-plane-core package
+(installed by session-setup.sh / setup-base-env). The block path therefore needs
+that package resolvable from the repo's node_modules; every pass-through path is
+correct whether or not it loads (an unavailable package fails open to silence),
+and one test exercises exactly that fail-open path with the package absent.
 """
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-HOOK = REPO_ROOT / ".claude" / "hooks" / "drop-superseded-ci-events.mjs"
+HOOKS_DIR = REPO_ROOT / ".claude" / "hooks"
+HOOK = HOOKS_DIR / "drop-superseded-ci-events.mjs"
+HOOK_LIBS = ("lib-hook-io.mjs", "lib-control-plane.mjs")
 
 DEAD_SHA = "a" * 40  # 40 hex chars that head no branch
 
@@ -54,7 +63,9 @@ def _ci_prompt(sha: str, conclusion: str = "failure") -> str:
     )
 
 
-def _run_hook(prompt: str, project: Path) -> subprocess.CompletedProcess:
+def _run_hook(
+    prompt: str, project: Path, hook: Path = HOOK
+) -> subprocess.CompletedProcess:
     payload = {
         "hook_event_name": "UserPromptSubmit",
         "prompt": prompt,
@@ -62,7 +73,7 @@ def _run_hook(prompt: str, project: Path) -> subprocess.CompletedProcess:
         "cwd": str(project),
     }
     return subprocess.run(
-        ["node", str(HOOK)],
+        ["node", str(hook)],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
@@ -74,6 +85,8 @@ def _run_hook(prompt: str, project: Path) -> subprocess.CompletedProcess:
 
 
 def test_blocks_superseded_sha(tmp_path: Path) -> None:
+    """A red event on a SHA that heads no remote branch is blocked, with the
+    block verdict rendered by the control-plane package (decision=block)."""
     project, _ = _project_with_remote(tmp_path)
     result = _run_hook(_ci_prompt(DEAD_SHA), project)
     assert result.returncode == 0, result.stderr
@@ -148,3 +161,20 @@ def test_ignores_non_userpromptsubmit_event(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+
+def test_fails_open_when_control_plane_absent(tmp_path: Path) -> None:
+    """With agent-control-plane-core unresolvable (fresh clone / cold start
+    before install), the caught import leaves the bindings undefined, so even a
+    genuinely-superseded event passes through untouched rather than blocking
+    blind. Isolate by running copies of the hook + libs from a tree with no
+    node_modules anywhere above them."""
+    project, _ = _project_with_remote(tmp_path)
+    isolated_hooks = tmp_path / "iso" / ".claude" / "hooks"
+    isolated_hooks.mkdir(parents=True)
+    for name in (HOOK.name, *HOOK_LIBS):
+        shutil.copy(HOOKS_DIR / name, isolated_hooks / name)
+    result = _run_hook(_ci_prompt(DEAD_SHA), project, hook=isolated_hooks / HOOK.name)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    assert "agent-control-plane-core is unavailable" in result.stderr
