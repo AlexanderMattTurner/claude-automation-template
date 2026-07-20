@@ -16,6 +16,11 @@ const LABEL = "ci-failure";
  */
 module.exports = async ({ github, context }) => {
   const run = context.payload.workflow_run;
+  if (!run) {
+    throw new Error(
+      "No workflow_run payload on this event — expected a workflow_run event.",
+    );
+  }
   const title = `CI failure: ${run.name}`;
 
   const failureLine = [
