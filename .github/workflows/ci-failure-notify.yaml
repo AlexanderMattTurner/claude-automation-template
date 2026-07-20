@@ -17,6 +17,7 @@ on: # zizmor: ignore[dangerous-triggers]
     types: [completed]
     workflows:
       - Auto version bump and publish
+      - Claude reviewer-hold sweeper
       - Format check
       - Gitleaks Secret Scanning
       - Hook lifecycle
