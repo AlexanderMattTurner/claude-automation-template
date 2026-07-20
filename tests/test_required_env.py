@@ -29,6 +29,19 @@ CASES = [
     ("cancel-pr-runs.sh", ["REPO", "HEAD_REF", "HEAD_SHA", "GH_TOKEN"]),
     # label-merge-conflicts.sh requires GH_TOKEN and REPO
     ("label-merge-conflicts.sh", ["GH_TOKEN", "REPO"]),
+    # PR-review suite (claude-pr-review.yaml and friends)
+    ("prepare-pr-review-input.sh", ["PR", "PR_INPUT_DIR"]),
+    ("post-pr-review.sh", ["PR", "GH_REPO", "PR_INPUT_DIR"]),
+    ("auto-approve-skipped-pr.sh", ["PR", "GH_REPO"]),
+    ("fetch-unresolved-review-threads.sh", ["GH_REPO", "PR", "PR_INPUT_DIR"]),
+    ("resolve-addressed-threads.sh", ["PR_INPUT_DIR", "GH_RESOLVE_TOKEN"]),
+    ("approve-if-reviewer-hold-clear.sh", ["GH_REPO", "PR"]),
+    ("sweep-reviewer-holds.sh", ["GH_REPO"]),
+    ("append-haiku-cost.sh", ["GH_REPO", "PR"]),
+    # merge-delta reviewer + remerge-diff report suite
+    ("prepare-merge-delta-input.sh", ["PR", "PR_INPUT_DIR"]),
+    ("post-merge-delta-review.sh", ["PR", "GH_REPO", "PR_INPUT_DIR"]),
+    ("precommit-range-base.sh", ["GITHUB_REPOSITORY", "GITHUB_BASE_REF", "GH_TOKEN"]),
 ]
 
 

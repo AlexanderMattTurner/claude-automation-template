@@ -130,13 +130,14 @@ def test_safe_launch_parse_malformed_json_exits_zero(stdin: str) -> None:
 
 @pytest.mark.parametrize(
     "stdin",
-    ["[1, 2, 3]", "null", "42", '"hello"'],
-    ids=["array", "null", "number", "string"],
+    ["null", '"a string"', "[1, 2, 3]", "42", "true"],
+    ids=["null", "string", "complete-array", "number", "bool"],
 )
-def test_safe_launch_parse_valid_non_dict_json_exits_zero(stdin: str) -> None:
-    """Syntactically valid JSON that isn't an object (list/null/number/string)
-    must not crash `.get()`; it must fall through to the fail-safe "ask"
-    default the same as malformed JSON."""
+def test_safe_launch_parse_non_object_json_exits_zero(stdin: str) -> None:
+    """Syntactically complete JSON that isn't an object (a list, string,
+    number, or bool all parse successfully) must not crash with an
+    AttributeError from calling .get() on a non-dict — it must degrade to
+    the same empty-output fail-safe as unparseable input."""
     result = _run_parser_raw(stdin)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == ""
@@ -209,9 +210,20 @@ def run_session_setup(
         ),
         ("https://github.com/owner/repo.git", None),
         ("https://evil.com/notgit/owner/repo", None),
+        # A hostile origin whose path genuinely ends in /git/owner/repo must
+        # NOT set GH_REPO: only the real local-proxy host authority may, or
+        # every subsequent gh command is redirected at the attacker's repo.
+        ("https://evil.com/git/evil-owner/evil-repo", None),
         ("git@github.com:owner/repo.git", None),
     ],
-    ids=["proxy", "proxy-with-.git", "github-https", "hostile-substring", "ssh"],
+    ids=[
+        "proxy",
+        "proxy-with-.git",
+        "github-https",
+        "hostile-substring",
+        "hostile-git-path",
+        "ssh",
+    ],
 )
 def test_gh_repo_extraction(
     sandbox: Path, remote_url: str, expected: str | None
@@ -408,3 +420,30 @@ def test_preserves_pre_set_gh_repo(sandbox: Path) -> None:
         if line.startswith("export GH_REPO=")
     ]
     assert exports == []
+
+
+@pytest.mark.parametrize(
+    "remote_url, expect_settings",
+    [
+        ("http://local_proxy@127.0.0.1:18393/git/owner/repo", True),
+        ("http://local_proxy@127.0.0.1:18393/git/owner/repo.git", True),
+        # Substring-only matches: contain "127.0.0.1" and "/git/" somewhere in
+        # the URL, but the host authority isn't actually 127.0.0.1 — the
+        # unanchored regex this replaces would have matched these too.
+        ("https://attacker.example/redirect?to=127.0.0.1/git/", False),
+        ("https://attacker.example/127.0.0.1-fake/x/git/", False),
+        ("https://github.com/owner/repo.git", False),
+    ],
+    ids=["proxy", "proxy-with-.git", "hostile-query", "hostile-path", "github-https"],
+)
+def test_web_session_permissions_grant_requires_real_proxy_host(
+    sandbox: Path, remote_url: str, expect_settings: bool
+) -> None:
+    """settings.local.json (which grants broad Edit/Write/Bash auto-approval)
+    must only be written for the actual local-proxy remote shape, not for any
+    URL that merely contains "127.0.0.1" and "/git/" as substrings."""
+    set_remote(sandbox, remote_url)
+    _, result = run_session_setup(sandbox, scrub=("GH_REPO", "CLAUDE_CODE_BASE_REF"))
+    assert result.returncode == 0, result.stderr
+    local_settings = sandbox / ".claude" / "settings.local.json"
+    assert local_settings.is_file() == expect_settings

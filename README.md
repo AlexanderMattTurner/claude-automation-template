@@ -83,32 +83,38 @@ These run inside Claude Code sessions (local CLI or cloud), not in CI.
 
 ### GitHub Actions (`.github/workflows/`)
 
-| Workflow                           | What it does                                                                                          |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `claude.yaml`                      | Responds to `@claude` mentions in issues and PR comments                                              |
-| `template-sync.yaml`               | Daily sync from template repo with 3-way merge and conflict detection                                 |
-| `phone-home.yaml`                  | Propagates "Lessons Learned" from merged PRs back to the template                                     |
-| `security-vulnerability-scan.yaml` | Weekly security sweep—collects alerts, opens a rollup fix PR                                          |
-| `node-tests.yaml`                  | Runs `pnpm test` (skips gracefully if unconfigured)                                                   |
-| `lint.yaml`                        | Runs `pnpm lint` and `pnpm check` (skips gracefully if unconfigured)                                  |
-| `format-check.yaml`                | Checks Prettier formatting                                                                            |
-| `pre-commit.yaml`                  | Runs pre-commit hooks in CI                                                                           |
-| `validate-config.yaml`             | Validates `.claude/` and `.hooks/` config on every push                                               |
-| `dependabot-auto-merge.yaml`       | Auto-merges minor/patch Dependabot PRs after CI passes                                                |
-| `auto-version.yaml`                | Post-merge, publishes to npm and tags `vX.Y.Z` (non-private packages)                                 |
-| `ci-failure-notify.yaml`           | Files a `ci-failure` issue when a post-merge or scheduled run fails                                   |
-| `cancel-on-pr-close.yaml`          | Cancels in-flight CI runs when a PR closes or merges                                                  |
-| `merge-conflict-labeler.yaml`      | Labels conflicting PRs `merge-conflict`; clears the label on resolve                                  |
-| `history-integrity.yaml`           | Flags a PR force-push that silently dropped a previously pushed commit                                |
-| `gitleaks.yaml`                    | Scans for committed secrets (PR diff, full history on main); PR-gating                                |
-| `zizmor.yaml`                      | Security-audits workflows/actions with zizmor; PR-gating                                              |
-| `hook-lifecycle.yaml`              | Runs the full Claude hook lifecycle on a clean checkout so a broken hook is caught in CI; PR-gating   |
-| `build-publish-notify.yaml`        | Pushes a phone alert (ntfy) when a build/publish run fails outside a PR (opt-in via `GH_NTFY_*`)      |
-| `sync-required-checks.yaml`        | Post-merge, syncs branch-protection required checks to the workflows' `# required-check:` annotations |
+| Workflow                            | What it does                                                                                                   |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `claude.yaml`                       | Responds to `@claude` mentions in issues and PR comments                                                       |
+| `claude-pr-review.yaml`             | Auto-reviews every PR with Claude (inline comments, suggested edits); auto-approves low-risk/bot PRs           |
+| `claude-review-thread-resolve.yaml` | On each push, resolves reviewer threads the new commits addressed (Claude Haiku)                               |
+| `claude-reviewer-hold-clear.yaml`   | Cron sweep that lifts a stale reviewer hold once all its threads are resolved                                  |
+| `remerge-diff-report.yaml`          | Surfaces each PR's hand-authored merge-resolution deltas (`git show --remerge-diff`) as a sticky comment       |
+| `claude-merge-delta-review.yaml`    | Reviews only the merge-resolution deltas with Claude (Sonnet) — catches "evil merge" content in neither parent |
+| `pr-desc-accuracy.yaml`             | After merge, corrects a stale PR title/description against the final diff                                      |
+| `template-sync.yaml`                | Daily sync from template repo with 3-way merge and conflict detection                                          |
+| `phone-home.yaml`                   | Propagates "Lessons Learned" from merged PRs back to the template                                              |
+| `security-vulnerability-scan.yaml`  | Weekly security sweep—collects alerts, opens a rollup fix PR                                                   |
+| `node-tests.yaml`                   | Runs `pnpm test` (skips gracefully if unconfigured)                                                            |
+| `lint.yaml`                         | Runs `pnpm lint` and `pnpm check` (skips gracefully if unconfigured)                                           |
+| `format-check.yaml`                 | Checks Prettier formatting                                                                                     |
+| `pre-commit.yaml`                   | Runs pre-commit hooks in CI                                                                                    |
+| `validate-config.yaml`              | Validates `.claude/` and `.hooks/` config on every push                                                        |
+| `dependabot-auto-merge.yaml`        | Auto-merges minor/patch Dependabot PRs after CI passes                                                         |
+| `auto-version.yaml`                 | Post-merge, publishes to npm and tags `vX.Y.Z` (non-private packages)                                          |
+| `ci-failure-notify.yaml`            | Files a `ci-failure` issue when a post-merge or scheduled run fails                                            |
+| `cancel-on-pr-close.yaml`           | Cancels in-flight CI runs when a PR closes or merges                                                           |
+| `merge-conflict-labeler.yaml`       | Labels conflicting PRs `merge-conflict`; clears the label on resolve                                           |
+| `history-integrity.yaml`            | Flags a PR force-push that silently dropped a previously pushed commit                                         |
+| `gitleaks.yaml`                     | Scans for committed secrets (PR diff, full history on main); PR-gating                                         |
+| `zizmor.yaml`                       | Security-audits workflows/actions with zizmor; PR-gating                                                       |
+| `hook-lifecycle.yaml`               | Runs the full Claude hook lifecycle on a clean checkout so a broken hook is caught in CI; PR-gating            |
+| `build-publish-notify.yaml`         | Pushes a phone alert (ntfy) when a build/publish run fails outside a PR (opt-in via `GH_NTFY_*`)               |
+| `sync-required-checks.yaml`         | Post-merge, syncs branch-protection required checks to the workflows' `# required-check:` annotations          |
 
 #### Required checks & branch protection
 
-Each PR-gating workflow (`format-check`, `lint`, `node-tests`, `pre-commit`, `validate-config`, `gitleaks`, `zizmor`, `hook-lifecycle`) ends with an `if: always()` summary job—`format-check-passed`, `lint-passed`, `node-tests-passed`, `pre-commit-passed`, `validate-config-passed`, `gitleaks-passed`, `zizmor-passed`, `hook-lifecycle-passed`—that `needs:` the real job(s) and passes only when they all succeed (or skip). **Mark these `*-passed` jobs as Required in branch protection, not the underlying jobs.** (`sync-required-checks.yaml` keeps that set in step with the workflows' `# required-check:` annotations automatically, if you grant it a token.) A job that is cancelled or skipped never reports a status to GitHub, so a directly-Required job can leave a PR stuck “pending” forever; the always-running summary job (`if: always()` plus a `contains(needs.*.result, …)` guard) reports a definitive pass/fail instead.
+Each PR-gating workflow (`format-check`, `lint`, `node-tests`, `pre-commit`, `validate-config`, `gitleaks`, `zizmor`, `hook-lifecycle`) ends with an `if: always()` summary job—`format-check-passed`, `lint-passed`, `node-tests-passed`, `pre-commit-passed`, `validate-config-passed`, `gitleaks-passed`, `zizmor-passed`, `hook-lifecycle-passed`—that `needs:` the real job(s) and passes only when they all succeed (or skip). **Mark these `*-passed` jobs as Required in branch protection, not the underlying jobs.** (`sync-required-checks.yaml` keeps that set in step with the workflows' `# required-check:` annotations automatically, if you grant it a token.) A job that is cancelled or skipped never reports a status to GitHub, so a directly-Required job can leave a PR stuck “pending” forever; the always-running summary job calls the shared `report-job-result` composite action (`.github/actions/report-job-result/`), which passes on success or skip and, on a `cancelled` result, checks the branch tip to tell a benign supersession (a newer push already superseded this run) from a still-current cancellation that must fail closed.
 
 > **Caveat:** the summary job only helps when its workflow runs at all. `lint`, `node-tests`, and `validate-config` use `paths` filters, so on a PR that doesn’t touch their paths the _entire_ workflow (summary job included) is skipped and posts nothing. If you mark those `*-passed` checks Required, drop the workflow’s `paths` filter (let the job run and short-circuit internally) so the gate always reports.
 
@@ -186,13 +192,13 @@ Changes arrive as a PR for you to review. The sync uses a 3-way merge that prese
 
 Repository **settings and secrets are never copied** when you create a repo from a template or when `template-sync` runs—both only move files. So each consuming repo configures these once. The workflows read:
 
-| Secret                | Used by                                                 | Required?                                                        |
-| --------------------- | ------------------------------------------------------- | ---------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`   | `claude`, `security-vulnerability-scan`, `auto-version` | For Claude-backed workflows                                      |
-| `TEMPLATE_SYNC_TOKEN` | `template-sync`, `phone-home`, `auto-version`           | Optional—falls back to `GITHUB_TOKEN`                            |
-| `PUSH_TOKEN`          | `security-vulnerability-scan`                           | Optional—falls back to `GITHUB_TOKEN`                            |
-| `GH_NTFY_SUBJECT`     | `build-publish-notify`                                  | Optional—enables the ntfy failure alert (a no-op if unset)       |
-| `GH_NTFY_URL`         | `build-publish-notify`                                  | Optional—targets a self-hosted ntfy server (defaults to ntfy.sh) |
+| Secret                | Used by                                                                                                                                                      | Required?                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`   | `claude`, `security-vulnerability-scan`, `auto-version`, `claude-pr-review`, `claude-review-thread-resolve`, `claude-merge-delta-review`, `pr-desc-accuracy` | For Claude-backed workflows                                                 |
+| `TEMPLATE_SYNC_TOKEN` | `template-sync`, `phone-home`, `auto-version`, `claude-review-thread-resolve`                                                                                | Optional—falls back to `GITHUB_TOKEN` (which cannot resolve review threads) |
+| `PUSH_TOKEN`          | `security-vulnerability-scan`                                                                                                                                | Optional—falls back to `GITHUB_TOKEN`                                       |
+| `GH_NTFY_SUBJECT`     | `build-publish-notify`                                                                                                                                       | Optional—enables the ntfy failure alert (a no-op if unset)                  |
+| `GH_NTFY_URL`         | `build-publish-notify`                                                                                                                                       | Optional—targets a self-hosted ntfy server (defaults to ntfy.sh)            |
 
 `TEMPLATE_SYNC_TOKEN` should be a **fine-grained PAT** (it lets sync/release PRs touch workflow files and clear tag protection, which `GITHUB_TOKEN` can’t):
 
