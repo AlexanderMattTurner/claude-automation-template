@@ -32,7 +32,8 @@ gh pr create --base "$CLAUDE_CODE_BASE_REF" --title "<type>: <description>" --bo
 <How the changes were tested>
 
 ## Lessons Learned
-<!-- Delete this section if there are no lessons worth sharing. -->
+<!-- OMIT this whole section unless the PR produced a genuinely novel, cross-project insight. -->
+<!-- Most PRs have none — that is the expected case. Do NOT write "none"/"N/A"/"nothing generalizable": phone-home drops such disclaimers, so a negative sentence is pure churn — just delete the heading. -->
 <!-- Each lesson MUST specify: what to change, where, and why. Vague observations are not actionable. -->
 
 - **What**: <concrete change — e.g., "Add X to CLAUDE.md", "Hook Y should also check Z">
@@ -58,7 +59,7 @@ Use imperative mood with a Conventional Commits type prefix:
 - Focus the summary on the “why,” not the “what”
 - List concrete changes
 - Note any breaking changes
-- Include a “Lessons Learned” section if you discovered generalizable insights that could improve the template (this triggers the phone-home workflow). Each lesson must specify **what** to change, **where**, and **why**—vague observations get ignored. Delete the section entirely if there are no lessons.
+- **Default to NO “Lessons Learned” section.** It exists only for a genuinely novel, cross-project insight that would improve the template for a downstream repo sharing none of this code — a rare case; most PRs have none. Each lesson filed triggers the phone-home workflow (one issue per PR on the template repo), so a low-value or repo-specific “lesson” is triage noise, not a contribution. When you do include one, each lesson must specify **what** to change, **where**, and **why**. **Never write a negative placeholder** (“none applicable”, “N/A”, “nothing generalizable”): phone-home now drops those, so the sentence achieves nothing — omit the whole heading instead.
 - **Skip the Lessons Learned section entirely when the PR targets the `claude-automation-template` repo itself.** Phone-home propagates lessons _from_ downstream repos _into_ the template; a change made directly in the template is already there, so the section propagates nothing and is just noise.
 
 ## Updating PR Description After Additional Commits
@@ -75,7 +76,7 @@ gh pr edit --body "$(cat <<'EOF'
 <Updated testing information>
 
 ## Lessons Learned
-<!-- Delete this section if there are no lessons worth sharing. -->
+<!-- OMIT unless the PR produced a genuinely novel, cross-project insight (rare). Never write "none"/"N/A" — delete the heading. -->
 
 - **What**: <concrete change>
 - **Where**: <file or component>
