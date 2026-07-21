@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const LIVE_SCRIPT = join(REPO_ROOT, ".github", "scripts", "version-bump.sh");
 const AUTO_VERSION_YAML = join(
   REPO_ROOT,
