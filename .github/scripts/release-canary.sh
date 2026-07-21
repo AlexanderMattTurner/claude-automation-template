@@ -16,6 +16,8 @@
 # right target after template-sync with no per-repo edit.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 log() { echo "$@" >&2; }
 
 # Self-check guard: a repo that does not publish to npm (package.json
@@ -37,26 +39,15 @@ esac
 PACKAGE_NAME=$(node -p "require('./package.json').name")
 
 # npm side: max stable X.Y.Z over the full published-versions list. `--json`
-# yields an array normally, but a bare string for a single-release package.
+# yields an array normally, but a bare string for a single-release package. The
+# max is computed by npm-max-stable.mjs, which orders versions with the `semver`
+# package (exit 3 when nothing stable is published).
 VERSIONS_JSON=$(npm view "$PACKAGE_NAME" versions --json 2>/dev/null || echo "")
 if [[ -z "$VERSIONS_JSON" ]]; then
   log "Error: could not read published versions for '$PACKAGE_NAME' from npm."
   exit 1
 fi
-if ! NPM_MAX=$(NPM_VERSIONS="$VERSIONS_JSON" node -e '
-const raw = JSON.parse(process.env.NPM_VERSIONS);
-const all = Array.isArray(raw) ? raw : [raw];
-const stable = all.filter((v) => /^\d+\.\d+\.\d+$/.test(v));
-if (stable.length === 0) process.exit(3);
-const cmp = (a, b) => {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
-  return 0;
-};
-stable.sort(cmp);
-process.stdout.write(stable[stable.length - 1]);
-'); then
+if ! NPM_MAX=$(NPM_VERSIONS="$VERSIONS_JSON" node "$SCRIPT_DIR/npm-max-stable.mjs"); then
   log "Error: no stable X.Y.Z version published for '$PACKAGE_NAME'."
   exit 1
 fi
