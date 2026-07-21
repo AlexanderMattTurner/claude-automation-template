@@ -4,10 +4,13 @@ version = "0.0.0"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
-dev = ["pytest>=7,<10"]
+dev = ["pytest>=7,<10", "pyyaml>=6,<7"]
 
 [tool.ruff]
 target-version = "py310"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "drift_guard(reason): justified drift-guard test — states why a true SSOT is infeasible (enforced by ci-truth-serum's check-drift-guards hook, via the check-extras aggregate in .pre-commit-config.yaml)",
+]

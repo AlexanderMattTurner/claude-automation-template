@@ -33,6 +33,7 @@ jobs:
           - 'uv.lock'
           - '.pre-commit-config.yaml'
           - '.github/scripts/run-hook-lifecycle.sh'
+          - '.github/scripts/check-symlinks.sh'
           - '.github/actions/setup-base-env/**'
           - '.github/workflows/hook-lifecycle.yaml'
 

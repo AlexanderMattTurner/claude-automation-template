@@ -1,0 +1,70 @@
+#!/bin/bash
+# Pre-push hook: run the pre-commit suite over the commits being pushed, plus
+# the portable-symlink check, so they abort the push instead of surfacing as a
+# red check on the PR.
+#
+# The per-commit hook formats staged files; this catches everything the push
+# would introduce (e.g. an edit committed with --no-verify, or files brought in
+# by a merge) before it can reach the remote. The check is scoped to the pushed
+# range — `pre-commit run --from-ref <remote> --to-ref <local>` — so a push
+# costs seconds, not a minutes-long whole-tree sweep. pre-commit.yaml re-runs
+# the full suite on the PR in CI, so it catches web-editor edits that bypass
+# this hook. A failure aborts the push: commit the fixes pre-commit applied (or
+# fix the real lint error it reports) and push again.
+
+set -euo pipefail
+
+git_root=$(git rev-parse --show-toplevel)
+
+# Git hooks run in a bare shell and don't inherit session PATH edits; surface
+# the venv's tools plus uv/uvx and cargo installs.
+if [[ -d "$git_root/.venv/bin" ]]; then
+  export PATH="$git_root/.venv/bin:$PATH"
+fi
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+# Mirror CI's invocation: pre-commit.yaml runs `uvx pre-commit==<pin>`, and that
+# workflow line is the one authoritative pin — read it from there so this hook
+# can't drift to a different version. Fall back to a PATH pre-commit when uvx is
+# absent; when neither exists, skip loudly (CI still runs the full suite on the
+# PR) rather than blocking the push on a tool the machine doesn't have.
+precommit_cmd=()
+if command -v uvx >/dev/null 2>&1; then
+  pin=$(sed -n 's/.*uvx \(pre-commit==[0-9][0-9.]*\).*/\1/p' \
+    "$git_root/.github/workflows/pre-commit.yaml" | head -n1)
+  precommit_cmd=(uvx "${pin:-pre-commit}")
+elif command -v pre-commit >/dev/null 2>&1; then
+  precommit_cmd=(pre-commit)
+else
+  echo "pre-push: neither uvx nor pre-commit found on PATH — SKIPPING the pushed-range pre-commit run." >&2
+  echo "pre-push: install uv (https://docs.astral.sh/uv/) or 'pip install pre-commit'; CI still enforces the suite." >&2
+fi
+
+# origin's default branch — the base the new-branch fallback diffs against.
+default_branch=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/main)
+
+# git feeds one line per ref being pushed: <local ref> <local sha> <remote ref>
+# <remote sha>. Check each pushed range. A remote sha of all zeros is a new
+# branch with no upstream to diff against — fall back to the merge base with the
+# default branch, and to the empty tree on a repo with no origin/HEAD (first
+# push), so the whole history is checked exactly once.
+zero=0000000000000000000000000000000000000000
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [[ "$local_sha" == "$zero" ]] && continue # branch deletion: nothing to check
+  [[ ${#precommit_cmd[@]} -eq 0 ]] && continue
+  from_ref="$remote_sha"
+  if [[ "$from_ref" == "$zero" ]]; then
+    from_ref=$(git merge-base "$default_branch" "$local_sha" 2>/dev/null) ||
+      from_ref=$(git hash-object -t tree /dev/null)
+  fi
+  [[ "$from_ref" == "$local_sha" ]] && continue # nothing new to push
+  "${precommit_cmd[@]}" run --from-ref "$from_ref" --to-ref "$local_sha" --show-diff-on-failure
+done
+
+# Portable-symlink check: rejects a tracked symlink with an absolute target
+# before it can reach the remote. Runs the SAME script CI does (no
+# reimplementation, so they can't drift); git-only, milliseconds.
+symlinks="$git_root/.github/scripts/check-symlinks.sh"
+if [[ -f "$symlinks" ]]; then
+  bash "$symlinks"
+fi

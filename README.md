@@ -42,7 +42,7 @@ A GitHub template that makes [Claude Code](https://docs.anthropic.com/en/docs/cl
 
 4. **Customize for your project:**
    - Edit **`CLAUDE.md`**—add project-specific context, architecture notes, and conventions for Claude.
-   - Edit **`package.json`**—wire up your `dev`, `build`, `test`, `lint`, and `check` scripts. Unconfigured scripts are detected and skipped gracefully, so nothing breaks on first push.
+   - Edit **`package.json`**—wire up your `dev`, `build`, `test`, `lint`, and `check` scripts. Unconfigured scripts are detected and skipped (the CI job reports success without running them), so nothing breaks on first push.
 
 ## What’s Included
 
@@ -83,34 +83,34 @@ These run inside Claude Code sessions (local CLI or cloud), not in CI.
 
 ### GitHub Actions (`.github/workflows/`)
 
-| Workflow                            | What it does                                                                                                   |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `claude.yaml`                       | Responds to `@claude` mentions in issues and PR comments                                                       |
-| `claude-pr-review.yaml`             | Auto-reviews every PR with Claude (inline comments, suggested edits); auto-approves low-risk/bot PRs           |
-| `claude-review-thread-resolve.yaml` | On each push, resolves reviewer threads the new commits addressed (Claude Haiku)                               |
-| `claude-reviewer-hold-clear.yaml`   | Cron sweep that lifts a stale reviewer hold once all its threads are resolved                                  |
-| `remerge-diff-report.yaml`          | Surfaces each PR's hand-authored merge-resolution deltas (`git show --remerge-diff`) as a sticky comment       |
-| `claude-merge-delta-review.yaml`    | Reviews only the merge-resolution deltas with Claude (Sonnet) — catches "evil merge" content in neither parent |
-| `pr-desc-accuracy.yaml`             | After merge, corrects a stale PR title/description against the final diff                                      |
-| `template-sync.yaml`                | Daily sync from template repo with 3-way merge and conflict detection                                          |
-| `phone-home.yaml`                   | Propagates "Lessons Learned" from merged PRs back to the template                                              |
-| `security-vulnerability-scan.yaml`  | Weekly security sweep—collects alerts, opens a rollup fix PR                                                   |
-| `node-tests.yaml`                   | Runs `pnpm test` (skips gracefully if unconfigured)                                                            |
-| `lint.yaml`                         | Runs `pnpm lint` and `pnpm check` (skips gracefully if unconfigured)                                           |
-| `format-check.yaml`                 | Checks Prettier formatting                                                                                     |
-| `pre-commit.yaml`                   | Runs pre-commit hooks in CI                                                                                    |
-| `validate-config.yaml`              | Validates `.claude/` and `.hooks/` config on every push                                                        |
-| `dependabot-auto-merge.yaml`        | Auto-merges minor/patch Dependabot PRs after CI passes                                                         |
-| `auto-version.yaml`                 | Post-merge, publishes to npm and tags `vX.Y.Z` (non-private packages)                                          |
-| `ci-failure-notify.yaml`            | Files a `ci-failure` issue when a post-merge or scheduled run fails                                            |
-| `cancel-on-pr-close.yaml`           | Cancels in-flight CI runs when a PR closes or merges                                                           |
-| `merge-conflict-labeler.yaml`       | Labels conflicting PRs `merge-conflict`; clears the label on resolve                                           |
-| `history-integrity.yaml`            | Flags a PR force-push that silently dropped a previously pushed commit                                         |
-| `gitleaks.yaml`                     | Scans for committed secrets (PR diff, full history on main); PR-gating                                         |
-| `zizmor.yaml`                       | Security-audits workflows/actions with zizmor; PR-gating                                                       |
-| `hook-lifecycle.yaml`               | Runs the full Claude hook lifecycle on a clean checkout so a broken hook is caught in CI; PR-gating            |
-| `build-publish-notify.yaml`         | Pushes a phone alert (ntfy) when a build/publish run fails outside a PR (opt-in via `GH_NTFY_*`)               |
-| `sync-required-checks.yaml`         | Post-merge, syncs branch-protection required checks to the workflows' `# required-check:` annotations          |
+| Workflow                            | What it does                                                                                                                                                           |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude.yaml`                       | Responds to `@claude` mentions in issues and PR comments                                                                                                               |
+| `claude-pr-review.yaml`             | Auto-reviews every PR with Claude (inline comments, suggested edits); auto-approves low-risk/bot PRs                                                                   |
+| `claude-review-thread-resolve.yaml` | On each push, resolves reviewer threads the new commits addressed (Claude Haiku)                                                                                       |
+| `claude-reviewer-hold-clear.yaml`   | Cron sweep that lifts a stale reviewer hold once all its threads are resolved                                                                                          |
+| `remerge-diff-report.yaml`          | Surfaces each PR's hand-authored merge-resolution deltas (`git show --remerge-diff`) as a sticky comment                                                               |
+| `claude-merge-delta-review.yaml`    | Reviews only the merge-resolution deltas with Claude (Sonnet) — catches "evil merge" content in neither parent                                                         |
+| `pr-desc-accuracy.yaml`             | After merge, corrects a stale PR title/description against the final diff                                                                                              |
+| `template-sync.yaml`                | Daily sync from template repo with 3-way merge and conflict detection                                                                                                  |
+| `phone-home.yaml`                   | Propagates "Lessons Learned" from merged PRs back to the template                                                                                                      |
+| `security-vulnerability-scan.yaml`  | Weekly security sweep—collects alerts, opens a rollup fix PR                                                                                                           |
+| `node-tests.yaml`                   | Runs `pnpm test` (skips gracefully if unconfigured) <!-- allow-graceful: exits 0 with a "not configured" message when no test script exists -->                        |
+| `lint.yaml`                         | Runs `pnpm lint` and `pnpm check` (skips gracefully if unconfigured) <!-- allow-graceful: exits 0 with a "not configured" message when no lint/check script exists --> |
+| `format-check.yaml`                 | Checks Prettier formatting                                                                                                                                             |
+| `pre-commit.yaml`                   | Runs pre-commit hooks in CI                                                                                                                                            |
+| `validate-config.yaml`              | Validates `.claude/` and `.hooks/` config on every push                                                                                                                |
+| `dependabot-auto-merge.yaml`        | Auto-merges minor/patch Dependabot PRs after CI passes                                                                                                                 |
+| `auto-version.yaml`                 | Post-merge, publishes to npm and tags `vX.Y.Z` (non-private packages)                                                                                                  |
+| `ci-failure-notify.yaml`            | Files a `ci-failure` issue when a post-merge or scheduled run fails                                                                                                    |
+| `cancel-on-pr-close.yaml`           | Cancels in-flight CI runs when a PR closes or merges                                                                                                                   |
+| `merge-conflict-labeler.yaml`       | Labels conflicting PRs `merge-conflict`; clears the label on resolve                                                                                                   |
+| `history-integrity.yaml`            | Flags a PR force-push that silently dropped a previously pushed commit                                                                                                 |
+| `gitleaks.yaml`                     | Scans for committed secrets (PR diff, full history on main); PR-gating                                                                                                 |
+| `zizmor.yaml`                       | Security-audits workflows/actions with zizmor; PR-gating                                                                                                               |
+| `hook-lifecycle.yaml`               | Runs the full Claude hook lifecycle on a clean checkout so a broken hook is caught in CI; PR-gating                                                                    |
+| `build-publish-notify.yaml`         | Pushes a phone alert (ntfy) when a build/publish run fails outside a PR (opt-in via `GH_NTFY_*`)                                                                       |
+| `sync-required-checks.yaml`         | Post-merge, syncs branch-protection required checks to the workflows' `# required-check:` annotations                                                                  |
 
 #### Required checks & branch protection
 

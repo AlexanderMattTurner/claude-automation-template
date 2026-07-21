@@ -108,12 +108,11 @@ function runScript(dir, binDir) {
 }
 
 // --- Bug C: tag ordering — the dedup tag must land before the docs push -----
-// The vX.Y.Z tag is what stops the next run from re-analyzing the same commits.
-// It used to be pushed LAST, after the CHANGELOG/docs push, so a docs-push
-// failure left a published-but-untagged release and the next run re-bumped the
-// same commits (a runaway version walk). The tag must be pushed IMMEDIATELY
-// after a successful npm publish; a docs-push failure still exits non-zero, but
-// with the tag already landed.
+// The vX.Y.Z tag is the dedup guard that stops the next run from re-analyzing
+// the same commits. It MUST be pushed immediately after a successful npm
+// publish, before the CHANGELOG/docs push: a docs-push failure still exits
+// non-zero, but with the tag already landed, so a partial release cannot strand
+// a published-but-untagged version that the next run re-bumps (a version walk).
 
 /** npm stub for a real release path: package at 5.0.0, probe says "not yet published". */
 const NPM_RELEASABLE_STUB =
