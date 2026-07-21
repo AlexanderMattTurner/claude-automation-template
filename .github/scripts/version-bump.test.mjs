@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const LIVE_SCRIPT = join(REPO_ROOT, ".github", "scripts", "version-bump.sh");
 const AUTO_VERSION_YAML = join(
   REPO_ROOT,
@@ -95,6 +95,9 @@ function runScript(dir, binDir) {
   const env = { ...process.env, PATH: `${binDir}:${process.env.PATH}` };
   delete env.ANTHROPIC_API_KEY;
   delete env.GITHUB_OUTPUT;
+  // In CI GITHUB_REF_NAME names the PR branch; drop it so the docs push targets
+  // the sandbox's own branch (which the bare origin below rejects on purpose).
+  delete env.GITHUB_REF_NAME;
   const res = spawnSync("bash", [LIVE_SCRIPT], {
     cwd: dir,
     env,
@@ -103,6 +106,97 @@ function runScript(dir, binDir) {
   assert.equal(res.error, undefined, "failed to spawn the release script");
   return { status: res.status, stderr: res.stderr, stdout: res.stdout };
 }
+
+// --- Bug C: tag ordering — the dedup tag must land before the docs push -----
+// The vX.Y.Z tag is the dedup guard that stops the next run from re-analyzing
+// the same commits. It MUST be pushed immediately after a successful npm
+// publish, before the CHANGELOG/docs push: a docs-push failure still exits
+// non-zero, but with the tag already landed, so a partial release cannot strand
+// a published-but-untagged version that the next run re-bumps (a version walk).
+
+/** npm stub for a real release path: package at 5.0.0, probe says "not yet published". */
+const NPM_RELEASABLE_STUB =
+  'if [[ "$2" == *@* ]]; then exit 1; else echo "5.0.0"; fi';
+
+/** Add publish/sleep stubs and a bare origin whose branches reject pushes (tags land). */
+function makeReleaseSandbox() {
+  const { dir, binDir } = makeSandbox(NPM_RELEASABLE_STUB);
+  // pnpm publish must "succeed" without touching a registry.
+  writeFileSync(join(binDir, "pnpm"), "#!/usr/bin/env bash\nexit 0\n");
+  chmodSync(join(binDir, "pnpm"), 0o755);
+  // retry_cmd sleeps between attempts; stub it so the failing-push retries are instant.
+  writeFileSync(join(binDir, "sleep"), "#!/usr/bin/env bash\nexit 0\n");
+  chmodSync(join(binDir, "sleep"), 0o755);
+
+  // Bare origin that accepts tag pushes but rejects branch pushes — the exact
+  // partial failure that used to strand a published release untagged.
+  const origin = join(dir, "origin.git");
+  execFileSync("git", ["init", "-q", "--bare", origin]);
+  const preReceive = join(origin, "hooks", "pre-receive");
+  writeFileSync(
+    preReceive,
+    '#!/usr/bin/env bash\nwhile read -r _old _new ref; do\n  [[ "$ref" == refs/heads/* ]] && exit 1\ndone\nexit 0\n',
+  );
+  chmodSync(preReceive, 0o755);
+  execFileSync("git", ["remote", "add", "origin", origin], { cwd: dir });
+  // A CHANGELOG with Unreleased content so the run has a docs commit to push.
+  writeFileSync(
+    join(dir, "CHANGELOG.md"),
+    "# Changelog\n\n## Unreleased\n\n### Added\n\n- a thing\n",
+  );
+  execFileSync("git", ["add", "-A"], { cwd: dir });
+  execFileSync("git", ["commit", "-q", "-m", "feat: releasable work"], {
+    cwd: dir,
+  });
+  return { dir, binDir, origin };
+}
+
+test("tag is pushed before the docs push; a docs-push failure exits non-zero with the tag landed", () => {
+  const { dir, binDir, origin } = makeReleaseSandbox();
+  try {
+    const { status, stderr } = runScript(dir, binDir);
+    // Fail loud on the docs push...
+    assert.notEqual(status, 0, "a failed docs push must fail the run");
+    assert.match(stderr, /failed to push the release-docs update/);
+    // ...but only AFTER the dedup tag landed on the remote.
+    assert.match(stderr, /Pushed tag v5\.1\.0/);
+    const remoteTags = execFileSync("git", ["ls-remote", "--tags", origin], {
+      encoding: "utf8",
+    });
+    assert.match(remoteTags, /refs\/tags\/v5\.1\.0/);
+    // Ordering in the transcript: tag push succeeded before the docs failure.
+    assert.ok(
+      stderr.indexOf("Pushed tag v5.1.0") <
+        stderr.indexOf("failed to push the release-docs update"),
+      "tag must be pushed before the docs push is attempted",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a range containing only release-docs commits is skipped, not re-released", () => {
+  // With the tag preceding the docs commit, HEAD sits one "docs: release ..."
+  // commit past the tag after every successful release; a manual re-dispatch
+  // must not read that commit as releasable work.
+  const { dir, binDir } = makeSandbox(NPM_AT_5_STUB);
+  try {
+    execFileSync(
+      "git",
+      ["commit", "-q", "--allow-empty", "-m", "docs: release 5.0.0 [skip ci]"],
+      { cwd: dir },
+    );
+    const { status, stderr } = runScript(dir, binDir);
+    assert.equal(status, 0, stderr);
+    assert.match(
+      stderr,
+      /Only release-docs commits since v0\.0\.0\. Skipping\./,
+    );
+    assert.doesNotMatch(stderr, /New version:/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 for (const { name, subject, body } of [
   {

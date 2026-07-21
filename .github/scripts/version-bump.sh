@@ -127,6 +127,16 @@ if [[ -z "$COMMITS" ]]; then
   exit 0
 fi
 
+# Skip when every commit since the tag is this script's own release-docs commit
+# ("docs: release X.Y.Z [skip ci]"). The tag is pushed BEFORE the docs commit
+# (tag = published SHA), so after a successful release HEAD sits one docs commit
+# past the tag; without this guard a manual re-dispatch with no real work would
+# read that docs commit as releasable and cut a spurious patch.
+if ! grep -Evq '^docs: release [0-9]+\.[0-9]+\.[0-9]+ \[skip ci\]$' <<<"$COMMIT_SUBJECTS"; then
+  log "Only release-docs commits since $LAST_TAG. Skipping."
+  exit 0
+fi
+
 log "Commits to analyze:"
 log "$COMMITS"
 
@@ -286,9 +296,28 @@ fi
 log "$PUBLISH_OUTPUT"
 log "✅ Published $PACKAGE_NAME@$NEW_VERSION"
 
+# Tag the release IMMEDIATELY after a successful publish, before any docs work.
+# The tag is the dedup guard: it is what stops the next run from re-analyzing
+# these same commits and walking the version upward. Publishing, then pushing
+# docs, then tagging LAST once left a published-but-untagged release whenever the
+# docs push failed — the next run re-read the climbing npm version and bumped
+# again (a runaway version walk). The tag points at the commit that was actually
+# published; the release-docs commit below lands after it and is analyzed (and
+# skipped) by the next run's release-docs guard.
+git tag "v$NEW_VERSION"
+# Fail loudly if the tag never lands: the tag is what stops the next run from
+# re-analyzing these commits (re-drafting the changelog, re-pushing release
+# docs), so a silent failure here would quietly corrupt the next release.
+if ! retry_cmd 4 2 git push origin "v$NEW_VERSION"; then
+  log "Error: failed to push tag v$NEW_VERSION after retries. The release is published;"
+  log "       push the tag manually so the next run does not re-analyze these commits."
+  exit 1
+fi
+log "Pushed tag v$NEW_VERSION"
+
 # Promote "## Unreleased" to a dated version section in CHANGELOG.md, using the
 # drafted body. The helper exits 0 even on its own errors: the package is
-# already published, so a CHANGELOG hiccup must not abort the tag push below.
+# already published and tagged, so a CHANGELOG hiccup must not mask that.
 if [[ -f CHANGELOG.md ]] && [[ -n "$CHANGELOG_SECTION" ]]; then
   RELEASE_DATE=$(date -u +%Y-%m-%d)
   NEW_VERSION="$NEW_VERSION" \
@@ -300,9 +329,10 @@ fi
 # Commit the CHANGELOG entry back to the default branch so users see the release
 # notes. package.json stays dirty (npm is the source of truth for version). A
 # bot identity and `[skip ci]` keep the resulting push from spawning another
-# workflow run. The tag is created AFTER this commit (and only if it reached the
-# branch) so HEAD == tag SHA and the next run sees "HEAD is already tagged".
-RELEASE_DOCS_PUSH_FAILED=0
+# workflow run. A push failure here still fails the run LOUDLY (the release notes
+# are part of the release), but the tag above has already landed, so a retry or
+# the next run cannot re-process these commits — it only needs to re-push docs.
+#
 # actions/checkout leaves the runner in detached HEAD even for `push` events,
 # so `git rev-parse --abbrev-ref HEAD` returns the literal string "HEAD", not
 # the branch name — that would push to the bogus ref "HEAD:HEAD". GITHUB_REF_NAME
@@ -318,28 +348,8 @@ else
   # Push to the default branch explicitly so this works whether actions/checkout
   # left us on a branch or in detached HEAD state.
   if ! retry_cmd 4 2 git push origin "HEAD:$DEFAULT_BRANCH"; then
-    log "⚠️ Failed to push release-docs update. Release was published; docs can be updated manually."
-    RELEASE_DOCS_PUSH_FAILED=1
+    log "Error: failed to push the release-docs update for v$NEW_VERSION."
+    log "       The release is published and tagged; push the CHANGELOG commit manually."
+    exit 1
   fi
-fi
-
-# Tag only when the release-docs commit (if any) actually reached the branch.
-# Otherwise the local HEAD is an orphan commit nobody can see, and tagging it
-# would leave v$NEW_VERSION pointing at a SHA outside the branch history.
-if [[ "$RELEASE_DOCS_PUSH_FAILED" = "1" ]]; then
-  log "⚠️ Skipping tag v$NEW_VERSION because the release-docs commit did not reach $DEFAULT_BRANCH."
-  log "    Release was published to npm; reconcile by pushing the release-docs commit and tagging manually."
-  exit 1
-fi
-
-# Tag the release for future commit-range detection. Tag HEAD (which now
-# includes the release-docs commit, if any) so a re-trigger sees HEAD == tag SHA.
-git tag "v$NEW_VERSION"
-# Fail loudly if the tag never lands: the tag is what stops the next run from
-# re-analyzing these commits (re-drafting the changelog, re-pushing release
-# docs), so a silent failure here would quietly corrupt the next release.
-if ! retry_cmd 4 2 git push origin "v$NEW_VERSION"; then
-  log "Error: failed to push tag v$NEW_VERSION after retries. The release is published;"
-  log "       push the tag manually so the next run does not re-analyze these commits."
-  exit 1
 fi
