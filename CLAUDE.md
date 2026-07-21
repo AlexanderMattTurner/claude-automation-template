@@ -13,6 +13,7 @@
 - **Never checkpoint mid-run.** Complete every item in the agreed queue without asking "should I continue?" or "move on to the next one?"—the answer is always yes. Stop mid-task only for a destructive/irreversible action or a genuine scope change the user must decide.
 - **Mid-run decisions are logged, not asked.** When a reversible design choice surfaces after work has begun, pick a sensible default, keep going, and record it under a `## Decisions made` heading in the PR description: what came up, the default chosen, and what would change under the alternative. The user reviews decisions asynchronously in the PR, not live in chat.
 - **Maintain a status checklist.** For multi-item tasks, post the item list at the start (in chat or the PR description) and tick items off as they complete—that is the supervision surface for a user running parallel sessions.
+- **Check open PR commits first when addressing a bug that's red on main — a fix may already be underway.** List the open PRs before starting; if one already covers the failure, push to that branch instead of opening a sibling. Name the claimed area in the PR description's first line so parallel sessions can see what's taken. (Duplicate fixes for the same red-main failure have shipped twice from overlapping sessions.)
 - **Silent turns on non-actionable events.** A webhook/notification wake-up that needs no action (duplicate event, superseded-SHA cancellation, CI still running) gets no reply—end the turn with no text. Never post "all clear" / "nothing to do."
 
 ## Commands
