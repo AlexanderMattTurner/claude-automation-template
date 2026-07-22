@@ -34,7 +34,8 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._helpers import REPO_ROOT
+
 SESSION_SETUP = REPO_ROOT / ".claude" / "hooks" / "session-setup.sh"
 PRE_COMMIT_CFG = REPO_ROOT / ".pre-commit-config.yaml"
 ZIZMOR_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "zizmor.yaml"
