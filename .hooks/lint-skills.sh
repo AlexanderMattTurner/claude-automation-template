@@ -55,13 +55,13 @@ for file in "$@"; do
   frontmatter=$(awk '/^---$/{n++; next} n==1' "$file" | grep -v '^#')
 
   # Check frontmatter has name field
-  if ! echo "$frontmatter" | grep -q '^name:'; then
+  if ! grep -q '^name:' <<<"$frontmatter"; then
     echo "ERROR: $file missing 'name:' in frontmatter" >&2
     errors=$((errors + 1))
   fi
 
   # Check frontmatter has description field
-  if ! echo "$frontmatter" | grep -q '^description:'; then
+  if ! grep -q '^description:' <<<"$frontmatter"; then
     echo "ERROR: $file missing 'description:' in frontmatter" >&2
     errors=$((errors + 1))
   fi
@@ -79,7 +79,7 @@ for file in "$@"; do
 
   # Warn (but don't fail) if Examples section is missing
   body=$(awk '/^---$/{n++; next} n>=2' "$file")
-  if ! echo "$body" | grep -q '^## Examples'; then
+  if ! grep -q '^## Examples' <<<"$body"; then
     echo "WARN: $file missing '## Examples' section — consider adding 2-3 real input/output examples" >&2
   fi
 done
