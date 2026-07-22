@@ -48,7 +48,12 @@ default_branch=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/de
 # default branch, and to the empty tree on a repo with no origin/HEAD (first
 # push), so the whole history is checked exactly once.
 zero=0000000000000000000000000000000000000000
-while read -r _local_ref local_sha _remote_ref remote_sha; do
+# Read the ref list from fd 3 and hand every command in the loop body an empty
+# stdin: a body command that reads stdin (pre-commit driving its hooks) would
+# otherwise swallow the remaining ref lines, so a multi-ref push checked only
+# its first range.
+exec 3<&0 0</dev/null
+while read -r -u 3 _local_ref local_sha _remote_ref remote_sha; do
   [[ "$local_sha" == "$zero" ]] && continue # branch deletion: nothing to check
   if [[ ${#precommit_cmd[@]} -eq 0 ]]; then
     gate_die_missing_tool pre-push pre-commit "install uv (https://docs.astral.sh/uv/) or 'pip install pre-commit' so the pushed range can be checked, then push again."

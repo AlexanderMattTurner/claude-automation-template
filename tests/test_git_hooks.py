@@ -131,6 +131,51 @@ def test_pre_push_fails_when_pre_commit_missing(hook_repo: Path) -> None:
     assert "REFUSING" in result.stderr
 
 
+def test_pre_push_checks_every_range_when_body_consumes_stdin(
+    hook_repo: Path,
+) -> None:
+    """A multi-ref push must run the pushed-range check once per ref even when
+    a loop-body command reads stdin: a stdin-hungry pre-commit invocation used
+    to swallow the remaining ref lines, silently skipping every range but the
+    first."""
+    heads = []
+    for branch in ("a", "b"):
+        subprocess.run(
+            ["git", "commit", "-q", "--allow-empty", "-m", f"c-{branch}"],
+            cwd=hook_repo,
+            env=git_env(),
+            check=True,
+        )
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=hook_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        heads.append(head)
+    path = minimal_path(hook_repo)
+    log = hook_repo / "pre-commit-invocations.log"
+    stub = Path(path) / "pre-commit"
+    # The stub drains stdin exactly like a hook-running pre-commit can, then
+    # records its argv — one line per invocation. Draining uses the read
+    # builtin because the stub runs under the test's minimal PATH (no cat).
+    stub.write_text(
+        f'#!/bin/bash\nwhile IFS= read -r _; do :; done\necho "$@" >>"{log}"\n'
+    )
+    stub.chmod(0o755)
+    stdin = "".join(
+        f"refs/heads/{branch} {head} refs/heads/{branch} {ZERO_SHA}\n"
+        for branch, head in zip(("a", "b"), heads)
+    )
+    result = run_hook(hook_repo, "pre-push", "origin", "url", path=path, stdin=stdin)
+    assert result.returncode == 0, result.stderr
+    invocations = log.read_text().splitlines()
+    assert len(invocations) == 2, invocations
+    for head, line in zip(heads, invocations):
+        assert f"--to-ref {head}" in line
+
+
 def test_pre_push_noop_push_passes_without_tools(hook_repo: Path) -> None:
     """An empty ref list (nothing to push) has no range to check, so missing
     tools must not block it."""
