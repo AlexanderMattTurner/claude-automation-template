@@ -15,6 +15,8 @@
 set -euo pipefail
 
 git_root=$(git rev-parse --show-toplevel)
+# shellcheck source=.hooks/lib-gate.sh
+source "$git_root/.hooks/lib-gate.sh"
 
 # Git hooks run in a bare shell and don't inherit session PATH edits; surface
 # the venv's tools plus uv/uvx and cargo installs.
@@ -26,8 +28,8 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 # Mirror CI's invocation: pre-commit.yaml runs `uvx pre-commit==<pin>`, and that
 # workflow line is the one authoritative pin — read it from there so this hook
 # can't drift to a different version. Fall back to a PATH pre-commit when uvx is
-# absent; when neither exists, skip loudly (CI still runs the full suite on the
-# PR) rather than blocking the push on a tool the machine doesn't have.
+# absent; when neither exists, the push FAILS as soon as a range actually needs
+# checking (a no-op push, e.g. a branch deletion, still goes through).
 precommit_cmd=()
 if command -v uvx >/dev/null 2>&1; then
   pin=$(sed -n 's/.*uvx \(pre-commit==[0-9][0-9.]*\).*/\1/p' \
@@ -35,9 +37,6 @@ if command -v uvx >/dev/null 2>&1; then
   precommit_cmd=(uvx "${pin:-pre-commit}")
 elif command -v pre-commit >/dev/null 2>&1; then
   precommit_cmd=(pre-commit)
-else
-  echo "pre-push: neither uvx nor pre-commit found on PATH — SKIPPING the pushed-range pre-commit run." >&2
-  echo "pre-push: install uv (https://docs.astral.sh/uv/) or 'pip install pre-commit'; CI still enforces the suite." >&2
 fi
 
 # origin's default branch — the base the new-branch fallback diffs against.
@@ -51,7 +50,9 @@ default_branch=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/de
 zero=0000000000000000000000000000000000000000
 while read -r _local_ref local_sha _remote_ref remote_sha; do
   [[ "$local_sha" == "$zero" ]] && continue # branch deletion: nothing to check
-  [[ ${#precommit_cmd[@]} -eq 0 ]] && continue
+  if [[ ${#precommit_cmd[@]} -eq 0 ]]; then
+    gate_die_missing_tool pre-push pre-commit "install uv (https://docs.astral.sh/uv/) or 'pip install pre-commit' so the pushed range can be checked, then push again."
+  fi
   from_ref="$remote_sha"
   if [[ "$from_ref" == "$zero" ]]; then
     from_ref=$(git merge-base "$default_branch" "$local_sha" 2>/dev/null) ||
