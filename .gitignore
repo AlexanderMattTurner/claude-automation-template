@@ -22,6 +22,9 @@ out/
 # Claude Code local settings (written by SessionStart hook in web sessions)
 .claude/settings.local.json
 
+# Claude Code sub-agent worktrees (transient scratch; never committed)
+.claude/worktrees/
+
 # Claude Code personal notes (recurring nitpicks / review feedback, never committed)
 CLAUDE.local.md
 .claude/CLAUDE.local.md
