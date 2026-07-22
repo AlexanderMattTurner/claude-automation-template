@@ -107,6 +107,12 @@ def _ci_truth_serum_pins() -> dict[str, str]:
     }
 
 
+@pytest.mark.drift_guard(
+    "Each pin is consumed by a different external tool reading its own config "
+    "format (pre-commit's rev:/additional_dependencies, GitHub Actions YAML, "
+    ".python-version, uvx command lines) — no include/reference mechanism "
+    "spans those formats, so a single authoritative copy is infeasible."
+)
 @pytest.mark.parametrize(
     "pins_fn",
     [_ruff_pins, _zizmor_pins, _python_pins, _ci_truth_serum_pins],
