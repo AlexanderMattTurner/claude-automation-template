@@ -16,6 +16,7 @@ on: # zizmor: ignore[dangerous-triggers]
   workflow_run:
     types: [completed]
     workflows:
+      - Auto-resolve merge conflicts
       - Auto version bump and publish
       - Claude reviewer-hold sweeper
       - Format check
