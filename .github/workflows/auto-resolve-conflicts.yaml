@@ -38,12 +38,23 @@
 # turns whichever event fired into the set of eligible PRs; `resolve` fans out
 # over them.
 #
-# claude-code-action rejects `push` events outright ("Unsupported event type:
-# push"), so a push run never resolves directly: when its scan finds conflicting
-# PRs, the `relay` job re-fires this workflow as a workflow_dispatch (which the
-# action does support) and THAT run re-discovers and resolves. GITHUB_TOKEN's
-# recursion guard exempts workflow_dispatch, so the relay dispatch does start a
-# run; the dispatched run can't relay again (relay is push-only), so no loop.
+# claude-code-action rejects `push` (and `schedule`) events outright
+# ("Unsupported event type"), so such a run never resolves directly: when its
+# scan finds conflicting PRs, the `relay` job re-fires this workflow as a
+# workflow_dispatch (which the action does support) and THAT run re-discovers and
+# resolves. GITHUB_TOKEN's recursion guard exempts workflow_dispatch, so the relay
+# dispatch does start a run; the dispatched run can't relay again (relay fires
+# only on push/schedule), so no loop.
+#
+# The scheduled scan closes the born-conflicted gap: a PR whose branch was cut
+# from an older main conflicts the instant it opens, but the `opened` event may
+# never drive a resolve — most sharply when the PR is opened via the API/app
+# token, since GitHub suppresses workflow triggers for events a GITHUB_TOKEN /
+# app actor generates (its own recursion guard). Such a PR then waits for the
+# next push-to-main scan, which is arbitrarily far off. The schedule re-scans
+# every open PR on a fixed cadence and relays exactly like the push scan, so a
+# conflicting PR is picked up within the interval no matter which events reached
+# (or skipped) it.
 name: Auto-resolve merge conflicts
 
 on:
@@ -53,8 +64,14 @@ on:
   # them all (the labeler fires on the same event for the same reason).
   push:
     branches: [main]
-  # The push scan's resolve vehicle (see the relay note above); discover re-scans
-  # every open PR, so the dispatch carries no inputs.
+  # Backstop for born-conflicted PRs no push/label/opened event resolved in time
+  # (see the header note). Runs discover across every open PR and relays like the
+  # push scan. Every 30 minutes — a cheap discover job that only fans out to the
+  # paid resolve when it actually finds a conflicting PR.
+  schedule:
+    - cron: "*/30 * * * *"
+  # The push/schedule scan's resolve vehicle (see the relay note above); discover
+  # re-scans every open PR, so the dispatch carries no inputs.
   workflow_dispatch:
 
 permissions: {}
@@ -107,10 +124,13 @@ jobs:
           fi
 
   relay:
-    name: Relay push scan as workflow_dispatch
+    name: Relay push/schedule scan as workflow_dispatch
     needs: discover
+    # Both the push and the scheduled scan run under an event claude-code-action
+    # rejects, so both resolve indirectly by re-dispatching. Keep this off
+    # workflow_dispatch itself so the relayed run can't relay again (no loop).
     if: >-
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'schedule') &&
       needs.discover.outputs.prs != '' && needs.discover.outputs.prs != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -126,9 +146,11 @@ jobs:
   resolve:
     name: Auto-resolve merge conflicts
     needs: discover
-    # push runs relay instead of resolving (claude-code-action rejects push).
+    # push and schedule run relay instead of resolving (claude-code-action rejects
+    # both); resolve happens on the relayed workflow_dispatch (and directly on a
+    # pull_request event).
     if: >-
-      github.event_name != 'push' &&
+      github.event_name != 'push' && github.event_name != 'schedule' &&
       needs.discover.outputs.prs != '' && needs.discover.outputs.prs != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
