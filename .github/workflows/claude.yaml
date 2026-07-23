@@ -75,4 +75,9 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           model: claude-sonnet-4-6
+          # TEMPLATE_SYNC_TOKEN is optional (see the AUTH note above) — repos
+          # that haven't configured it still get a working responder under
+          # GITHUB_TOKEN, just without the recursion-guard-evading push identity
+          # downstream sync-conflict auto-resolution needs.
+          # token-fallback-ok: designed graceful degradation, not an accident.
           github_token: ${{ secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
