@@ -28,6 +28,16 @@ jobs:
         with:
           python-version: "3.11"
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      # Node deps must be installed for the node-based `language: system` hooks:
+      # check-proto-pollution does `import ts from "typescript"`, which resolves
+      # from the repo's node_modules (ESM ignores NODE_PATH), so the module is
+      # absent until `pnpm install` runs.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: ".nvmrc"
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - name: Install node deps
+        run: pnpm install --frozen-lockfile
       - name: Restore pre-commit cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
