@@ -127,7 +127,7 @@ jobs:
         run: bash .github/scripts/template-sync.sh
 
       - name: Show diff (dry run)
-        if: inputs.dry-run == true && steps.sync.outputs.has_changes == 'true'
+        if: inputs.dry-run == 'true' && steps.sync.outputs.has_changes == 'true'
         env:
           HAS_CONFLICTS: ${{ steps.sync.outputs.has_conflicts }}
           HAS_DELETIONS: ${{ steps.sync.outputs.has_deletions }}
@@ -136,7 +136,7 @@ jobs:
         run: bash .github/scripts/show-sync-diff.sh
 
       - name: Create Pull Request
-        if: inputs.dry-run != true && (steps.sync.outputs.has_changes == 'true' || steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true')
+        if: inputs.dry-run != 'true' && (steps.sync.outputs.has_changes == 'true' || steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true')
         id: create-pr
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
@@ -162,7 +162,15 @@ jobs:
             {0}
             ```
 
-            ', steps.sync.outputs.changelog) }}${{ steps.sync.outputs.auto_merged_files && format('### Auto-merged files
+            ', steps.sync.outputs.changelog) }}${{ steps.sync.outputs.has_downgrades == 'true' && format('---
+
+            ## ⚠️ Adopter-ahead — review these auto-merges for lost customizations
+
+            A "clean" 3-way auto-merge dropped lines that existed in this repo''s local copy. The sync uses a single repo-wide merge base (`.template-version`), which can be stale for a file first synced at a different template revision — when it is, git reports no conflict while silently shrinking your changes. **Review each file below** and restore anything of yours the merge removed:
+
+            {0}
+
+            ', steps.sync.outputs.downgrade_report) || '' }}${{ steps.sync.outputs.auto_merged_files && format('### Auto-merged files
 
             The following files were merged automatically (3-way merge, no conflicts):
 
@@ -191,7 +199,7 @@ jobs:
           labels: ${{ steps.sync.outputs.has_conflicts == 'true' && 'template-sync,needs-conflict-resolution' || 'template-sync' }}
 
       - name: Request Claude to resolve conflicts
-        if: inputs.dry-run != true && (steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true') && steps.create-pr.outputs.pull-request-number
+        if: inputs.dry-run != 'true' && (steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true') && steps.create-pr.outputs.pull-request-number
         env:
           GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || github.token }}
           HAS_CONFLICTS: ${{ steps.sync.outputs.has_conflicts }}

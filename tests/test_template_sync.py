@@ -478,3 +478,74 @@ def test_survives_self_overwrite_with_longer_file(workdir: Path) -> None:
     assert result.returncode == 0, result.stderr
     # The child's on-disk copy was overwritten with the longer template version.
     assert (child / script_rel).read_text().endswith(broken_tail)
+
+
+def test_silent_downgrade_is_surfaced_loudly(workdir: Path) -> None:
+    """A "clean" 3-way auto-merge that drops adopter content must be reported,
+    not trusted. RED without the count_dropped_lines guard: the file still
+    auto-merges and loses the line, but has_downgrades stays absent/false.
+
+    Scenario reproduces a stale merge base: the base still carries a line the
+    template later removed while the local copy also carried it and independently
+    added its own line. git merges cleanly (template's deletion + local's
+    addition are disjoint), so the removed line vanishes with no conflict.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+
+    # The template's deletion (top) and the local's addition (bottom) sit in
+    # disjoint regions with unchanged context between, so git merges cleanly
+    # rather than conflicting — that is what makes the drop SILENT.
+    base = "ADOPTER-OWNED\nA\nB\nC\nD\nE\n"
+    write(template / "config" / "a.txt", base)
+    prev_sha = commit_all(template)
+
+    # Local diverged from base by appending a line far from ADOPTER-OWNED, while
+    # keeping ADOPTER-OWNED (both-sides-changed merge path, not adopt-template).
+    write(child / "config" / "a.txt", "ADOPTER-OWNED\nA\nB\nC\nD\nE\nLOCAL-ADD\n")
+    (child / ".template-version").write_text(prev_sha)
+    commit_all(child)
+
+    # Template advanced by REMOVING ADOPTER-OWNED at the top.
+    write(template / "config" / "a.txt", "A\nB\nC\nD\nE\n")
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    merged = (child / "config" / "a.txt").read_text()
+    # The merge was clean (no conflict markers) and did drop the adopter line...
+    assert "<<<<<<<" not in merged
+    assert "ADOPTER-OWNED" not in merged
+    assert "LOCAL-ADD" in merged
+    # ...so it must be surfaced as a downgrade, not silently accepted.
+    assert outputs["has_downgrades"] == "true"
+    assert "config/a.txt" in outputs["downgrade_files"]
+    assert "config/a.txt" in outputs["downgrade_report"]
+
+
+def test_benign_auto_merge_reports_no_downgrade(workdir: Path) -> None:
+    """A disjoint 3-way merge that preserves every local line must NOT be flagged
+    as a downgrade — guards against the detector crying wolf on normal merges."""
+    child = workdir / "child"
+    template = workdir / "template"
+
+    base = "common\n"
+    write(template / "config" / "a.txt", base)
+    prev_sha = commit_all(template)
+
+    write(child / "config" / "a.txt", "common\nLOCAL-ADD\n")
+    (child / ".template-version").write_text(prev_sha)
+    commit_all(child)
+
+    write(template / "config" / "a.txt", "common\nTEMPLATE-ADD\n")
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    merged = (child / "config" / "a.txt").read_text()
+    assert "LOCAL-ADD" in merged and "TEMPLATE-ADD" in merged
+    assert outputs["has_downgrades"] == "false"
