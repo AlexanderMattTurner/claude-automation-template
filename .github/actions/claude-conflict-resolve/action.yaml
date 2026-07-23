@@ -6,11 +6,16 @@ description: >-
   set, the github-actions bot allowance, the file-scope prompt) has a single
   source of truth. All of the resolve job's safety rails (base-ref-staged
   scripts, the out-of-set edit guard in finalize, the fail-loud assert) live in
-  the calling workflow; this action only runs the agent.
+  the calling workflow; this action only runs the agent. The credential and the
+  primary->fallback retry live in the shared claude-run action.
 inputs:
-  anthropic_api_key:
-    description: "Anthropic API key this resolve is billed against."
+  oauth_token:
+    description: "Primary Claude Code OAuth token this resolve is billed against."
     required: true
+  fallback_oauth_token:
+    description: "Backup Claude Code OAuth token; a failed primary attempt retries with it."
+    required: false
+    default: ""
   github_token:
     description: >-
       The workflow GITHUB_TOKEN, handed to the action directly so it skips the
@@ -26,18 +31,20 @@ outputs:
   execution_file:
     description: >-
       The action's execution-log path; the caller reads it to detect an is_error
-      run (a missing/invalid key) and to count permission denials.
+      run (a missing/invalid token) and to count permission denials.
     value: ${{ steps.run.outputs.execution_file }}
 runs:
   using: "composite"
   steps:
     - name: Resolve the conflicts with Claude
       id: run
-      uses: anthropics/claude-code-action@428971d2ecd6e3a7cb0ee0da2a3a8b33fdb3678d # v1.0.157
+      uses: ./.github/actions/claude-run
       with:
-        # A wrong/missing key makes the run error on init (is_error, $0, 1 turn);
-        # the caller's assert step turns that into a loud failure.
-        anthropic_api_key: ${{ inputs.anthropic_api_key }}
+        # A wrong/missing token makes the run error on init (is_error, $0, 1 turn);
+        # claude-run retries once with the fallback token, and the caller's assert
+        # step turns a genuine double-failure into a loud failure.
+        oauth_token: ${{ inputs.oauth_token }}
+        fallback_oauth_token: ${{ inputs.fallback_oauth_token }}
         github_token: ${{ inputs.github_token }}
         # The relay dispatches with github.token, so a relayed run's initiating
         # actor is github-actions (a Bot) — which the action rejects by default
