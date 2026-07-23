@@ -64,6 +64,7 @@ fi
 # whole generated-file classification collapses to empty) when the repo has no
 # such script.
 if has_resolve_generated; then
+  # echo-fallback-ok: regeneration is best-effort by design; the finalize unmerged-check is the real gate
   pnpm resolve-generated || echo "resolve-generated made no change (or errored) — continuing."
 else
   echo "no resolve-generated script defined — skipping deterministic generated-file pre-pass."
