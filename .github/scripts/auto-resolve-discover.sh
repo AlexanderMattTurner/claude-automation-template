@@ -58,6 +58,7 @@ emit_filter='select(.state == "OPEN" and .isDraft == false
   | {number, head_ref: .headRefName, base_ref: .baseRefName}'
 
 prs='[]'
+candidates='[]'
 for ((pass = 1; pass <= ${MAX_PASSES:-3}; pass++)); do
   [[ "$pass" == "1" ]] || sleep "${RETRY_DELAY_SECS:-10}"
   candidates="$(raw_prs | jq -s '.')"

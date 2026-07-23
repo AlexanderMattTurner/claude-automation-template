@@ -21,7 +21,7 @@ const git = (cwd, ...args) =>
 // A work clone mid-merge: `main` and `feature` both edit docs/a.md, and docs/b.md
 // exists cleanly on both. Merging main into feature conflicts on docs/a.md only.
 // Returns { work, origin }.
-function midMerge() {
+function midMerge(bContent = "b base\n") {
   const root = scratch();
   const origin = join(root, "origin.git");
   const work = join(root, "work");
@@ -31,7 +31,7 @@ function midMerge() {
   git(work, "config", "user.name", "t");
   git(work, "config", "commit.gpgsign", "false");
   writeFileSync(join(work, "a.md"), "base\n");
-  writeFileSync(join(work, "b.md"), "b base\n");
+  writeFileSync(join(work, "b.md"), bContent);
   git(work, "add", "-A");
   git(work, "commit", "-q", "-m", "base");
   git(work, "branch", "-M", "main");
@@ -149,6 +149,20 @@ test("finalize REFUSES when a conflict marker is left behind", () => {
   assert.notEqual(error, null);
   assert.equal(merging, false);
   assert.equal(git(origin, "rev-parse", "feature").trim(), before);
+});
+
+test("finalize IGNORES a benign ======= line in a clean, non-conflicted file", () => {
+  // A committed Markdown setext-H1 underline (`=======`) in a file that did NOT
+  // conflict must not trip the leftover-marker scan: the scan is scoped to the
+  // resolved set, so an unrelated doc line can't abort every resolution. Red
+  // against a whole-tree `git grep -- .`, green against the scoped scan.
+  const { work, origin } = midMerge("Title\n=======\n\nbody\n");
+  writeFileSync(join(work, "a.md"), "resolved: feature + main\n");
+  const before = git(origin, "rev-parse", "feature").trim();
+  const { error, merging } = runFinalize(work, "a.md");
+  assert.equal(error, null); // succeeds despite b.md's ======= line
+  assert.equal(merging, false);
+  assert.notEqual(git(origin, "rev-parse", "feature").trim(), before); // pushed
 });
 
 test("leftover markers WITH permission denials report the true cause (blocked, not too hard)", () => {

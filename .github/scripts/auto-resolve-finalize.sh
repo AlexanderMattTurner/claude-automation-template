@@ -86,9 +86,15 @@ fi
 if [[ -n "$(git ls-files -u)" ]]; then
   fail "unmerged paths remain after staging" "some conflicts were not resolved."
 fi
-if git grep -nE "$marker_re" -- . >/dev/null 2>&1; then
+# Scan ONLY the resolved paths, never the whole tree: marker_re's `={7}` branch
+# also matches a Markdown setext-H1 underline (`=======`) or a `=======` divider,
+# so a whole-tree scan would abort on a legitimate line in any committed doc. The
+# resolver is bounded to CONFLICT_LIST (the out-of-set guard above), so a genuine
+# leftover marker can only live in the resolved set.
+scan_paths=("${allowed_list[@]}" "${deferred_list[@]}")
+if [[ ${#scan_paths[@]} -gt 0 ]] && git grep -nE "$marker_re" -- "${scan_paths[@]}" >/dev/null 2>&1; then
   echo "Conflict markers still present:"
-  git grep -nE "$marker_re" -- . || echo "[auto-resolve] conflict-marker re-scan errored" >&2
+  git grep -nE "$marker_re" -- "${scan_paths[@]}" || echo "[auto-resolve] conflict-marker re-scan errored" >&2
   # Distinguish "the LLM judged the conflict too hard and left markers on purpose"
   # (the safe, intended handoff) from "the LLM was DENIED permission to write and
   # never got to resolve anything" — the same leftover markers, opposite causes.
