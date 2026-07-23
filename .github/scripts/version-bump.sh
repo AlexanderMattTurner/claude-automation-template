@@ -286,7 +286,7 @@ log "Set package.json to $NEW_VERSION (working directory only)"
 # Build and publish to npm. Treat "already published" (the registry's caching
 # can let the earlier safety check miss an existing version) as success.
 if ! PUBLISH_OUTPUT=$(pnpm publish --provenance --access public --no-git-checks 2>&1); then
-  if echo "$PUBLISH_OUTPUT" | grep -q "Cannot publish over previously published version"; then
+  if [[ "$PUBLISH_OUTPUT" == *"Cannot publish over previously published version"* ]]; then
     log "Version $NEW_VERSION already published (detected at publish time). Skipping."
     exit 0
   fi

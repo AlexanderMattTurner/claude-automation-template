@@ -9,7 +9,8 @@ import json
 import subprocess
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._helpers import REPO_ROOT
+
 HOOK = REPO_ROOT / ".claude" / "hooks" / "parallelism-nudge.mjs"
 
 SERIAL_TOOL_TURN_THRESHOLD = 15

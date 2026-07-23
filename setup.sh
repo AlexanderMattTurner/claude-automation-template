@@ -16,8 +16,12 @@ if [[ -f package.json ]]; then
   if command -v corepack &>/dev/null; then
     corepack enable
   else
-    echo "Installing pnpm..."
-    npm install -g pnpm
+    # Pin the fallback install to the "packageManager" version so a bare
+    # `npm install -g pnpm` can't pull a newer/older pnpm that rewrites the
+    # lockfile into an off-version format — the exact hazard corepack avoids.
+    pnpm_spec=$(node -e 'process.stdout.write(require("./package.json").packageManager || "pnpm")')
+    echo "Installing ${pnpm_spec}..."
+    npm install -g "$pnpm_spec"
   fi
 
   # Install dependencies (postinstall also sets core.hooksPath, redundantly)
@@ -42,6 +46,7 @@ if [[ "$(git config core.hooksPath)" = ".hooks" ]]; then
   echo "  Start coding!"
 else
   echo ""
-  echo "⚠ Warning: Git hooks may not be configured correctly."
-  echo "  Run: git config core.hooksPath .hooks"
+  echo "⚠ Error: Git hooks are not configured correctly (core.hooksPath != .hooks)." >&2
+  echo "  Run: git config core.hooksPath .hooks" >&2
+  exit 1
 fi

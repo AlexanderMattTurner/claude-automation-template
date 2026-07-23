@@ -1,4 +1,4 @@
-"""Contract test: tool version pins must agree across every file that pins them.
+"""Drift guard: tool version pins must agree across every file that pins them.
 
 Versioned tools are pinned in more than one place, and a mismatch makes local
 hooks behave differently from CI:
@@ -34,7 +34,16 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._helpers import REPO_ROOT
+
+# Each pinned tool is spelled in bash (session-setup.sh), YAML (.pre-commit-config,
+# workflows), and a plain version file — three languages/processes with no shared
+# runtime source to hoist the value into, so the duplication can't be eliminated;
+# the honest move is to keep the guard and mark it in the open.
+pytestmark = pytest.mark.drift_guard(
+    "pins live in bash, YAML, and workflow files — no shared runtime source"
+)
+
 SESSION_SETUP = REPO_ROOT / ".claude" / "hooks" / "session-setup.sh"
 PRE_COMMIT_CFG = REPO_ROOT / ".pre-commit-config.yaml"
 ZIZMOR_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "zizmor.yaml"
