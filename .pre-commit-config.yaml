@@ -81,7 +81,7 @@ repos:
   # and global-stdio-swap Python lints. Tier aggregates over per-check ids so a
   # check added upstream to a tier applies here with no config change.
   - repo: https://github.com/alexander-turner/ci-truth-serum
-    rev: 154466ba42b5548263a7d21921b346b39e9df82e # main
+    rev: a5c3991e7b1eea7c8a65d9cd9573f3f65f520ee8 # ci-truth-serum v0.2.0
     hooks:
       - id: check-tier1
       # check-path-gate-deps and check-failure-notifier-coverage are Tier 2
@@ -130,6 +130,14 @@ repos:
         entry: bash .hooks/lint-skills.sh
         language: system
         files: ^\.claude/skills/.*\.md$
+
+      # Depth-based parent-walking silently breaks when a test file moves;
+      # tests must take REPO_ROOT from tests/_helpers.py (git rev-parse).
+      - id: check-test-repo-root
+        name: forbid Path(__file__) parent-walking for repo root in tests
+        entry: python3 .github/scripts/check-test-repo-root.py
+        language: system
+        files: ^tests/.*\.py$
 
       - id: check-hook-timeouts
         # Every PreToolUse hook entry must declare an explicit timeout — a reaped

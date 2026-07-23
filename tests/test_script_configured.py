@@ -8,7 +8,10 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.skipif(shutil.which("jq") is None, reason="jq not available")
+pytestmark = pytest.mark.skipif(
+    shutil.which("jq") is None and not os.environ.get("CI"),
+    reason="jq not available",
+)
 
 
 def write_package_json(repo: Path, scripts: dict[str, str]) -> None:
@@ -61,7 +64,14 @@ def test_malformed_package_json_fails_loud(tmp_path: Path, copy_script) -> None:
     (tmp_path / "package.json").write_text('{ "scripts": { "test": }')  # invalid
     result = run_script(tmp_path, copy_script, "test")
     assert result.returncode >= 2, (result.returncode, result.stderr)
-    assert "not valid JSON" in result.stderr
+    assert "cannot read package.json" in result.stderr
+
+
+def test_exit_one_when_no_package_json(tmp_path: Path, copy_script) -> None:
+    """No package.json at all is a legitimate "not configured" (exit 1), never
+    the loud >=2 cannot-classify error — a non-Node repo must skip, not red."""
+    result = run_script(tmp_path, copy_script, "test")
+    assert result.returncode == 1
 
 
 def run_output(

@@ -11,17 +11,17 @@ from pathlib import Path
 
 
 def _repo_root() -> Path:
-    """Repo root via ``git rev-parse``, per the repo's own testing doctrine:
-    depth-based parent-walking (``parents[1]``) silently breaks the moment a
-    test file is moved to a different directory depth."""
-    return Path(
-        subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-    )
+    """Repo root from git itself, anchored at this file's directory (not the
+    caller's cwd), so moving test files can never silently repoint it the way
+    depth-based parent-walking does."""
+    toplevel = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=Path(__file__).parent,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return Path(toplevel)
 
 
 REPO_ROOT = _repo_root()

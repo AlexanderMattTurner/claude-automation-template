@@ -65,6 +65,9 @@ fi
 is_under() {
   local candidate="$1" parent="$2" parent_dir resolved
   [[ -n "$candidate" ]] && [[ -n "$parent" ]] || return 1
+  # Filter — a candidate with no ".." segment correctly falls through to the
+  # containment check below; only a traversal-shaped path short-circuits here.
+  # case-default-ok: no-match is the intended no-op, not a missed case.
   case "$candidate" in *..*) return 1 ;; esac
   parent_dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || return 1
   [[ -n "$parent_dir" ]] || return 1
@@ -78,6 +81,9 @@ is_under() {
   esac
 }
 
+# Filter — only edit-shaped tools get the self-repair containment check;
+# every other tool name correctly falls through to the "ask" default below.
+# case-default-ok: no-match is the intended fall-through, not a missed case.
 case "$tool_name" in
 Edit | Write | MultiEdit | NotebookEdit)
   for safe in "$project_dir/.claude/hooks" "$project_dir/.hooks"; do

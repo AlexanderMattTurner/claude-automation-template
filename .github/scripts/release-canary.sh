@@ -23,6 +23,9 @@ log() { echo "$@" >&2; }
 # Self-check guard: a repo that does not publish to npm (package.json
 # "private": true — e.g. the template itself) has no release pipeline to canary,
 # so skip. Fails CLOSED on an unreadable package.json, matching version-bump.sh.
+# "error" is a deliberate sentinel — the case below has an explicit `*)` arm
+# that fails loud on it, so the fallback is caught, never silently treated as
+# "false". echo-fallback-ok: sentinel is explicitly checked downstream.
 IS_PRIVATE=$(node -p "require('./package.json').private === true" 2>/dev/null || echo "error")
 case "$IS_PRIVATE" in
 true)
@@ -42,6 +45,9 @@ PACKAGE_NAME=$(node -p "require('./package.json').name")
 # yields an array normally, but a bare string for a single-release package. The
 # max is computed by npm-max-stable.mjs, which orders versions with the `semver`
 # package (exit 3 when nothing stable is published).
+# The empty sentinel is checked immediately below and turned into a loud exit
+# 1 — this script's whole purpose is detecting exactly this kind of failure.
+# echo-fallback-ok: empty is explicitly checked and fails loud immediately below.
 VERSIONS_JSON=$(npm view "$PACKAGE_NAME" versions --json 2>/dev/null || echo "")
 if [[ -z "$VERSIONS_JSON" ]]; then
   log "Error: could not read published versions for '$PACKAGE_NAME' from npm."

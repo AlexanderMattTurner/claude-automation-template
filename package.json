@@ -2,6 +2,10 @@
   "name": "my-project",
   "version": "1.0.0",
   "description": "Project with Claude Code automation",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexandermattturner/claude-automation-template.git"
+  },
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.8.0",
