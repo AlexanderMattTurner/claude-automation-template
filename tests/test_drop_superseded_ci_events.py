@@ -17,7 +17,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from tests._helpers import REPO_ROOT
+
 HOOKS_DIR = REPO_ROOT / ".claude" / "hooks"
 HOOK = HOOKS_DIR / "drop-superseded-ci-events.mjs"
 HOOK_LIBS = ("lib-hook-io.mjs", "lib-control-plane.mjs")
