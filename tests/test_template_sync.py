@@ -11,12 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from tests._helpers import (
-    GIT_IDENTITY_ENV,
-    REPO_ROOT,
-    commit_all,
-    init_test_repo,
-)
+from tests._helpers import GIT_IDENTITY_ENV, REPO_ROOT, commit_all, init_test_repo
 
 SCRIPT = REPO_ROOT / ".github" / "scripts" / "template-sync.sh"
 
@@ -222,6 +217,39 @@ def test_no_base_conflict_when_local_differs_without_prev_sha(workdir: Path) -> 
     assert (child / "config" / "a.txt").read_text() == "template version\n"
     assert "local version" in outputs["conflict_report"]
     assert "template version" in outputs["conflict_report"]
+
+
+def test_conflict_report_is_capped_for_many_no_base_files(workdir: Path) -> None:
+    """Many no-merge-base files must not produce an unbounded PR body. The report
+    becomes the create-pull-request body (passed through the environment); an
+    oversized body aborts PR creation with E2BIG ("Argument list too long"). The
+    report is capped, and the full file list still lands in
+    .template-sync-conflicts so nothing load-bearing is lost."""
+    child = workdir / "child"
+    template = workdir / "template"
+    big_local = "".join(f"local line {i}\n" for i in range(700))
+    big_template = "".join(f"template line {i}\n" for i in range(700))
+    for n in range(12):
+        write(template / "config" / f"f{n}.txt", big_template)
+        write(child / "config" / f"f{n}.txt", big_local)
+    commit_all(template)
+    commit_all(child)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_conflicts"] == "true"
+    report = outputs["conflict_report"]
+    # Capped well under the exec arg/env limit (60 KB budget + a short note).
+    # Uncapped this would be ~120 KB (12 files x head -500 of the per-file diff).
+    assert len(report.encode()) <= 62000, len(report.encode())
+    assert "truncated" in report
+    assert ".template-sync-conflicts" in report
+    # The complete conflicted-file list is preserved out-of-band.
+    listed = (child / ".template-sync-conflicts").read_text()
+    for n in range(12):
+        assert f"config/f{n}.txt" in listed
 
 
 def test_detects_deleted_files(workdir: Path) -> None:

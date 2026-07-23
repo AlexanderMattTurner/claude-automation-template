@@ -3,7 +3,7 @@
 # template's "ERROR: Configure" placeholder)?
 #
 # Exit contract (callers MUST distinguish 1 from >=2 — see
-# decide-script-configured.sh, the fail-closed caller CI workflows use):
+# script-configured-output.sh, the fail-closed wrapper CI workflows use):
 #   0  - configured
 #   1  - not configured (script missing/placeholder, or no package.json)
 #   2+ - could NOT determine (malformed package.json, jq failure) — loud on

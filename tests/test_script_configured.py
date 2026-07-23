@@ -53,53 +53,67 @@ def test_errors_when_no_argument(tmp_path: Path, copy_script) -> None:
     assert result.returncode != 0
 
 
+def test_malformed_package_json_fails_loud(tmp_path: Path, copy_script) -> None:
+    """A corrupt package.json must NOT be conflated with "not configured".
+
+    Exit >= 2 (distinct from the exit-1 "not configured") with a loud stderr,
+    so a downstream `if:` gate can't skip the step and let a required check
+    report green with zero work. Red on the old script, which used
+    `jq -re … || exit 1` and returned 1 (== "not configured") on invalid JSON.
+    """
+    (tmp_path / "package.json").write_text('{ "scripts": { "test": }')  # invalid
+    result = run_script(tmp_path, copy_script, "test")
+    assert result.returncode >= 2, (result.returncode, result.stderr)
+    assert "cannot read package.json" in result.stderr
+
+
 def test_exit_one_when_no_package_json(tmp_path: Path, copy_script) -> None:
-    """No package.json at all is a legitimate "not configured", not an error."""
+    """No package.json at all is a legitimate "not configured" (exit 1), never
+    the loud >=2 cannot-classify error — a non-Node repo must skip, not red."""
     result = run_script(tmp_path, copy_script, "test")
     assert result.returncode == 1
 
 
-def test_malformed_package_json_fails_loud(tmp_path: Path, copy_script) -> None:
-    """Malformed package.json must exit >=2 with a diagnostic — treating it as
-    "not configured" (exit 1) would green a required check with zero checks run."""
-    (tmp_path / "package.json").write_text('{"scripts": {')
-    result = run_script(tmp_path, copy_script, "test")
-    assert result.returncode >= 2
-    assert "cannot read package.json" in result.stderr
-
-
-def run_decide(repo: Path, copy_script, *names: str) -> subprocess.CompletedProcess:
-    copy_script("script-configured.sh", repo)
-    decide = copy_script("decide-script-configured.sh", repo)
-    return subprocess.run(
-        ["bash", str(decide), *names], cwd=repo, capture_output=True, text=True
+def run_output(
+    repo: Path, copy_script, name: str, out_var: str = "configured"
+) -> tuple[subprocess.CompletedProcess, str]:
+    """Run the workflow wrapper with a real $GITHUB_OUTPUT file; return the
+    process and the file's contents."""
+    copy_script("script-configured.sh", repo)  # sibling the wrapper resolves
+    wrapper = copy_script("script-configured-output.sh", repo)
+    gh_out = repo / "gh_output"
+    gh_out.write_text("")
+    result = subprocess.run(
+        ["bash", str(wrapper), name, out_var],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GITHUB_OUTPUT": str(gh_out)},
     )
+    return result, gh_out.read_text()
 
 
-def test_decide_emits_true_and_false_outputs(tmp_path: Path, copy_script) -> None:
-    write_package_json(
-        tmp_path,
-        {"test": "vitest run", "lint": "echo 'ERROR: Configure lint' && exit 1"},
-    )
-    result = run_decide(tmp_path, copy_script, "test", "lint")
+def test_wrapper_writes_true_when_configured(tmp_path: Path, copy_script) -> None:
+    write_package_json(tmp_path, {"test": "vitest run"})
+    result, out = run_output(tmp_path, copy_script, "test")
     assert result.returncode == 0, result.stderr
-    assert "test_configured=true" in result.stdout
-    assert "lint_configured=false" in result.stdout
+    assert "configured=true" in out
 
 
-def test_decide_fails_loud_on_malformed_package_json(
-    tmp_path: Path, copy_script
-) -> None:
-    """The decide helper must propagate the loud >=2 failure, so the CI step
-    goes red instead of writing <name>_configured=false and skipping-to-green."""
-    (tmp_path / "package.json").write_text("not json at all")
-    result = run_decide(tmp_path, copy_script, "test")
-    assert result.returncode >= 2
-    assert "cannot read package.json" in result.stderr
-    assert "test_configured" not in result.stdout
+def test_wrapper_writes_false_when_missing(tmp_path: Path, copy_script) -> None:
+    write_package_json(tmp_path, {"build": "tsc"})
+    result, out = run_output(tmp_path, copy_script, "test")
+    assert result.returncode == 0, result.stderr
+    assert "configured=false" in out
 
 
-def test_decide_requires_at_least_one_name(tmp_path: Path, copy_script) -> None:
-    result = run_decide(tmp_path, copy_script)
-    assert result.returncode == 2
-    assert "usage" in result.stderr
+def test_wrapper_fails_loud_on_malformed_json(tmp_path: Path, copy_script) -> None:
+    """The single decision point must fail the STEP on a malformed package.json
+    (never emit configured=false), so the required check can't go green with
+    zero work. Red on the old inline `if bash …; then true; else false; fi`,
+    which routed exit >=2 into the false branch."""
+    (tmp_path / "package.json").write_text('{ "scripts": { "test": }')
+    result, out = run_output(tmp_path, copy_script, "test")
+    assert result.returncode >= 2, (result.returncode, result.stderr)
+    assert "configured=false" not in out
+    assert "malformed" in result.stderr

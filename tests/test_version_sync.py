@@ -1,4 +1,4 @@
-"""Contract test: tool version pins must agree across every file that pins them.
+"""Drift guard: tool version pins must agree across every file that pins them.
 
 Versioned tools are pinned in more than one place, and a mismatch makes local
 hooks behave differently from CI:
@@ -35,6 +35,14 @@ from pathlib import Path
 import pytest
 
 from tests._helpers import REPO_ROOT
+
+# Each pinned tool is spelled in bash (session-setup.sh), YAML (.pre-commit-config,
+# workflows), and a plain version file — three languages/processes with no shared
+# runtime source to hoist the value into, so the duplication can't be eliminated;
+# the honest move is to keep the guard and mark it in the open.
+pytestmark = pytest.mark.drift_guard(
+    "pins live in bash, YAML, and workflow files — no shared runtime source"
+)
 
 SESSION_SETUP = REPO_ROOT / ".claude" / "hooks" / "session-setup.sh"
 PRE_COMMIT_CFG = REPO_ROOT / ".pre-commit-config.yaml"
@@ -108,12 +116,6 @@ def _ci_truth_serum_pins() -> dict[str, str]:
     }
 
 
-@pytest.mark.drift_guard(
-    "Each pin is consumed by a different external tool reading its own config "
-    "format (pre-commit's rev:/additional_dependencies, GitHub Actions YAML, "
-    ".python-version, uvx command lines) — no include/reference mechanism "
-    "spans those formats, so a single authoritative copy is infeasible."
-)
 @pytest.mark.parametrize(
     "pins_fn",
     [_ruff_pins, _zizmor_pins, _python_pins, _ci_truth_serum_pins],

@@ -28,10 +28,11 @@ jobs:
       - name: Setup base environment
         uses: ./.github/actions/setup-base-env
 
-      # Fails the job (instead of skipping) when package.json is unreadable.
       - name: Check if scripts are configured
         id: check
-        run: bash .github/scripts/decide-script-configured.sh check lint
+        run: |
+          bash .github/scripts/script-configured-output.sh check check_configured
+          bash .github/scripts/script-configured-output.sh lint lint_configured
 
       - name: Type check
         if: steps.check.outputs.check_configured == 'true'

@@ -338,6 +338,20 @@ main() {
       echo "has_conflicts=true"
       echo "conflict_files=$conflicts"
     } >>"$GITHUB_OUTPUT"
+    # Cap the total conflict report before it becomes the PR body. GitHub passes
+    # the body to the create-pull-request action through the environment, and a
+    # body over the exec arg/env limit aborts PR creation with E2BIG ("Argument
+    # list too long") before it starts -- reached when many files have no merge
+    # base (each contributes a full old->new diff). The complete conflicted-file
+    # list is preserved in .template-sync-conflicts, so truncating the narrative
+    # detail here loses nothing load-bearing.
+    max_report_bytes=60000
+    if [[ "$(wc -c <"$CONFLICT_REPORT")" -gt "$max_report_bytes" ]]; then
+      capped="${CONFLICT_REPORT}.capped"
+      head -c "$max_report_bytes" "$CONFLICT_REPORT" | sed '$d' >"$capped"
+      printf '\n\n_Conflict report truncated at %d KB. Every conflicted file is listed in .template-sync-conflicts._\n' "$((max_report_bytes / 1000))" >>"$capped"
+      mv "$capped" "$CONFLICT_REPORT"
+    fi
     emit_multiline_output "conflict_report" "$(cat "$CONFLICT_REPORT")"
     echo "Template updates available for: $conflicts" >.template-sync-conflicts
   else
