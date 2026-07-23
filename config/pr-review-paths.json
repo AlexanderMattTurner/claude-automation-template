@@ -1,0 +1,18 @@
+{
+  "//": "Path tiers for the PR review advisory (.github/scripts/pr-review-advisory.mjs). Adopters override this file to describe THEIR enforcement/security surfaces; the shipped defaults are generic and already cover the automation-template's own CI surfaces (.github/scripts + .github/workflows). Every field is optional — omitted fields fall back to the built-in defaults. Prefixes match on file.startsWith(); securityFiles matches the exact path.",
+  "securityPrefixes": [
+    ".claude/hooks/",
+    ".github/scripts/",
+    ".github/workflows/",
+    "config/"
+  ],
+  "securityFiles": ["setup.sh"],
+  "executablePrefixes": ["bin/", "scripts/"],
+  "highRiskPrefixes": [
+    ".claude/hooks/",
+    ".github/scripts/",
+    ".github/workflows/"
+  ],
+  "highRiskConfigPrefix": "config/",
+  "highRiskConfigExcludePrefixes": ["config/javascript/"]
+}
