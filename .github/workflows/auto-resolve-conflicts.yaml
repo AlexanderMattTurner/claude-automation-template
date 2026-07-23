@@ -223,7 +223,8 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/claude-conflict-resolve
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          fallback_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pr_number: ${{ matrix.pr.number }}
           conflict_list: ${{ steps.prepare.outputs.conflict_list }}
@@ -234,8 +235,8 @@ jobs:
         # the step on an internal error (is_error) — so a zero-edit auth/model
         # failure slips through as green, leaving the markers for finalize to
         # misreport as an unresolvable conflict handed to a human. Read the
-        # execution log and stop here instead, so a broken ANTHROPIC_API_KEY or
-        # an inaccessible --model surfaces as itself. A genuine "conflict too
+        # execution log and stop here instead, so a broken CLAUDE_CODE_OAUTH_TOKEN
+        # or an inaccessible --model surfaces as itself. A genuine "conflict too
         # hard" run has is_error false (Claude left the markers on purpose per the
         # prompt) and passes this gate, so finalize still posts the human handoff.
         #
@@ -250,12 +251,12 @@ jobs:
           EXECUTION_FILE: ${{ steps.resolve_llm.outputs.execution_file }}
         run: |
           if [[ -z "${EXECUTION_FILE:-}" || ! -s "${EXECUTION_FILE}" ]]; then
-            echo "::error::Claude resolution produced no execution log — the action failed to run (check ANTHROPIC_API_KEY)." >&2
+            echo "::error::Claude resolution produced no execution log — the action failed to run (check CLAUDE_CODE_OAUTH_TOKEN)." >&2
             exit 1
           fi
           result_jq='if type == "array" then (map(select(.type == "result")) | last) else . end'
           if jq -e "${result_jq} | .is_error == true" "${EXECUTION_FILE}" >/dev/null; then
-            echo "::error::Claude resolution errored (is_error) and made no edits — ANTHROPIC_API_KEY is missing/invalid, or --model is not accessible to it. The conflict was NOT resolved; fix the key and re-run." >&2
+            echo "::error::Claude resolution errored (is_error) and made no edits — CLAUDE_CODE_OAUTH_TOKEN is missing/invalid, or --model is not accessible to it. The conflict was NOT resolved; fix the token and re-run." >&2
             exit 1
           fi
           denials="$(jq -r "${result_jq} | .permission_denials_count // 0" "${EXECUTION_FILE}")"
