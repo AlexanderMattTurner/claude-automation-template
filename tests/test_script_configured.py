@@ -1,13 +1,17 @@
 """Tests for .github/scripts/script-configured.sh."""
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.skipif(shutil.which("jq") is None, reason="jq not available")
+pytestmark = pytest.mark.skipif(
+    shutil.which("jq") is None and not os.environ.get("CI"),
+    reason="jq not available",
+)
 
 
 def write_package_json(repo: Path, scripts: dict[str, str]) -> None:

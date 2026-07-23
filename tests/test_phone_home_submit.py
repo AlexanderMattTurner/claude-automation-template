@@ -9,7 +9,8 @@ from pathlib import Path
 import pytest
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("node") is None, reason="node not available"
+    shutil.which("node") is None and not os.environ.get("CI"),
+    reason="node not available",
 )
 
 REPO_ROOT = Path(
