@@ -280,22 +280,9 @@ jobs:
         # instead of the misleading "conflict too hard for the LLM."
         if: steps.prepare.outputs.needs_llm == 'true'
         env:
+          CONTEXT: Claude resolution
           EXECUTION_FILE: ${{ steps.resolve_llm.outputs.execution_file }}
-        run: |
-          if [[ -z "${EXECUTION_FILE:-}" || ! -s "${EXECUTION_FILE}" ]]; then
-            echo "::error::Claude resolution produced no execution log — the action failed to run (check CLAUDE_CODE_OAUTH_TOKEN)." >&2
-            exit 1
-          fi
-          result_jq='if type == "array" then (map(select(.type == "result")) | last) else . end'
-          if jq -e "${result_jq} | .is_error == true" "${EXECUTION_FILE}" >/dev/null; then
-            echo "::error::Claude resolution errored (is_error) and made no edits — CLAUDE_CODE_OAUTH_TOKEN is missing/invalid, or --model is not accessible to it. The conflict was NOT resolved; fix the token and re-run." >&2
-            exit 1
-          fi
-          denials="$(jq -r "${result_jq} | .permission_denials_count // 0" "${EXECUTION_FILE}")"
-          echo "permission_denials=${denials}" >>"$GITHUB_OUTPUT"
-          if [[ "${denials}" -gt 0 ]]; then
-            echo "::warning::Claude hit ${denials} permission denial(s) while resolving — some edits may not have been applied. If markers remain, finalize reports this as a permission/config problem, not an unresolvable conflict." >&2
-          fi
+        run: bash .github/scripts/check-claude-execution.sh
 
       - name: Verify, commit the merge, and push
         if: steps.prepare.outputs.needs_commit == 'true'
