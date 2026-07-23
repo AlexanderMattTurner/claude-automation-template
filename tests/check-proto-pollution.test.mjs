@@ -14,6 +14,8 @@ import { dirname, join } from "node:path";
 import {
   findProblems,
   isScannable,
+  scanDirs,
+  DEFAULT_SCAN_DIRS,
 } from "../.github/scripts/check-proto-pollution.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -218,4 +220,28 @@ test("the CLI's scan set is non-vacuous and covers the hook/CI-script surface", 
   ]) {
     assert.ok(scanned.includes(f), `scan set is missing ${f}`);
   }
+});
+
+// --- SCAN_DIRS extensibility (adopter override) ------------------------------
+
+test("scanDirs always includes the shipped surfaces incl. .github/scripts", () => {
+  const dirs = scanDirs({});
+  assert.ok(dirs.includes(".claude/hooks"));
+  assert.ok(dirs.includes(".github/scripts"));
+  assert.deepEqual(dirs, DEFAULT_SCAN_DIRS);
+});
+
+test("CHECK_PROTO_SCAN_DIRS widens coverage without dropping defaults", () => {
+  const dirs = scanDirs({ CHECK_PROTO_SCAN_DIRS: "src/sanitizers, lib/parse" });
+  assert.ok(dirs.includes(".claude/hooks"));
+  assert.ok(dirs.includes(".github/scripts"));
+  assert.ok(dirs.includes("src/sanitizers"));
+  assert.ok(dirs.includes("lib/parse"));
+});
+
+test("an override cannot remove a shipped surface, and dedups overlaps", () => {
+  const dirs = scanDirs({ CHECK_PROTO_SCAN_DIRS: ".github/scripts extra/dir" });
+  // .github/scripts listed once despite the override repeating it.
+  assert.equal(dirs.filter((d) => d === ".github/scripts").length, 1);
+  assert.ok(dirs.includes("extra/dir"));
 });

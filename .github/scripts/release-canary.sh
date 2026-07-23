@@ -41,16 +41,49 @@ esac
 
 PACKAGE_NAME=$(node -p "require('./package.json').name")
 
+# Positive publish evidence: does this repo actually publish to npm? `private:
+# true` already exited above; but a repo can be non-private yet simply not be an
+# npm package (a Python project, a website, a monorepo of scripts). Declaring
+# `publishConfig` in package.json is the explicit "I publish" signal. Fails
+# CLOSED to "declares publishing" only on a clean true; any read error is caught
+# by the case's `*)` arm, never silently treated as false.
+# echo-fallback-ok: sentinel is explicitly checked in the case below.
+HAS_PUBLISHCONFIG=$(node -p "require('./package.json').publishConfig != null" 2>/dev/null || echo "error")
+case "$HAS_PUBLISHCONFIG" in
+true | false) ;;
+*)
+  log "Error: could not read package.json \"publishConfig\" field (got: '$HAS_PUBLISHCONFIG'). Refusing to run the canary."
+  exit 1
+  ;;
+esac
+
 # npm side: max stable X.Y.Z over the full published-versions list. `--json`
-# yields an array normally, but a bare string for a single-release package. The
-# max is computed by npm-max-stable.mjs, which orders versions with the `semver`
-# package (exit 3 when nothing stable is published).
-# The empty sentinel is checked immediately below and turned into a loud exit
-# 1 — this script's whole purpose is detecting exactly this kind of failure.
-# echo-fallback-ok: empty is explicitly checked and fails loud immediately below.
-VERSIONS_JSON=$(npm view "$PACKAGE_NAME" versions --json 2>/dev/null || echo "")
-if [[ -z "$VERSIONS_JSON" ]]; then
-  log "Error: could not read published versions for '$PACKAGE_NAME' from npm."
+# yields an array normally, but a bare string for a single-release package, and
+# an `{ "error": { "code": "E404" } }` object (still on stdout) when the package
+# was never published. The max is computed by npm-max-stable.mjs, which orders
+# versions with the `semver` package (exit 3 when nothing stable is published).
+npm_rc=0
+VERSIONS_JSON=$(npm view "$PACKAGE_NAME" versions --json 2>/dev/null) || npm_rc=$?
+
+# A never-published package (E404) is only a failure if the repo DECLARED intent
+# to publish (publishConfig). Otherwise this repo is simply not an npm publisher
+# and the canary does not apply — skip with a clear "disable me" pointer rather
+# than firing a red alert every single day, the false-alarm this guard removes.
+if [[ "$npm_rc" -ne 0 ]] &&
+  NPM_OUT="$VERSIONS_JSON" node -e 'const o=JSON.parse(process.env.NPM_OUT||"{}");process.exit(o?.error?.code==="E404"?0:1)' 2>/dev/null; then
+  if [[ "$HAS_PUBLISHCONFIG" == "true" ]]; then
+    log "Error: package.json declares \"publishConfig\" but '$PACKAGE_NAME' has never been published to npm. The release pipeline never published — investigate."
+    exit 1
+  fi
+  log "'$PACKAGE_NAME' is not published to npm and package.json declares no \"publishConfig\": this repo is not an npm publisher, so the release canary does not apply."
+  log "Disable this check: exclude .github/workflows/release-canary.yaml (and release-canary.sh, npm-max-stable.mjs) via EXCLUDE_PATHS in template-sync.yaml, or set \"private\": true if the package should never publish."
+  exit 0
+fi
+
+# echo-fallback-ok reasoning no longer applies: any other npm failure (network,
+# auth, a non-E404 error) is a real problem this canary must report loudly.
+if [[ "$npm_rc" -ne 0 ]] || [[ -z "$VERSIONS_JSON" ]]; then
+  log "Error: could not read published versions for '$PACKAGE_NAME' from npm (exit $npm_rc)."
   exit 1
 fi
 if ! NPM_MAX=$(NPM_VERSIONS="$VERSIONS_JSON" node "$SCRIPT_DIR/npm-max-stable.mjs"); then
