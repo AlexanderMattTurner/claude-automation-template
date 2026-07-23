@@ -1,7 +1,7 @@
 name: Claude PR review
 
 # Auto-review every incoming PR — including PRs from forks/outside contributors
-# — with Claude, using the ANTHROPIC_API_KEY secret.
+# — with Claude, using the CLAUDE_CODE_OAUTH_TOKEN secret (with a fallback).
 #
 # SECURITY — why `pull_request_target` is safe here:
 #   A fork PR triggered via plain `pull_request` gets NO secrets, so it could
@@ -182,9 +182,10 @@ jobs:
       - name: Review the PR with Claude
         id: claude_review
         if: steps.prepare.outputs.oversized != 'true'
-        uses: anthropics/claude-code-action@428971d2ecd6e3a7cb0ee0da2a3a8b33fdb3678d # v1.0.157
+        uses: ./.github/actions/claude-run
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          fallback_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK }}
           # Give the action the workflow token directly. Without it, the action
           # tries to mint one via an OIDC→GitHub-App token exchange that isn't
           # authorized here and fails with "401 Invalid OIDC token" before Claude

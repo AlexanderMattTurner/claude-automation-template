@@ -108,9 +108,10 @@ jobs:
       - name: Judge which threads (and any body hold) are addressed (Claude Haiku)
         id: haiku
         if: steps.threads.outputs.has_threads == 'true' || steps.bodyhold.outputs.has_body_hold == 'true'
-        uses: anthropics/claude-code-action@428971d2ecd6e3a7cb0ee0da2a3a8b33fdb3678d # v1.0.157
+        uses: ./.github/actions/claude-run
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          fallback_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Haiku is enough for a per-thread yes/no "does the diff address this?"
           # judgement — far cheaper than the Opus reviewer that raises the concerns.
