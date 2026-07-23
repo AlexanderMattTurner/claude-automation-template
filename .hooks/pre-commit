@@ -47,4 +47,10 @@ if command -v pnpm >/dev/null 2>&1; then
   pnpm exec lint-staged --allow-empty
 elif command -v npm >/dev/null 2>&1; then
   npx lint-staged --allow-empty
+else
+  # lint-staged is installed (guarded above) but no package manager is on PATH:
+  # run the binary directly rather than silently exiting 0 and committing with
+  # zero lint/format enforcement.
+  echo "pre-commit: neither pnpm nor npm on PATH — invoking lint-staged directly." >&2
+  "$git_root/node_modules/.bin/lint-staged" --allow-empty
 fi
