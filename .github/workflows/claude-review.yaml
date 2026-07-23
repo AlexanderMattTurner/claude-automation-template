@@ -200,6 +200,7 @@ jobs:
         with:
           oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           fallback_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK }}
+          fallback_oauth_token_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2 }}
           # Give the action the workflow token directly. Without it, the action
           # tries to mint one via an OIDC→GitHub-App token exchange that isn't
           # authorized here and fails with "401 Invalid OIDC token" before Claude
@@ -387,6 +388,7 @@ jobs:
         with:
           oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           fallback_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK }}
+          fallback_oauth_token_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2 }}
           # Give the action the workflow token directly. Without it, the action
           # tries to mint one via an OIDC→GitHub-App token exchange that isn't
           # authorized here and fails with "401 Invalid OIDC token" before Claude
@@ -531,6 +533,7 @@ jobs:
         with:
           oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           fallback_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK }}
+          fallback_oauth_token_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2 }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Haiku is enough for a per-thread yes/no "does the diff address this?"
           # judgement — far cheaper than the Opus reviewer that raises the concerns.

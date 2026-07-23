@@ -257,6 +257,7 @@ jobs:
         with:
           oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           fallback_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK }}
+          fallback_oauth_token_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2 }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pr_number: ${{ matrix.pr.number }}
           conflict_list: ${{ steps.prepare.outputs.conflict_list }}
