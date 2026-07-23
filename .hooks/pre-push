@@ -40,6 +40,11 @@ elif command -v pre-commit >/dev/null 2>&1; then
 fi
 
 # origin's default branch — the base the new-branch fallback diffs against.
+# "origin/main" is a documented, widely-correct default for the (rare) case
+# origin/HEAD isn't set locally; a wrong guess here only widens the diffed
+# range for a new-branch push, it can't mask a real failure since a
+# missing/wrong default branch is caught downstream when the range itself
+# fails to resolve. echo-fallback-ok: degraded default, not masked failure.
 default_branch=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/main)
 
 # git feeds one line per ref being pushed: <local ref> <local sha> <remote ref>
