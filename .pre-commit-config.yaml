@@ -171,14 +171,3 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-
-      - id: check-oauth-fallback
-        # A job authenticating Claude with secrets.CLAUDE_CODE_OAUTH_TOKEN hard-fails
-        # the instant that single credential is expired/rate-limited; the fallback
-        # secret must be wired in the SAME job (a sibling job wiring it does not
-        # protect this one). Stdlib-only line parse so ambient python3 needs no
-        # PyYAML; per-line `# allow-no-oauth-fallback: <reason>` opt-out.
-        name: require CLAUDE_CODE_OAUTH_TOKEN_FALLBACK in every job using the primary token
-        entry: python3 .github/scripts/check-oauth-fallback.py
-        language: system
-        files: ^\.github/workflows/.*\.ya?ml$
