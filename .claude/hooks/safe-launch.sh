@@ -28,9 +28,25 @@ target="${1:-}"
 # unexpected shift failure (CLAUDE.md: branch on the condition instead).
 [[ $# -gt 0 ]] && shift
 
+# Emit a fail-closed PreToolUse "ask" verdict and print nothing else. A non-zero
+# exit OR empty stdout is NON-blocking in Claude Code, so a missing/corrupt hook
+# must still PRINT a verdict and exit 0 or the guarded tool sails through
+# UNGUARDED (fail OPEN) — the whole reason this shim exists. The reason is
+# JSON-escaped so a future non-literal reason can't break the JSON into a
+# fail-open.
+emit_ask() {
+  local esc="${1//\\/\\\\}"
+  esc="${esc//\"/\\\"}"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"%s"}}\n' "$esc"
+}
+
 if [[ -z "$target" ]] || [[ ! -f "$target" ]]; then
+  # Misconfigured hook path: no verdict source at all. Fail closed with an "ask"
+  # instead of the non-blocking `exit 1` that would let the guarded tool run
+  # unchecked (fail OPEN).
   echo "safe-launch: missing target hook: $target" >&2
-  exit 1
+  emit_ask "safe-launch: hook is missing; verdict unavailable — failing closed."
+  exit 0
 fi
 
 # Language-aware syntax check + interpreter-explicit exec. Bash for shell hooks,
@@ -58,7 +74,7 @@ fi
 
 # Degraded path. Read the PreToolUse payload before we touch stdin again.
 parse_error=$("${syntax_check[@]}" 2>&1)
-echo "safe-launch: target hook failed to parse — degrading open: $target" >&2
+echo "safe-launch: target hook failed to parse — degrading closed: $target" >&2
 [[ -n "$parse_error" ]] && echo "$parse_error" >&2
 
 # Cap the read at 10 MiB so a pathological payload can't OOM the degraded path.
@@ -115,7 +131,5 @@ Edit | Write | MultiEdit | NotebookEdit)
 esac
 
 # Default: surface the failure as an "ask" decision so the user can choose.
-cat <<'JSON'
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"safe-launch: PreToolUse hook failed to parse; manual override required."}}
-JSON
+emit_ask "safe-launch: PreToolUse hook failed to parse; manual override required."
 exit 0
