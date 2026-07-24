@@ -59,6 +59,19 @@ def test_broken_syntax_target_degrades_to_ask(tmp_path: Path) -> None:
     assert verdict["hookSpecificOutput"]["permissionDecision"] == "ask"
 
 
+def test_missing_target_fails_closed_with_ask(tmp_path: Path) -> None:
+    """A missing/misconfigured target hook must fail CLOSED: emit an 'ask' verdict
+    and exit 0. RED before the fix: the old path did `exit 1`, which Claude Code
+    treats as non-blocking → the guarded tool runs UNGUARDED (fail OPEN)."""
+    missing = tmp_path / "does-not-exist.sh"
+    result = _run(
+        missing, tmp_path, {"hook_event_name": "PreToolUse", "tool_name": "Bash"}
+    )
+    assert result.returncode == 0, result.stderr
+    verdict = json.loads(result.stdout)
+    assert verdict["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
 def test_broken_target_allows_self_repair_edit(tmp_path: Path) -> None:
     """When the target is broken, an edit to a hook under .claude/hooks is allowed
     (exit 0, no verdict) so the broken hook can be repaired in-session."""
