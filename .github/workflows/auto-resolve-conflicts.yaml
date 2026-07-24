@@ -262,29 +262,6 @@ jobs:
           pr_number: ${{ matrix.pr.number }}
           conflict_list: ${{ steps.prepare.outputs.conflict_list }}
 
-      - name: Fail loud if the Claude resolution errored
-        id: assert_llm
-        # claude-code-action exposes no success/failure output and does NOT fail
-        # the step on an internal error (is_error) — so a zero-edit auth/model
-        # failure slips through as green, leaving the markers for finalize to
-        # misreport as an unresolvable conflict handed to a human. Read the
-        # execution log and stop here instead, so a broken CLAUDE_CODE_OAUTH_TOKEN
-        # or an inaccessible --model surfaces as itself. A genuine "conflict too
-        # hard" run has is_error false (Claude left the markers on purpose per the
-        # prompt) and passes this gate, so finalize still posts the human handoff.
-        #
-        # permission_denials_count is exported (not failed on): with
-        # --permission-mode acceptEdits the resolver's edits are auto-accepted, so
-        # a denial means it reached for a tool it wasn't granted (never fatal on
-        # its own — the edit may still have landed). But if markers ALSO remain,
-        # finalize reads this count to report the true cause (edits were blocked)
-        # instead of the misleading "conflict too hard for the LLM."
-        if: steps.prepare.outputs.needs_llm == 'true'
-        env:
-          CONTEXT: Claude resolution
-          EXECUTION_FILE: ${{ steps.resolve_llm.outputs.execution_file }}
-        run: bash .github/scripts/check-claude-execution.sh
-
       - name: Verify, commit the merge, and push
         if: steps.prepare.outputs.needs_commit == 'true'
         env:
@@ -300,5 +277,5 @@ jobs:
           # Empty when the LLM step was skipped (deterministic-only resolution);
           # finalize defaults it to 0. Non-zero + leftover markers ⇒ the resolver
           # was blocked, so finalize's handoff comment names the real cause.
-          LLM_PERMISSION_DENIALS: ${{ steps.assert_llm.outputs.permission_denials }}
+          LLM_PERMISSION_DENIALS: ${{ steps.resolve_llm.outputs.permission_denials }}
         run: bash "${{ steps.resolver.outputs.dir }}/auto-resolve-finalize.sh" # zizmor: ignore[template-injection] — dir is ${RUNNER_TEMP}/resolver, set by the trusted resolver step from the base ref; not attacker-controllable

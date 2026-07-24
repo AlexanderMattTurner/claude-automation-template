@@ -33,10 +33,16 @@ inputs:
     required: true
 outputs:
   execution_file:
-    description: >-
-      The action's execution-log path; the caller reads it to detect an is_error
-      run (a missing/invalid token) and to count permission denials.
+    description: "The action's execution-log path, forwarded from claude-run."
     value: ${{ steps.run.outputs.execution_file }}
+  permission_denials:
+    description: >-
+      Permission-denial count from claude-run's gate. With
+      --permission-mode acceptEdits the resolver's edits are auto-accepted, so a
+      denial means it reached for a tool it wasn't granted — never fatal on its
+      own, but if markers ALSO remain, finalize reads this to report the true
+      cause (edits were blocked) instead of "conflict too hard for the LLM."
+    value: ${{ steps.run.outputs.permission_denials }}
 runs:
   using: "composite"
   steps:
@@ -45,8 +51,11 @@ runs:
       uses: ./.github/actions/claude-run
       with:
         # A wrong/missing token makes the run error on init (is_error, $0, 1 turn);
-        # claude-run retries with each configured fallback token, and the caller's
-        # assert step turns a genuine all-rungs-failure into a loud failure.
+        # claude-run retries with each configured fallback token, then its own
+        # execution-log gate turns a genuine all-rungs-failure into a loud failure
+        # — so a broken token surfaces as itself instead of leaving the markers
+        # for finalize to misreport as an unresolvable conflict.
+        gate_context: Claude resolution
         oauth_token: ${{ inputs.oauth_token }}
         fallback_oauth_token: ${{ inputs.fallback_oauth_token }}
         fallback_oauth_token_2: ${{ inputs.fallback_oauth_token_2 }}
