@@ -140,6 +140,22 @@ if [[ "$body_hold_cleared" == "true" ]]; then
 else
   cleared_by="every review conversation from the automated reviewer has been resolved"
 fi
-gh pr review "$PR" --repo "$GH_REPO" --approve --body \
-  "Automated approval: ${cleared_by}, so this satisfies the review-required ruleset. Re-request review if a human should take a closer look."
+# GitHub refuses `addPullRequestReview` for an Actions token regardless of
+# permissions ("GitHub Actions is not permitted to approve pull requests"), so
+# without a user-actor PAT this approval is not merely unauthorized but
+# structurally impossible. Failing the job on that would red every PR whose hold
+# clears, forever, on any consumer that has not set the PAT — a check that can
+# only ever fail teaches nothing. Stand down LOUDLY instead, and name the fix.
+# Any OTHER failure is a real one and still exits non-zero.
+approve_err=""
+if ! approve_err="$(gh pr review "$PR" --repo "$GH_REPO" --approve --body \
+  "Automated approval: ${cleared_by}, so this satisfies the review-required ruleset. Re-request review if a human should take a closer look." 2>&1)"; then
+  if [[ "$approve_err" == *"not permitted to approve pull requests"* ]]; then
+    echo "hold is clear, but this token cannot approve: GitHub blocks approvals from GitHub Actions." >&2
+    echo "Set the TEMPLATE_SYNC_TOKEN secret (a user PAT) so this step can post the clearing approval; until then a human must approve." >&2
+    exit 0
+  fi
+  echo "failed to post the clearing approval: ${approve_err}" >&2
+  exit 1
+fi
 echo "${cleared_by} and reviewer was holding (${latest_state}); approved to satisfy the review gate" >&2

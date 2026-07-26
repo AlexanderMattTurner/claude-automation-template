@@ -595,4 +595,12 @@ jobs:
           # "not addressed" and defers. The hourly sweep sets no such file, so it
           # never clears a body hold — only this push-time assessor does.
           BODY_VERDICT_FILE: ${{ runner.temp }}/pr-input/verdicts.json
+          # GitHub refuses addPullRequestReview outright for an Actions token
+          # ("GitHub Actions is not permitted to approve pull requests"), the
+          # approval-side sibling of the resolve restriction above. The same PAT
+          # acting as a user is what makes the approval postable, so this step
+          # takes the same token with the same fallback — and the script reports
+          # and stands down (rather than reddening the PR) when the PAT is unset
+          # and the platform refuses.
+          GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/approve-if-reviewer-hold-clear.sh
