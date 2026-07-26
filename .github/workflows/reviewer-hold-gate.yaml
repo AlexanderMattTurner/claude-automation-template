@@ -1,0 +1,74 @@
+name: Reviewer hold
+
+# Publish a live automated-reviewer hold as a RED check run, so an agent session
+# driving the PR sees the requested changes on a channel it cannot miss.
+#
+# The rest of this stack already detects, judges, and clears the reviewer's hold.
+# What it lacked was a surface an AGENT reliably reads: a `CHANGES_REQUESTED`
+# review reaches a live session only as a webhook wake, which is missed whenever
+# the session ended, unsubscribed after a run of bot-chatter wakes, or classified
+# the bot's review as chatter. Check runs are re-read on every push and before
+# every merge-readiness claim, so the hold is mirrored onto that channel.
+#
+# Posts no comment and mutates nothing: one API read plus an exit status.
+# Clearing stays owned by claude-review.yaml's resolver and
+# claude-reviewer-hold-clear.yaml; this check re-derives the same state and goes
+# green on its own once they clear it.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  # The reviewer submitting (or a human dismissing) a review is what flips the
+  # hold, and neither pushes a commit — without this trigger the check would
+  # report the state as of the last push and go stale in both directions.
+  pull_request_review:
+    types: [submitted, dismissed]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  hold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # checkout the check script + its shared libs
+      pull-requests: read # read the PR's reviews and review threads
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          sparse-checkout: .github/scripts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Fail while the automated reviewer is holding this PR
+        run: bash .github/scripts/check-reviewer-hold.sh
+
+  # Stable Required check: reports even when `hold` is cancelled/skipped, so a
+  # protected branch never gets stuck on a check that never reports.
+  reviewer-hold-passed: # required-check: true
+    if: always()
+    needs: [hold]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          sparse-checkout: |
+            .github/actions/report-job-result
+            .github/scripts
+          persist-credentials: false
+
+      - name: Report result
+        uses: ./.github/actions/report-job-result
+        with:
+          run: "true"
+          decide-result: "success"
+          result: ${{ needs.hold.result }}
