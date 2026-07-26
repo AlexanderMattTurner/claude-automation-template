@@ -1,0 +1,31 @@
+// markdownlint config. Scope: whether the markdown *renders* as written.
+// Whitespace/wrapping style is Prettier's job — every rule Prettier already
+// owns or would fight is disabled below, so the two tools never thrash.
+{
+  "customRules": ["./.github/scripts/markdownlint-orphan-table-row.mjs"],
+  "config": {
+    "default": true,
+
+    // Prettier owns these; leaving them on means two tools rewriting the same
+    // bytes in different directions.
+    "line-length": false, // MD013
+    "ul-style": false, // MD004
+    "ol-prefix": false, // MD029
+    "no-multiple-blanks": false, // MD012
+    "hr-style": false, // MD035
+    "emphasis-style": false, // MD049
+    "strong-style": false, // MD050
+    "table-pipe-style": false, // MD055
+
+    // Prose choices, not rendering defects.
+    "first-line-heading": false, // MD041
+    "no-duplicate-heading": false, // MD024
+    "no-inline-html": false, // MD033
+    "no-emphasis-as-heading": false, // MD036
+    "single-title": false, // MD025
+  },
+  // No `globs` key on purpose: a config-level glob is *added* to any files
+  // passed on the command line, so lint-staged would drag the whole repo into
+  // every commit. The repo-wide glob lives in the `lint:md` scripts instead.
+  "ignores": ["node_modules", ".venv", "**/node_modules/**"],
+}

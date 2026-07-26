@@ -77,10 +77,13 @@ You MUST read [pr-templates.md](pr-templates.md) for the PR template and formatt
 
 1. Push the branch: `git push -u origin HEAD`
 2. Check if a PR already exists for the current branch:
+
    ```bash
    EXISTING_PR=$(gh pr list --head "$(git branch --show-current)" --json number --jq '.[0].number' 2>/dev/null)
    ```
+
    If a PR already exists, update it with `gh pr edit` instead of creating a new one.
+
 3. Create the PR using `gh pr create` with the template from the resource file. Make sure that you use the target branch
 
 **Write the body for the reviewer's cognitive budget, not as an investigation archive** —
@@ -135,6 +138,7 @@ Push any commits made during the critique and validation steps, then update the 
 
 2. Re-read the diff (`git diff $CLAUDE_CODE_BASE_REF...HEAD`) and commit log (`git log $CLAUDE_CODE_BASE_REF..HEAD --oneline`) to see the full scope
 3. Rewrite the title and body to accurately describe the **current totality** of changes, not just the original scope:
+
    ```bash
    gh pr edit <pr-number> --title "<type>: <updated description>" --body "$(cat <<'EOF'
    <updated body using template from pr-templates.md>
@@ -187,7 +191,7 @@ State each insight as one concrete line. Skip this step if the task was trivial 
 7. Runs `pnpm check && pnpm test && pnpm lint`—all pass
 8. Pushes fixes, updates PR description to reflect the null-check fix
 9. Watches CI with `gh pr checks 47 --watch`—all green
-10. Reports: “PR #47 created and all CI checks pass: https://github.com/org/repo/pull/47"
+10. Reports: “PR #47 created and all CI checks pass: <https://github.com/org/repo/pull/47>"
 
 ### Example 2: Multi-Commit Feature
 

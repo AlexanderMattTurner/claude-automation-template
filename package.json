@@ -16,6 +16,8 @@
     "start": "echo 'ERROR: Configure start script in package.json' && exit 1",
     "test": "bash .github/scripts/install-input-sanitizer.sh && node --test .github/scripts/*.test.mjs",
     "lint": "echo 'ERROR: Configure lint script in package.json' && exit 1",
+    "lint:md": "markdownlint-cli2 \"**/*.md\"",
+    "lint:md:fix": "markdownlint-cli2 --fix \"**/*.md\"",
     "check": "echo 'ERROR: Configure check script in package.json' && exit 1",
     "format": "prettier --write ."
   },
@@ -40,6 +42,7 @@
       "prettier --write"
     ],
     "*.md": [
+      "markdownlint-cli2 --fix",
       "prettier --write"
     ],
     ".claude/skills/*/SKILL.md": [
@@ -57,6 +60,8 @@
     "@commitlint/cli": "^21.0.1",
     "@commitlint/config-conventional": "^21.0.1",
     "lint-staged": "^17.0.5",
+    "markdownlint": "^0.41.1",
+    "markdownlint-cli2": "^0.23.1",
     "prettier": "^3.0.0",
     "typescript": "6.0.3"
   }
