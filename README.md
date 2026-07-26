@@ -156,7 +156,7 @@ The same file's `permissions.deny` block blocks Claude from reading secret files
 
 ## How the Pieces Fit Together
 
-```
+```text
 Developer / Claude Code session
         │
         ├── git commit
@@ -214,7 +214,7 @@ Repository **settings and secrets are never copied** when you create a repo from
 
 ## Project Structure
 
-```
+```text
 .
 ├── .claude/
 │   ├── hooks/              # Claude session hooks (SessionStart, PreToolUse)

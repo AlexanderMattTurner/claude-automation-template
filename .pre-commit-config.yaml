@@ -53,6 +53,19 @@ repos:
     hooks:
       - id: actionlint
 
+  # Catches markdown that does not render as written — malformed tables, broken
+  # link fragments, code spans that swallow their delimiters — plus the local
+  # `orphan-table-row` rule (.github/scripts/markdownlint-orphan-table-row.mjs),
+  # which reports a table row a blank line severed from its table: the parser
+  # never accepted it as a row, so no stock rule inspects it. Prettier owns
+  # whitespace/wrapping; every rule it touches is off in .markdownlint-cli2.jsonc
+  # so the two never rewrite each other.
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.1
+    hooks:
+      - id: markdownlint-cli2
+        args: [--fix]
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.5
     hooks:
