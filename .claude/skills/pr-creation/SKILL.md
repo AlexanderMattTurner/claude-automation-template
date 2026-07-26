@@ -222,7 +222,7 @@ State each insight as one concrete line. Skip this step if the task was trivial 
 - **PR already exists (HTTP 422)**: Check for existing PRs first with `gh pr list --head "$(git branch --show-current)"`, then use `gh pr edit` to update
 - **No changes to PR**: Confirm with the user that work is committed
 
-## Shaping the PR (moved here from the always-on CLAUDE.md)
+## Shaping the PR
 
 **Default to ONE consolidated PR even when a task produces several independent changes.** Every PR boots the full workflow fan-out on a shared runner pool, so N small PRs cost ~N× the CI _and_ each one's required checks queue behind the others' long jobs. Land related and merely co-discovered work on one branch, one CI run, one review. Split only when a piece must land on its own timeline, or the consolidated diff would be too large to review coherently. One big PR still owes the reviewer legibility: one commit per separable concern, plus a `## Partitions` map in the body.
 
