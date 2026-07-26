@@ -602,5 +602,9 @@ jobs:
           # takes the same token with the same fallback — and the script reports
           # and stands down (rather than reddening the PR) when the PAT is unset
           # and the platform refuses.
+          # token-fallback-ok: designed graceful degradation, not an accident — the
+          # script detects the Actions-token refusal and stands down with an
+          # actionable message instead of failing, so the PAT only ever upgrades
+          # this step from "a human must approve" to "approved automatically".
           GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/approve-if-reviewer-hold-clear.sh
