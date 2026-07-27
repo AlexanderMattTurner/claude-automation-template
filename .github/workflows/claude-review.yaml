@@ -570,13 +570,21 @@ jobs:
           # resolveReviewThread is not available to the Actions GITHUB_TOKEN — it
           # can reply to a thread but a resolve returns "Resource not accessible by
           # integration" even with pull-requests:write, so resolving needs a PAT
-          # acting as a user. TEMPLATE_SYNC_TOKEN (the repo's PAT, already used by
-          # claude.yaml/template-sync.yaml) is scoped to THIS step only, never the
-          # Haiku step, so it is out of reach of a model injection. The ambient
-          # GH_TOKEN (GITHUB_TOKEN) still posts the audit reply, keeping the
-          # github-actions[bot] identity. Falls back to GITHUB_TOKEN — which then
-          # fails loud on the resolve — if the PAT is unset.
-          GH_RESOLVE_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          # acting as a user. The PAT is scoped to THIS step only, never the Haiku
+          # step, so it is out of reach of a model injection. The ambient GH_TOKEN
+          # (GITHUB_TOKEN) still posts the audit reply, keeping the
+          # github-actions[bot] identity.
+          #
+          # Org secret first, then the per-repo one, then the built-in. Both PAT
+          # spellings are load-bearing for different consumers: an org-owned repo
+          # sets TEMPLATE_SYNC_TOKEN_ORG once for every repo it owns, while a
+          # personal fork can only set a repo secret. Trying the org name first
+          # means a downstream repo needs no edit either way.
+          # token-fallback-ok: designed graceful degradation — every candidate is
+          # an identity this repo's owner controls, so the fallback trades away
+          # capability (a resolve/approve the Actions token may not perform),
+          # never which account acts.
+          GH_RESOLVE_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/resolve-addressed-threads.sh
 
       # State-based, and deliberately NOT gated on has_threads: the approval is a
@@ -597,14 +605,14 @@ jobs:
           BODY_VERDICT_FILE: ${{ runner.temp }}/pr-input/verdicts.json
           # GitHub refuses addPullRequestReview outright for an Actions token
           # ("GitHub Actions is not permitted to approve pull requests"), the
-          # approval-side sibling of the resolve restriction above. The same PAT
-          # acting as a user is what makes the approval postable, so this step
-          # takes the same token with the same fallback — and the script reports
-          # and stands down (rather than reddening the PR) when the PAT is unset
-          # and the platform refuses.
-          # The script detects the Actions-token refusal and stands down with an
-          # actionable message instead of failing, so the PAT only ever upgrades
-          # this step from "a human must approve" to "approved automatically".
-          # token-fallback-ok: designed graceful degradation, not an accident.
-          GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          # approval-side sibling of the resolve restriction above. A PAT acting as
+          # a user is what makes the approval postable, so this step takes the
+          # same candidates in the same order as the resolve step — and the script
+          # reports and stands down (rather than reddening the PR) when none of
+          # them can approve, so the PAT only ever upgrades this step from "a
+          # human must approve" to "approved automatically".
+          # token-fallback-ok: designed graceful degradation — every candidate is
+          # an identity this repo's owner controls, so the fallback trades away
+          # capability, never which account acts.
+          GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/approve-if-reviewer-hold-clear.sh
