@@ -580,10 +580,10 @@ jobs:
           # sets TEMPLATE_SYNC_TOKEN_ORG once for every repo it owns, while a
           # personal fork can only set a repo secret. Trying the org name first
           # means a downstream repo needs no edit either way.
-          # token-fallback-ok: designed graceful degradation — every candidate is
-          # an identity this repo's owner controls, so the fallback trades away
-          # capability (a resolve/approve the Actions token may not perform),
-          # never which account acts.
+          # Every candidate is an identity this repo's owner controls, so the
+          # fallback trades away capability (a resolve the Actions token may not
+          # perform), never which account acts.
+          # token-fallback-ok: designed graceful degradation, not an accident.
           GH_RESOLVE_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/resolve-addressed-threads.sh
 
@@ -611,8 +611,8 @@ jobs:
           # reports and stands down (rather than reddening the PR) when none of
           # them can approve, so the PAT only ever upgrades this step from "a
           # human must approve" to "approved automatically".
-          # token-fallback-ok: designed graceful degradation — every candidate is
-          # an identity this repo's owner controls, so the fallback trades away
-          # capability, never which account acts.
+          # Every candidate is an identity this repo's owner controls, so the
+          # fallback trades away capability, never which account acts.
+          # token-fallback-ok: designed graceful degradation, not an accident.
           GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/approve-if-reviewer-hold-clear.sh
