@@ -97,6 +97,7 @@ The `pr-creation` skill owns how to write and shape a PR (batching, partitions, 
 Language-specific rules live in `.claude/rules/shell-style.md` and `python-style.md`. These apply everywhere:
 
 - **Always ask whether a real parser (added as a dependency) can do the job before handrolling regex / case-by-case string matching.** When input has a grammar — manifests, lockfiles, YAML/TOML/INI, HTML, shell words, semver, dates — reach for an established parsing library rather than reinventing it. Adding a new dependency is fine except in rare circumstances; don't reinvent the wheel.
+  - **When the input is source code, that parser is an AST — never a regex.** Any lint, guard, codemod, or "does the code do X" check over Python/JS/shell/YAML parses to a tree and queries nodes (`ast` / `libcst` in Python, `tree-sitter`, a custom `ruff`/ESLint rule, `bash -n`+`shellcheck`) instead of matching source text. Text matching can't see scope, strings, comments, aliasing, line continuations, or a call split across two lines, so it fires on a mention in a docstring and misses the real one. Regex earns a place only as a cheap pre-filter that shortlists files for an AST pass to confirm — never as the thing that decides.
 - Fail loudly: throw errors over silent warnings; never remove error output unless the user explicitly asks.
 - Let exceptions propagate—never use try/except unless there is a specific, necessary recovery action. Default to crashing on unexpected input.
 - Un-nest conditionals; combine related checks. Prefer flat control flow with early-return guards.
