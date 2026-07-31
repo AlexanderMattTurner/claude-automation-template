@@ -30,10 +30,9 @@ set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# The installer reads package.json for the pinned CLI version, so run it from the
-# base worktree root this script is staged under — the workspace's package.json
-# is the untrusted PR head's.
-(cd "${SCRIPTS_DIR}/../.." && bash "${SCRIPTS_DIR}/install-claude-cli.sh")
+# The installer resolves its version pin relative to itself, so it reads the
+# base-staged pin rather than whatever the untrusted PR head carries.
+bash "${SCRIPTS_DIR}/install-claude-cli.sh"
 
 # Deduplicated so an adopter who set the same token twice does not pay for the
 # same failure twice, and empty rungs are stepped over rather than truncating the

@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
-# Install @anthropic-ai/claude-code globally, pinned to the version this repo's
-# own package.json devDependencies names — so the CLI a CI job runs and the CLI a
-# developer installs from the lockfile are the same build.
+# Install @anthropic-ai/claude-code globally, pinned to the version
+# .github/claude-cli-version names — one file, so every job that reaches for the
+# CLI runs the same build.
 #
-# Reads ./package.json, so run it with the repo root as the current directory.
+# The pin is its own file rather than a package.json devDependency because
+# nothing here imports the CLI: it is invoked as a binary. Listing it as a
+# dependency makes `pnpm install` refuse the whole workspace over the package's
+# unapproved install scripts (ERR_PNPM_IGNORED_BUILDS), which fails every job
+# that installs node dependencies for unrelated reasons.
+#
+# Reads the pin relative to this script, so it does not depend on the caller's
+# current directory.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/retry.bash disable=SC1091
 source "$SCRIPT_DIR/lib/retry.bash"
 
-version="$(node -p "require('./package.json').devDependencies['@anthropic-ai/claude-code']")"
-if [[ "$version" == "" ]] || [[ "$version" == "undefined" ]]; then
-  echo "could not read @anthropic-ai/claude-code version from package.json" >&2
+pin_file="${SCRIPT_DIR}/../claude-cli-version"
+version="$(tr -d '[:space:]' <"$pin_file")"
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "could not read a pinned @anthropic-ai/claude-code version from ${pin_file}, got '${version}'" >&2
   exit 1
 fi
 echo "Installing @anthropic-ai/claude-code@${version}"

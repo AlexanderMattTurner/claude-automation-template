@@ -167,7 +167,7 @@ run_claude() {
 }
 
 command -v claude >/dev/null 2>&1 ||
-  (cd "$BASE_WORKTREE" && bash "${BASE_WORKTREE}/.github/scripts/install-claude-cli.sh")
+  bash "${BASE_WORKTREE}/.github/scripts/install-claude-cli.sh"
 
 delta="${SELF_REVIEW_DIR}/merge-delta.txt"
 review="${SELF_REVIEW_DIR}/merge-review.md"
