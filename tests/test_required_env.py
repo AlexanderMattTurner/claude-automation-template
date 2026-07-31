@@ -43,6 +43,15 @@ CASES = [
     ("prepare-merge-delta-input.sh", ["PR", "PR_INPUT_DIR"]),
     ("post-merge-delta-review.sh", ["PR", "GH_REPO", "PR_INPUT_DIR"]),
     ("precommit-range-base.sh", ["GITHUB_REPOSITORY", "GITHUB_BASE_REF", "GH_TOKEN"]),
+    # auto-resolve: the resolving job bundles, the landing job pushes, and the
+    # self-review reads its prompts from the trusted base worktree
+    ("auto-resolve-bundle.sh", ["HEAD_REF", "BASE_REF", "PR", "BUNDLE_DIR"]),
+    (
+        "auto-resolve-land.sh",
+        ["HEAD_REF", "BASE_REF", "PR", "GITHUB_TOKEN", "BUNDLE_DIR"],
+    ),
+    ("auto-resolve-self-review.sh", ["BASE_WORKTREE"]),
+    ("claude-conflict-resolve.sh", ["CLAUDE_CODE_OAUTH_TOKEN"]),
 ]
 
 

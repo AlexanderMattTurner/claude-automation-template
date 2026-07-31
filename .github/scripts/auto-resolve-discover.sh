@@ -114,7 +114,7 @@ within_age_window='($max_age_secs == 0
        | fromdateiso8601) > (now - $max_age_secs)))'
 
 # An emittable PR: open, not draft, non-bot, same-repo, CONFLICTING, inside the
-# activity window, and not opted out via the auto-resolve-blocked label (finalize
+# activity window, and not opted out via the auto-resolve-blocked label (land
 # applies it when a resolution cannot be pushed — e.g. the token can't carry
 # workflow-file changes — so every base push doesn't re-run a paid resolve into
 # the same wall; a human removes the label to re-enable). head_sha rides along

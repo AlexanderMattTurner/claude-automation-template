@@ -88,6 +88,19 @@ def test_every_claude_run_call_site_inherits_the_gate() -> None:
     assert opted_out == [], f"ungated claude-run call sites: {opted_out}"
 
 
+# The one caller that invokes the gate SCRIPT directly, and why it cannot go
+# through the claude-run composite: its workspace is the untrusted PR head left
+# mid-merge, and the runner reads a local action's manifest out of the workspace
+# at step time — so a PR whose conflict lands in an action.yaml would hand the
+# runner a manifest full of conflict markers and kill the resolver before it
+# starts. It runs the same one script from the base-ref staging dir; the gate is
+# still not re-typed, only reached by a different path.
+GATE_DIRECT_CALLERS = {
+    ".github/workflows/auto-resolve-conflicts.yaml:"
+    "Fail loud if the Claude resolution errored",
+}
+
+
 def test_no_call_site_rehand_rolls_the_gate() -> None:
     """The obligation lives in one place. A workflow re-typing the gate means the
     choke point leaked back out into per-caller boilerplate."""
@@ -96,8 +109,19 @@ def test_no_call_site_rehand_rolls_the_gate() -> None:
         for label, step in _all_steps()
         if "check-claude-execution.sh" in str(step.get("run", ""))
         and GATE_SCRIPT_REL not in str(step.get("run", ""))
+        and label not in GATE_DIRECT_CALLERS
     ]
     assert rehandrolled == [], f"gate re-implemented at: {rehandrolled}"
+
+
+def test_every_direct_gate_caller_is_still_a_real_step() -> None:
+    """An exemption that outlives its step is an exemption nobody notices has
+    stopped meaning anything — and the next caller to re-type the gate would
+    inherit it silently."""
+    labels = {label for label, _ in _all_steps()}
+    assert GATE_DIRECT_CALLERS <= labels, (
+        f"stale gate exemption(s): {GATE_DIRECT_CALLERS - labels}"
+    )
 
 
 def test_execution_log_path_has_a_single_source() -> None:

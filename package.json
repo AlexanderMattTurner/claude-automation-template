@@ -57,6 +57,7 @@
     ]
   },
   "devDependencies": {
+    "@anthropic-ai/claude-code": "2.1.201",
     "@commitlint/cli": "^21.0.1",
     "@commitlint/config-conventional": "^21.0.1",
     "lint-staged": "^17.0.5",
