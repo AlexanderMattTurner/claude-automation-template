@@ -20,6 +20,22 @@ inputs:
     description: "Second backup Claude Code OAuth token; tried after the primary and first fallback both fail."
     required: false
     default: ""
+  fallback_oauth_token_3:
+    description: "Third backup Claude Code OAuth token; empty skips the rung."
+    required: false
+    default: ""
+  fallback_oauth_token_4:
+    description: "Fourth backup Claude Code OAuth token; empty skips the rung."
+    required: false
+    default: ""
+  fallback_oauth_token_5:
+    description: "Fifth backup Claude Code OAuth token; empty skips the rung."
+    required: false
+    default: ""
+  fallback_oauth_token_6:
+    description: "Sixth backup Claude Code OAuth token; empty skips the rung."
+    required: false
+    default: ""
   github_token:
     description: >-
       The workflow GITHUB_TOKEN, handed to the action directly so it skips the
@@ -59,6 +75,10 @@ runs:
         oauth_token: ${{ inputs.oauth_token }}
         fallback_oauth_token: ${{ inputs.fallback_oauth_token }}
         fallback_oauth_token_2: ${{ inputs.fallback_oauth_token_2 }}
+        fallback_oauth_token_3: ${{ inputs.fallback_oauth_token_3 }}
+        fallback_oauth_token_4: ${{ inputs.fallback_oauth_token_4 }}
+        fallback_oauth_token_5: ${{ inputs.fallback_oauth_token_5 }}
+        fallback_oauth_token_6: ${{ inputs.fallback_oauth_token_6 }}
         github_token: ${{ inputs.github_token }}
         # The relay dispatches with github.token, so a relayed run's initiating
         # actor is github-actions (a Bot) — which the action rejects by default
@@ -77,8 +97,8 @@ runs:
         # and finalize's out-of-set guard still rejects any edit to a file
         # outside the conflict list — so the LLM stays bounded to the conflicted
         # files it was asked to resolve.
+        model: claude-opus-4-8
         claude_args: >-
-          --model claude-opus-4-8
           --permission-mode acceptEdits
           --allowedTools "Read,Edit,Write,Grep,Glob"
         prompt: |

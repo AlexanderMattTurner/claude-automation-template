@@ -78,8 +78,16 @@ on:
   schedule:
     - cron: "*/5 * * * *"
   # The push/schedule scan's resolve vehicle (see the relay note above); discover
-  # re-scans every open PR, so the dispatch carries no inputs.
+  # re-scans every open PR, so the relay dispatch carries no inputs. `catch-up`
+  # is for a HUMAN dispatch over a backlog: it drops both spend filters (the
+  # commit-age window and the per-head attempt mark) for that one run, so PRs a
+  # resolver defect stranded are picked up without waiting out the mark's TTL.
   workflow_dispatch:
+    inputs:
+      catch-up:
+        description: "Ignore the commit-age window and per-head attempt marks for this run"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -100,6 +108,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      statuses: read # the per-head attempt mark is a commit status
     outputs:
       prs: ${{ steps.discover.outputs.prs }}
     steps:
@@ -121,6 +130,10 @@ jobs:
           # Present on a pull_request event → the script considers that one PR;
           # empty on push → it scans every open PR.
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          # A human catch-up dispatch drops both spend filters for this one run;
+          # empty values keep the script's own defaults on every other trigger.
+          AUTO_RESOLVE_MAX_COMMIT_AGE_HOURS: ${{ inputs.catch-up && '0' || '' }}
+          AUTO_RESOLVE_IGNORE_ATTEMPT_MARK: ${{ inputs.catch-up && 'true' || 'false' }}
         # The base ref won't carry this script until this PR merges, so during
         # that bootstrap window emit an empty set (resolve is skipped) rather than
         # failing on the missing file — a missing discover can only under-act.
@@ -181,6 +194,7 @@ jobs:
       contents: write # push the merge commit to the PR head
       pull-requests: write # comment on / label the PR
       issues: write # `gh label create` for auto-resolve-blocked rides the issues API
+      statuses: write # the per-head attempt mark (and its release) is a commit status
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
@@ -213,6 +227,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # allow-long-run: this block IS the trust boundary — it stages the base-ref resolver scripts while the workspace is the PR head, so externalizing it to a script would run the PR head's copy of the stager
           basic="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 | tr -d '\n')"
           export GIT_CONFIG_COUNT=1
           export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
@@ -229,13 +244,58 @@ jobs:
           for s in auto-resolve-lib.sh auto-resolve-handoff.sh; do
             git show "origin/${BASE_REF}:.github/scripts/${s}" >"${dir}/${s}" || rm -f "${dir}/${s}"
           done
+          # Attempt-mark machinery, same bootstrap tolerance: its only consumers
+          # are the mark/release steps below, which skip when the script is
+          # absent — the run then behaves as before the mark existed (it can
+          # only over-resolve, never skip real work).
+          mkdir -p "${dir}/lib"
+          for s in auto-resolve-mark-attempt.sh auto-resolve-release-attempt.sh \
+            lib-ci-retry.sh lib/auto-resolve-attempt.bash lib/commit-status-mark.bash; do
+            git show "origin/${BASE_REF}:.github/scripts/${s}" >"${dir}/${s}" || rm -f "${dir}/${s}"
+          done
           echo "dir=${dir}" >>"$GITHUB_OUTPUT"
+
+      - name: Record the attempt on this head
+        # Before the merge and before any model call: the mark must survive the
+        # outcomes that never reach a later step (a crash, a timeout, a
+        # cancellation) — those are exactly the expensive failures it exists to
+        # stop repeating. discover skips a freshly-marked head, so a base push
+        # cannot re-run a paid resolution against a tree that just produced one.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          script="${{ steps.resolver.outputs.dir }}/auto-resolve-mark-attempt.sh" # zizmor: ignore[template-injection] — dir is ${RUNNER_TEMP}/resolver, set by the trusted resolver step from the base ref; not attacker-controllable
+          if [[ -f "$script" ]]; then
+            bash "$script"
+          else
+            echo "mark-attempt script absent on base ref (bootstrap window) — skipping."
+          fi
 
       - name: Merge base, deterministic pre-pass, and protected-path flag
         id: prepare
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash "${{ steps.resolver.outputs.dir }}/auto-resolve-prepare.sh" # zizmor: ignore[template-injection] — dir is ${RUNNER_TEMP}/resolver, set by the trusted resolver step from the base ref; not attacker-controllable
+
+      - name: Release the attempt on a no-op run
+        # A clean merge means this tree was never resolved at all, so the mark
+        # records an attempt that did not happen — left standing it suppresses
+        # every later scan of this PR for a full TTL while the base keeps moving.
+        # The unresolvable handoff below is a VERDICT, not a no-op, so it keeps
+        # its mark.
+        if: steps.prepare.outputs.no_op_head != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ steps.prepare.outputs.no_op_head }}
+        run: |
+          script="${{ steps.resolver.outputs.dir }}/auto-resolve-release-attempt.sh" # zizmor: ignore[template-injection] — dir is ${RUNNER_TEMP}/resolver, set by the trusted resolver step from the base ref; not attacker-controllable
+          if [[ -f "$script" ]]; then
+            bash "$script"
+          else
+            echo "release-attempt script absent on base ref (bootstrap window) — skipping."
+          fi
 
       - name: Hand off unmergeable (lockfile/binary) conflicts to a human
         # Fails the run loud BEFORE any LLM cost: a `-merge`-attributed or
@@ -258,6 +318,10 @@ jobs:
           oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           fallback_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK }}
           fallback_oauth_token_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2 }}
+          fallback_oauth_token_3: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3 }}
+          fallback_oauth_token_4: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_4 }}
+          fallback_oauth_token_5: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_5 }}
+          fallback_oauth_token_6: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_6 }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           pr_number: ${{ matrix.pr.number }}
           conflict_list: ${{ steps.prepare.outputs.conflict_list }}
