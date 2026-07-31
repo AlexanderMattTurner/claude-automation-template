@@ -52,11 +52,72 @@ function fixtureConflictingOn(file) {
   return work;
 }
 
+// A `work` clone of a fresh bare origin, with an identity configured and one
+// committed file so later commits can delete a path without emptying the tree.
+// Left on `main`, already pushed.
+function newRepo() {
+  const root = scratch();
+  const origin = join(root, "origin.git");
+  const work = join(root, "work");
+  git(root, "init", "--bare", "-q", origin);
+  git(root, "clone", "-q", origin, work);
+  git(work, "config", "user.email", "t@t");
+  git(work, "config", "user.name", "t");
+  writeFileSync(join(work, "keep.txt"), "keep\n");
+  git(work, "add", "-A");
+  git(work, "commit", "-q", "-m", "base");
+  git(work, "branch", "-M", "main");
+  git(work, "push", "-q", "origin", "main");
+  return work;
+}
+
+// Switch to `branch`, creating it off the current commit the first time (the
+// fixtures below build `feature` from the base, then return to `main`).
+const checkoutBranch = (work, branch) =>
+  branch === "feature"
+    ? git(work, "checkout", "-q", "-b", "feature")
+    : git(work, "checkout", "-q", "main");
+
+// Build a repo where `file` exists at the merge base, one side DELETES it and
+// the other MODIFIES it — git's modify/delete, which it resolves with NO
+// conflict markers, leaving the surviving side's bytes in the worktree.
+// `deletedOn` picks which branch does the deleting.
+function fixtureModifyDelete(file, deletedOn) {
+  const work = newRepo();
+  mkdirSync(dirname(join(work, file)), { recursive: true });
+  writeFileSync(join(work, file), "base\n");
+  git(work, "add", "-A");
+  git(work, "commit", "-q", "-m", "add file");
+  git(work, "push", "-q", "origin", "main");
+
+  const act = (branch) => {
+    if (branch === deletedOn) {
+      git(work, "rm", "-q", file);
+    } else {
+      writeFileSync(join(work, file), `${branch} side\n`);
+      git(work, "add", "--", file);
+    }
+    git(work, "commit", "-q", "-m", `${branch} change`);
+  };
+
+  git(work, "checkout", "-q", "-b", "feature");
+  act("feature");
+  git(work, "push", "-q", "origin", "feature");
+
+  git(work, "checkout", "-q", "main");
+  act("main");
+  git(work, "push", "-q", "origin", "main");
+
+  git(work, "checkout", "-q", "feature");
+  return work;
+}
+
 // Run prepare.sh in `work` with a fake `gh` on PATH that records every
-// invocation, so a test can assert prepare never talks to GitHub (flagging a
-// protected path is finalize's job, via the `protected_paths` output). Returns
-// the parsed $GITHUB_OUTPUT, whether a merge is still in progress (MERGE_HEAD
-// present), and the recorded gh argv lines.
+// invocation, so a test can assert prepare never talks to GitHub (warning about
+// a protected path is the land step's job, on the comment it posts with the
+// pushed resolution). Returns the parsed $GITHUB_OUTPUT, whether a merge is
+// still in progress (MERGE_HEAD present), the recorded gh argv lines, and the
+// run's own log.
 function runPrepare(work, extraEnv = {}) {
   const outFile = join(work, ".gh-output");
   writeFileSync(outFile, "");
@@ -71,8 +132,9 @@ function runPrepare(work, extraEnv = {}) {
   );
   chmodSync(ghPath, 0o755);
   let error = null;
+  let stdout = "";
   try {
-    execFileSync("bash", [SCRIPT], {
+    stdout = execFileSync("bash", [SCRIPT], {
       cwd: work,
       encoding: "utf8",
       env: {
@@ -87,6 +149,7 @@ function runPrepare(work, extraEnv = {}) {
     });
   } catch (err) {
     error = err;
+    stdout = String(err.stdout ?? "");
   }
   const outputs = Object.fromEntries(
     readFileSync(outFile, "utf8")
@@ -105,96 +168,96 @@ function runPrepare(work, extraEnv = {}) {
   }
   const ghCalls = readFileSync(ghLog, "utf8").split("\n").filter(Boolean);
   const commented = ghCalls.some((c) => c.startsWith("pr comment"));
-  return { outputs, merging, error, ghCalls, commented };
+  return { outputs, merging, error, ghCalls, commented, stdout };
 }
 
-test("a conflict in a SAFE path is handed to the LLM with an empty protected set", () => {
+test("a conflict in a SAFE path is handed to the LLM with no protected-path warning", () => {
   const work = fixtureConflictingOn("docs/thing.md");
-  const { outputs, merging, commented } = runPrepare(work);
+  const { outputs, merging, commented, stdout } = runPrepare(work);
   assert.equal(outputs.needs_llm, "true");
   assert.equal(outputs.needs_commit, "true");
   assert.equal(outputs.conflict_list, "docs/thing.md");
-  assert.equal(outputs.protected_paths, "");
-  assert.equal(merging, true); // merge left mid-flight for Claude + finalize
+  assert.ok(!stdout.includes("protected path"));
+  assert.equal(merging, true); // merge left mid-flight for Claude + the bundle step
   assert.equal(commented, false);
 });
 
-test("a conflict in a PROTECTED path is handed to the LLM AND reported via protected_paths", () => {
+test("an ordinary marker conflict leaves modify_delete empty", () => {
+  const { outputs } = runPrepare(fixtureConflictingOn("docs/thing.md"));
+  assert.equal(outputs.conflict_list, "docs/thing.md");
+  assert.equal(outputs.modify_delete, "");
+});
+
+for (const deletedOn of ["feature", "main"]) {
+  test(`a modify/delete conflict (deleted on ${deletedOn}) is reported in modify_delete AND kept in conflict_list`, () => {
+    const work = fixtureModifyDelete("docs/gone.md", deletedOn);
+    const { outputs, merging, commented } = runPrepare(work);
+    // Still the LLM's to resolve — the decision is keep-or-delete, not a merge.
+    assert.equal(outputs.needs_llm, "true");
+    assert.equal(outputs.needs_commit, "true");
+    assert.equal(outputs.conflict_list, "docs/gone.md");
+    assert.equal(outputs.modify_delete, "docs/gone.md");
+    assert.equal(outputs.unresolvable ?? "", "");
+    assert.equal(merging, true);
+    assert.equal(commented, false);
+  });
+}
+
+test("a delete/delete alongside a marker conflict leaves modify_delete empty", () => {
+  // Both sides delete `gone.txt` (git merges that cleanly, so it is never
+  // conflicted) while both edit `shared.txt`.
+  const work = newRepo();
+  writeFileSync(join(work, "gone.txt"), "gone\n");
+  writeFileSync(join(work, "shared.txt"), "base\n");
+  git(work, "add", "-A");
+  git(work, "commit", "-q", "-m", "add files");
+  git(work, "push", "-q", "origin", "main");
+  for (const branch of ["feature", "main"]) {
+    checkoutBranch(work, branch);
+    git(work, "rm", "-q", "gone.txt");
+    writeFileSync(join(work, "shared.txt"), `${branch} side\n`);
+    git(work, "commit", "-q", "-am", `${branch} change`);
+    git(work, "push", "-q", "origin", branch);
+  }
+  git(work, "checkout", "-q", "feature");
+
+  const { outputs } = runPrepare(work);
+  assert.equal(outputs.conflict_list, "shared.txt");
+  assert.equal(outputs.modify_delete, "");
+});
+
+test("an add/add conflict leaves modify_delete empty", () => {
+  // Neither side has a merge-base entry for `new.txt`, so there is no stage 1
+  // — a marker conflict, not a modify/delete.
+  const work = newRepo();
+  for (const branch of ["feature", "main"]) {
+    checkoutBranch(work, branch);
+    writeFileSync(join(work, "new.txt"), `${branch} side\n`);
+    git(work, "add", "-A");
+    git(work, "commit", "-q", "-m", `${branch} adds new.txt`);
+    git(work, "push", "-q", "origin", branch);
+  }
+  git(work, "checkout", "-q", "feature");
+
+  const { outputs } = runPrepare(work);
+  assert.equal(outputs.conflict_list, "new.txt");
+  assert.equal(outputs.modify_delete, "");
+});
+
+test("a conflict in a PROTECTED path is handed to the LLM and logged, not escalated away", () => {
+  // Which paths count as protected is the shared predicate's contract, covered
+  // member-by-member in auto-resolve-lib.test.mjs; what prepare owns is that a
+  // protected conflict still goes to the LLM and is named in the run's log.
   const work = fixtureConflictingOn(".github/workflows/ci.yaml");
-  const { outputs, merging, ghCalls } = runPrepare(work);
+  const { outputs, merging, ghCalls, stdout } = runPrepare(work);
   assert.equal(outputs.needs_llm, "true"); // resolved, not escalated away
   assert.equal(outputs.needs_commit, "true");
   assert.equal(outputs.conflict_list, ".github/workflows/ci.yaml");
-  assert.equal(outputs.protected_paths, ".github/workflows/ci.yaml"); // finalize flags it
-  assert.equal(merging, true); // merge KEPT for Claude + finalize, not aborted
+  assert.match(stdout, /protected path\(s\) '\.github\/workflows\/ci\.yaml'/);
+  assert.equal(merging, true); // merge KEPT for Claude + the bundle step, not aborted
   // Prepare never talks to GitHub — a run that resolves nothing says nothing,
-  // so the flag rides finalize's pushed-resolution comment instead.
+  // so the warning rides the land step's pushed-resolution comment instead.
   assert.deepEqual(ghCalls, []);
-});
-
-test("each protected prefix is reported and handed to the LLM, member by member", () => {
-  // The generic template protects exactly two areas: the repo's Claude config
-  // (.claude/) and all of its CI machinery (.github/). Build a probe file under
-  // each protected prefix, plus a NON-protected control that must resolve with an
-  // empty protected set.
-  const protectedPrefixes = [
-    ".claude/hooks/",
-    ".claude/skills/",
-    ".github/workflows/",
-    ".github/scripts/",
-    ".github/actions/",
-  ];
-  const cases = [
-    ...protectedPrefixes.map((p) => ({
-      path: `${p}probe.txt`,
-      protected: true,
-    })),
-    // Control: a top-level script is NOT protected under the generic regex.
-    { path: "setup.sh", protected: false },
-    { path: "src/index.js", protected: false },
-  ];
-  for (const { path, protected: isProtected } of cases) {
-    const work = fixtureConflictingOn(path);
-    const { outputs, merging, commented } = runPrepare(work);
-    assert.equal(outputs.needs_commit, "true", `${path} must still resolve`);
-    assert.equal(outputs.needs_llm, "true", `${path} must go to the LLM`);
-    assert.equal(merging, true, `${path} merge must be kept`);
-    assert.equal(
-      outputs.protected_paths,
-      isProtected ? path : "",
-      `${path} protected_paths mismatch`,
-    );
-    assert.equal(commented, false, `${path} must not comment from prepare`);
-  }
-});
-
-test("the default protected set still guards .claude/ and .github/", () => {
-  // No override env: the built-in default must flag both template areas and
-  // leave an unrelated path unprotected.
-  for (const path of [".claude/settings.json", ".github/workflows/ci.yaml"]) {
-    const { outputs } = runPrepare(fixtureConflictingOn(path));
-    assert.equal(outputs.protected_paths, path, `${path} should be protected`);
-  }
-  const { outputs } = runPrepare(fixtureConflictingOn("infra/main.tf"));
-  assert.equal(
-    outputs.protected_paths,
-    "",
-    "infra/ is not protected by default",
-  );
-});
-
-test("AUTO_RESOLVE_PROTECTED_RE widens the protected set", () => {
-  // A repo with an extra sensitive tree overrides the regex; a path that the
-  // DEFAULT would leave unprotected is now flagged, and the conflict still goes
-  // to the LLM (protection only flags for review, never escalates away).
-  const work = fixtureConflictingOn("infra/main.tf");
-  const { outputs, merging } = runPrepare(work, {
-    AUTO_RESOLVE_PROTECTED_RE: "^(\\.claude/|\\.github/|infra/)",
-  });
-  assert.equal(outputs.protected_paths, "infra/main.tf");
-  assert.equal(outputs.needs_llm, "true");
-  assert.equal(outputs.needs_commit, "true");
-  assert.equal(merging, true);
 });
 
 test("a clean merge (no conflict) is a no-op", () => {

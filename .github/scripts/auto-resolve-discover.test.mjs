@@ -129,7 +129,7 @@ test("push scan emits only eligible CONFLICTING PRs, dropping the rest", () => {
       pr({ number: 3, isCrossRepository: true }), // fork → dropped
       pr({ number: 4, author: { login: "bot", is_bot: true } }), // bot → dropped
       pr({ number: 5, mergeable: "MERGEABLE" }), // clean → dropped
-      // opted out after a failed finalize → dropped
+      // opted out after a failed landing → dropped
       pr({ number: 6, labels: [{ name: "auto-resolve-blocked" }] }),
       pr({ number: 7, headRefName: "f7", labels: [{ name: "enhancement" }] }),
     ]),

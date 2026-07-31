@@ -27,16 +27,12 @@
 # workflows use, then the metered API key as the last resort — a run that
 # reaches it spends real credits, so it must never be preferred over a
 # subscription token that works.
-_ANTHROPIC_LADDER_VARS=(
-  CLAUDE_CODE_OAUTH_TOKEN
-  CLAUDE_CODE_OAUTH_TOKEN_FALLBACK
-  CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2
-  CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3
-  CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_4
-  CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_5
-  CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_6
-  ANTHROPIC_API_KEY
-)
+# shellcheck source=.github/scripts/lib/claude-oauth-ladder.bash
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude-oauth-ladder.bash"
+
+# The subscription rungs, then this caller's own metered one: a direct /v1/messages
+# call can authenticate with an API key, which the CLI-driven callers cannot use.
+_ANTHROPIC_LADDER_VARS=("${CLAUDE_OAUTH_LADDER_VARS[@]}" ANTHROPIC_API_KEY)
 
 # anthropic_ladder — the configured credentials on stdout, one per line, in
 # attempt order. Empty rungs are dropped and duplicates collapse, so an unset

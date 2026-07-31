@@ -189,6 +189,27 @@ Template improvements sync daily at 9am UTC via `template-sync.yaml`. You can al
 
 Changes arrive as a PR for you to review. The sync uses a 3-way merge that preserves local customizations in synced files—if there’s a conflict, Claude is asked to resolve it while keeping your project-specific changes intact.
 
+### Auto-resolving merge conflicts
+
+`auto-resolve-conflicts.yaml` picks up any open PR that conflicts with its base branch, merges the base in, resolves the conflicted files with Claude, and pushes the merge back to the PR branch. It is on by default. Every part of it can be turned off with a repository variable — **Settings → Secrets and variables → Actions → Variables** — with no YAML edit and nothing to re-sync from the template.
+
+Two jobs, and the split is the security boundary. `resolve` checks out the PR's own head, runs the PR's own dependencies and the model, and holds **no push credential**; the only thing it produces is a git bundle containing one merge commit. `land` holds the push token, runs nothing that came from the PR, and treats that bundle as untrusted: it replays the same merge itself in a clean tree and pushes only if the bundled commit differs from its own replay exclusively in files git actually left conflicted. Content that appears in neither side of the merge cannot reach your branch, whatever the model did.
+
+Conflicts are resolved one file per model call, in parallel, so a single hard file cannot burn the whole run's budget — and before anything is bundled, a second model reviews the merge-resolution delta (the changes present in neither parent) and either corrects it or refuses to hand it on.
+
+| Variable                            | Default                   | Effect                                                                                                                                                     |
+| ----------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTO_RESOLVE_DISABLED`             | unset                     | `true` turns the whole workflow off. Nothing is discovered, so nothing is resolved, pushed, or commented on.                                               |
+| `AUTO_RESOLVE_SCHEDULE_DISABLED`    | unset                     | `true` drops only the scheduled backstop scan. Conflicts are still resolved when a PR is opened, pushed to, or labelled `merge-conflict`.                  |
+| `AUTO_RESOLVE_SELF_REVIEW_DISABLED` | unset                     | `true` skips the pre-push self-review. The replay verification in `land` still runs; you lose the second opinion on the resolution's _content_.            |
+| `AUTO_RESOLVE_MAX_COMMIT_AGE_HOURS` | `24`                      | Only PRs whose newest commit is this recent are resolved, so a stale branch does not cost a model call on every push to the base. `0` disables the window. |
+| `AUTO_RESOLVE_ATTEMPT_TTL_HOURS`    | `6`                       | How long one attempt against a given PR head suppresses the next, so a push to the base costs at most one resolution per PR rather than one per push.      |
+| `AUTO_RESOLVE_PROTECTED_RE`         | `^(\.claude/\|\.github/)` | Paths matched here are still resolved, but the pushed-resolution comment flags them for human review.                                                      |
+
+To stop auto-resolve on **one PR** rather than repo-wide, add the `auto-resolve-blocked` label to it; remove the label to let it retry. The workflow applies that label itself when it hits a wall a human has to clear (no push token, a token without the `workflow` scope), so it never re-spends on the same rejection.
+
+Turning the workflow off does not disable anything else: conflicts simply stay for a human, exactly as they would without the template.
+
 ### Secrets & repository settings
 
 Repository **settings and secrets are never copied** when you create a repo from a template or when `template-sync` runs—both only move files. So each consuming repo configures these once. The workflows read:
