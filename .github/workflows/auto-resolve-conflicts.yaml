@@ -263,7 +263,6 @@ jobs:
       # commits.
       MAX_PARALLEL: "4"
       SHARD_TIMEOUT_SECONDS: "420"
-      BUNDLE_DIR: ${{ runner.temp }}/auto-resolve-bundle
       # Repository-variable knobs, empty when unset (every script defaults an
       # empty value): the attempt TTL this job's mark is written under, and the
       # paths a resolution here wants a human's eye on.
@@ -418,6 +417,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RESOLVER_DIR: ${{ steps.resolver.outputs.dir }}
+          BUNDLE_DIR: ${{ runner.temp }}/auto-resolve-bundle
           # The pre-bundle self-review reads the merge commit the way the
           # post-merge watchdog will and lets a model correct what it flags, so
           # a flagged resolution is never handed to `land`. Its prompts and CLI
@@ -499,7 +499,6 @@ jobs:
       PR: ${{ matrix.pr.number }}
       HEAD_REF: ${{ matrix.pr.head_ref }}
       BASE_REF: ${{ matrix.pr.base_ref }}
-      BUNDLE_DIR: ${{ runner.temp }}/auto-resolve-bundle
       # This job re-derives the protected set from the conflicts it computed
       # itself, so it needs the same definition the rest of the workflow uses.
       AUTO_RESOLVE_PROTECTED_RE: ${{ vars.AUTO_RESOLVE_PROTECTED_RE }}
@@ -555,4 +554,5 @@ jobs:
           # labels the PR auto-resolve-blocked and stops.
           TEMPLATE_SYNC_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
           RESOLVER_DIR: ${{ steps.resolver.outputs.dir }}
+          BUNDLE_DIR: ${{ runner.temp }}/auto-resolve-bundle
         run: bash "${RESOLVER_DIR}/auto-resolve-land.sh"

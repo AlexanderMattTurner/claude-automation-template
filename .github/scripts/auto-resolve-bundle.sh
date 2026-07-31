@@ -95,9 +95,9 @@ if [[ ${#modify_delete_list[@]} -gt 0 ]]; then
   for f in "${modify_delete_list[@]}"; do
     decision="$(jq -r --arg f "$f" '(.[$f].decision // "")' "$verdicts")"
     case "$decision" in
-      keep) git add -- "$f" ;;
-      delete) git rm -q -f -- "$f" ;;
-      *) fail "no usable keep/delete verdict for modify/delete path '${f}'" "the resolver did not decide whether to keep or delete \`${f}\`." ;;
+    keep) git add -- "$f" ;;
+    delete) git rm -q -f -- "$f" ;;
+    *) fail "no usable keep/delete verdict for modify/delete path '${f}'" "the resolver did not decide whether to keep or delete \`${f}\`." ;;
     esac
   done
 fi
@@ -215,12 +215,12 @@ if [[ "$review_configured" == "true" && "${AUTO_RESOLVE_SELF_REVIEW_DISABLED:-fa
   review_rc=0
   bash "${SCRIPT_DIR}/auto-resolve-self-review.sh" || review_rc=$?
   case "$review_rc" in
-    0) ;;
-    1) fail "the merge-delta reviewer FLAGGED this resolution and its fix rounds did not clear it" \
-      "a second model reviewed the merge-resolution delta and found changes it could not justify from either side of the merge." ;;
-    2) fail "the merge-delta reviewer could not run, so this resolution is unverified" \
-      "no credential produced a review of the merge-resolution delta, and an unreviewed machine merge is not pushed." ;;
-    *) fail "the merge-delta reviewer exited ${review_rc}" "the merge-delta review step failed unexpectedly." ;;
+  0) ;;
+  1) fail "the merge-delta reviewer FLAGGED this resolution and its fix rounds did not clear it" \
+    "a second model reviewed the merge-resolution delta and found changes it could not justify from either side of the merge." ;;
+  2) fail "the merge-delta reviewer could not run, so this resolution is unverified" \
+    "no credential produced a review of the merge-resolution delta, and an unreviewed machine merge is not pushed." ;;
+  *) fail "the merge-delta reviewer exited ${review_rc}" "the merge-delta review step failed unexpectedly." ;;
   esac
   # A fixer round amends the merge commit, so its bytes are content nothing has
   # scanned yet. Re-run the marker check over what it changed before bundling.
