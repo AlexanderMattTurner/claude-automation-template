@@ -140,19 +140,25 @@ if [[ "$body_hold_cleared" == "true" ]]; then
 else
   cleared_by="every review conversation from the automated reviewer has been resolved"
 fi
+# Two refusals here are STRUCTURAL — no permission, retry or configuration on
+# this PR makes them succeed, so failing the job on either would red every PR
+# whose hold clears, forever, and a check that can only fail teaches nothing.
 # GitHub refuses `addPullRequestReview` for an Actions token regardless of
-# permissions ("GitHub Actions is not permitted to approve pull requests"), so
-# without a user-actor PAT this approval is not merely unauthorized but
-# structurally impossible. Failing the job on that would red every PR whose hold
-# clears, forever, on any consumer that has not set the PAT — a check that can
-# only ever fail teaches nothing. Stand down LOUDLY instead, and name the fix.
-# Any OTHER failure is a real one and still exits non-zero.
+# permissions ("GitHub Actions is not permitted to approve pull requests"), and
+# it refuses any approval of a PR the token's own actor authored. Stand down
+# LOUDLY on both, naming the remedy. Any OTHER failure is real and exits
+# non-zero.
 approve_err=""
 if ! approve_err="$(gh pr review "$PR" --repo "$GH_REPO" --approve --body \
   "Automated approval: ${cleared_by}, so this satisfies the review-required ruleset. Re-request review if a human should take a closer look." 2>&1)"; then
   if [[ "$approve_err" == *"not permitted to approve pull requests"* ]]; then
     echo "hold is clear, but this token cannot approve: GitHub blocks approvals from GitHub Actions." >&2
     echo "Set the TEMPLATE_SYNC_TOKEN secret (a user PAT) so this step can post the clearing approval; until then a human must approve." >&2
+    exit 0
+  fi
+  if [[ "$approve_err" == *"Can not approve your own pull request"* ]]; then
+    echo "hold is clear, but this token's actor authored PR #${PR}, and GitHub refuses a self-approval." >&2
+    echo "The hold itself is cleared — the resolved threads are the record; another account must post the approval the ruleset wants." >&2
     exit 0
   fi
   echo "failed to post the clearing approval: ${approve_err}" >&2
