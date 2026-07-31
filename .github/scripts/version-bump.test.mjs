@@ -93,7 +93,16 @@ function makeSandbox(npmStubBody) {
 /** Run the live script in `dir`; return {status, stderr, stdout}. */
 function runScript(dir, binDir) {
   const env = { ...process.env, PATH: `${binDir}:${process.env.PATH}` };
-  delete env.ANTHROPIC_API_KEY;
+  // Clear every credential-ladder rung so the sandboxed runs never reach the
+  // real Claude API and always take the commit-list changelog fallback.
+  for (const key of Object.keys(env)) {
+    if (
+      key === "ANTHROPIC_API_KEY" ||
+      key.startsWith("CLAUDE_CODE_OAUTH_TOKEN")
+    ) {
+      delete env[key];
+    }
+  }
   delete env.GITHUB_OUTPUT;
   // In CI GITHUB_REF_NAME names the PR branch; drop it so the docs push targets
   // the sandbox's own branch (which the bare origin below rejects on purpose).
