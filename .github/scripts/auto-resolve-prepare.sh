@@ -18,6 +18,9 @@
 #                       hands off to a human BEFORE any LLM cost
 #   needs_llm=true      conflict_list is non-empty
 #   needs_commit=true   there is a resolution (deterministic and/or LLM) to commit
+#   no_op_head=...      set only on the clean-merge no-op exit: the pre-merge
+#                       head SHA, so the workflow can hand that head's attempt
+#                       mark back (this run resolved nothing)
 #   protected_paths=... conflicted paths in PROTECTED areas
 #
 # A conflict touching a PROTECTED path (by default this repo's Claude config or
@@ -50,11 +53,18 @@ git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
 git fetch --no-tags origin "$BASE_REF"
 
+# Captured before the merge: a clean merge (or fast-forward) moves HEAD, and the
+# no-op exit must report the commit the mark-attempt step recorded, not the tip
+# the merge produced — the release script hands the attempt back on exactly the
+# SHA that was marked.
+premerge_head="$(git rev-parse HEAD)"
+
 if git merge --no-edit "origin/${BASE_REF}"; then
   echo "No conflicts merging ${BASE_REF} into ${HEAD_REF} — nothing to resolve."
   {
     echo "needs_llm=false"
     echo "needs_commit=false"
+    echo "no_op_head=${premerge_head}"
   } >>"$out"
   exit 0
 fi

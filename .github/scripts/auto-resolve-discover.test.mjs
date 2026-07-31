@@ -10,11 +10,16 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, "auto-resolve-discover.sh");
 const scratch = () => mkdtempSync(join(tmpdir(), "auto-resolve-discover-"));
 
-// A fake `gh` that answers `pr list`/`pr view` from a JSON fixture and applies
-// the requested `--jq` with the real jq, reproducing gh's own output shape (one
-// compact result per line). `PR_FIXTURES` is a newline-separated list of fixture
-// files; each gh call consumes the next one (clamped to the last), so a test can
-// model GitHub's mergeability settling from UNKNOWN to CONFLICTING across passes.
+// A fake `gh` that answers from JSON fixtures and applies the requested `--jq`
+// with the real jq, reproducing gh's own output shape (one compact result per
+// line). Three call shapes are dispatched:
+//   - `gh api repos/<repo>/commits/<sha>/statuses` (the attempt-mark read)
+//     answers from `statuses-<sha>.json`, defaulting to [] (no marks);
+//   - `gh pr view <n> --json commits` (the age-window read) answers from
+//     `commits-<n>.json`, defaulting to [] (no evidence of activity);
+//   - everything else (the candidate listing) consumes the next file from
+//     `PR_FIXTURES` (clamped to the last), so a test can model GitHub's
+//     mergeability settling from UNKNOWN to CONFLICTING across passes.
 function fakeGh(dir, fixtureFiles) {
   const listFile = join(dir, "fixtures.txt");
   writeFileSync(listFile, fixtureFiles.join("\n") + "\n");
@@ -25,12 +30,26 @@ function fakeGh(dir, fixtureFiles) {
     gh,
     `#!/usr/bin/env bash
 set -euo pipefail
-# Extract the --jq expression.
 jqexpr='.'
+jsonfields=''
 args=("$@")
 for ((i = 0; i < \${#args[@]}; i++)); do
   [[ "\${args[i]}" == "--jq" ]] && jqexpr="\${args[i + 1]}"
+  [[ "\${args[i]}" == "--json" ]] && jsonfields="\${args[i + 1]}"
 done
+if [[ "\${args[0]}" == "api" ]]; then
+  sha="\${args[1]#repos/owner/repo/commits/}"
+  sha="\${sha%/statuses}"
+  f="${dir}/statuses-\${sha}.json"
+  [[ -f "$f" ]] && exec jq -c "$jqexpr" <"$f"
+  exec jq -c "$jqexpr" <<<'[]'
+fi
+if [[ "\${args[0]}" == "pr" && "\${args[1]}" == "view" && "$jsonfields" == "commits" ]]; then
+  f="${dir}/commits-\${args[2]}.json"
+  commits='[]'
+  [[ -f "$f" ]] && commits="$(cat "$f")"
+  exec jq -c "$jqexpr" <<<"{\\"commits\\": \${commits}}"
+fi
 n="$(cat "${countFile}")"
 mapfile -t fixtures <"${listFile}"
 idx=$((n < \${#fixtures[@]} ? n : \${#fixtures[@]} - 1))
@@ -42,7 +61,10 @@ jq -c "$jqexpr" <"\${fixtures[idx]}"
   return dir;
 }
 
-function runDiscover(dir, { prNumber, maxPasses = 1 } = {}) {
+function runDiscover(
+  dir,
+  { prNumber, maxPasses = 1, maxAgeHours = "0", ignoreMark } = {},
+) {
   const outFile = join(dir, ".gh-output");
   writeFileSync(outFile, "");
   execFileSync("bash", [SCRIPT], {
@@ -55,6 +77,13 @@ function runDiscover(dir, { prNumber, maxPasses = 1 } = {}) {
       GITHUB_OUTPUT: outFile,
       MAX_PASSES: String(maxPasses),
       RETRY_DELAY_SECS: "0",
+      RETRY_MAX: "1",
+      RETRY_BASE_DELAY: "0",
+      // Most tests exercise the eligibility filters, not the activity window;
+      // 0 disables the window so a fixture PR with no commit dates still
+      // qualifies. The age-window tests below set it explicitly.
+      AUTO_RESOLVE_MAX_COMMIT_AGE_HOURS: String(maxAgeHours),
+      ...(ignoreMark ? { AUTO_RESOLVE_IGNORE_ATTEMPT_MARK: "true" } : {}),
       ...(prNumber ? { PR_NUMBER: String(prNumber) } : {}),
       PATH: `${dir}:${process.env.PATH ?? ""}`,
     },
@@ -72,6 +101,7 @@ const pr = (over) => ({
   isCrossRepository: false,
   author: { login: "human", is_bot: false },
   headRefName: "feature",
+  headRefOid: "cafe1",
   baseRefName: "main",
   state: "OPEN",
   // gh materializes every requested --json field, so `labels` is always an
@@ -79,6 +109,14 @@ const pr = (over) => ({
   labels: [],
   ...over,
 });
+
+// Second precision, no milliseconds: jq's fromdateiso8601 (which both the age
+// window and the attempt-mark freshness read use) rejects fractional seconds,
+// and GitHub's own timestamps carry none.
+const isoHoursAgo = (hours) =>
+  new Date(Date.now() - hours * 3600 * 1000)
+    .toISOString()
+    .replace(/\.\d{3}Z$/, "Z");
 
 test("push scan emits only eligible CONFLICTING PRs, dropping the rest", () => {
   const dir = scratch();
@@ -138,4 +176,120 @@ test("a PR reporting UNKNOWN is re-queried until it settles to CONFLICTING", () 
   fakeGh(dir, [unknown, conflicting]);
   const prs = runDiscover(dir, { maxPasses: 3 });
   assert.deepEqual(prs, [{ number: 1, head_ref: "feature", base_ref: "main" }]);
+});
+
+test("the age window drops a PR whose newest commit is stale, keeps an active one", () => {
+  const dir = scratch();
+  const fixture = join(dir, "list.json");
+  writeFileSync(
+    fixture,
+    JSON.stringify([
+      pr({ number: 1, headRefName: "fresh" }),
+      pr({ number: 2, headRefName: "stale", headRefOid: "cafe2" }),
+    ]),
+  );
+  writeFileSync(
+    join(dir, "commits-1.json"),
+    JSON.stringify([{ committedDate: isoHoursAgo(1) }]),
+  );
+  writeFileSync(
+    join(dir, "commits-2.json"),
+    JSON.stringify([{ committedDate: isoHoursAgo(48) }]),
+  );
+  fakeGh(dir, [fixture]);
+  assert.deepEqual(runDiscover(dir, { maxAgeHours: "24" }), [
+    { number: 1, head_ref: "fresh", base_ref: "main" },
+  ]);
+});
+
+test("a PR with no commit dates at all has no evidence of activity and is dropped", () => {
+  // The doubt is spent on NOT resolving: an unreadable/empty commit list must
+  // not read as "recently active".
+  const dir = scratch();
+  const fixture = join(dir, "list.json");
+  writeFileSync(fixture, JSON.stringify([pr({})]));
+  fakeGh(dir, [fixture]);
+  assert.deepEqual(runDiscover(dir, { maxAgeHours: "24" }), []);
+});
+
+test("AUTO_RESOLVE_MAX_COMMIT_AGE_HOURS=0 disables the window", () => {
+  const dir = scratch();
+  const fixture = join(dir, "list.json");
+  writeFileSync(fixture, JSON.stringify([pr({})]));
+  writeFileSync(
+    join(dir, "commits-1.json"),
+    JSON.stringify([{ committedDate: isoHoursAgo(9000) }]),
+  );
+  fakeGh(dir, [fixture]);
+  assert.deepEqual(runDiscover(dir, { maxAgeHours: "0" }), [
+    { number: 1, head_ref: "feature", base_ref: "main" },
+  ]);
+});
+
+test("a head the resolver already attempted (fresh mark) is skipped", () => {
+  const dir = scratch();
+  const fixture = join(dir, "list.json");
+  writeFileSync(fixture, JSON.stringify([pr({})]));
+  writeFileSync(
+    join(dir, "statuses-cafe1.json"),
+    JSON.stringify([
+      { context: "auto-resolve/attempted", created_at: isoHoursAgo(1) },
+    ]),
+  );
+  fakeGh(dir, [fixture]);
+  assert.deepEqual(runDiscover(dir), []);
+});
+
+test("a mark older than the TTL is treated as no mark", () => {
+  // Default TTL is 6h; a 7h-old mark must not suppress the head — whatever
+  // that run concluded, the code that concluded it may since have been fixed.
+  const dir = scratch();
+  const fixture = join(dir, "list.json");
+  writeFileSync(fixture, JSON.stringify([pr({})]));
+  writeFileSync(
+    join(dir, "statuses-cafe1.json"),
+    JSON.stringify([
+      { context: "auto-resolve/attempted", created_at: isoHoursAgo(7) },
+    ]),
+  );
+  fakeGh(dir, [fixture]);
+  assert.deepEqual(runDiscover(dir), [
+    { number: 1, head_ref: "feature", base_ref: "main" },
+  ]);
+});
+
+test("a released mark no longer suppresses the head", () => {
+  const dir = scratch();
+  const fixture = join(dir, "list.json");
+  writeFileSync(fixture, JSON.stringify([pr({})]));
+  writeFileSync(
+    join(dir, "statuses-cafe1.json"),
+    JSON.stringify([
+      { context: "auto-resolve/attempted", created_at: isoHoursAgo(2) },
+      {
+        context: "auto-resolve/attempted-released",
+        created_at: isoHoursAgo(1),
+      },
+    ]),
+  );
+  fakeGh(dir, [fixture]);
+  assert.deepEqual(runDiscover(dir), [
+    { number: 1, head_ref: "feature", base_ref: "main" },
+  ]);
+});
+
+test("AUTO_RESOLVE_IGNORE_ATTEMPT_MARK=true re-emits a freshly-marked head", () => {
+  const dir = scratch();
+  const fixture = join(dir, "list.json");
+  writeFileSync(fixture, JSON.stringify([pr({})]));
+  writeFileSync(
+    join(dir, "statuses-cafe1.json"),
+    JSON.stringify([
+      { context: "auto-resolve/attempted", created_at: isoHoursAgo(1) },
+    ]),
+  );
+  fakeGh(dir, [fixture]);
+  assert.deepEqual(runDiscover(dir, { ignoreMark: true }), [
+    { number: 1, head_ref: "feature", base_ref: "main" },
+  ]);
 });
