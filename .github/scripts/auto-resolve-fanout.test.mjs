@@ -250,7 +250,6 @@ test("one invocation per conflicted file, each scoped to that file alone", () =>
   // The three outputs the caller publishes. The DIRECTORY, not just the
   // aggregate: the per-shard logs and stderr beside it are the only record of
   // what each resolution did, and they die with the runner unless published.
-  assert.equal(res.outputs.fanout_dir, fx.fanout);
   assert.equal(res.outputs.execution_file, join(fx.fanout, "execution.json"));
   assert.equal(
     res.outputs.verdict_file,

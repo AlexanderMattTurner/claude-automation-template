@@ -29,27 +29,19 @@ set -euo pipefail
 : "${CLAUDE_CODE_OAUTH_TOKEN:?CLAUDE_CODE_OAUTH_TOKEN is required — no shard can authenticate without it}"
 
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=.github/scripts/lib/claude-oauth-ladder.bash
+source "${SCRIPTS_DIR}/lib/claude-oauth-ladder.bash"
 
 # The installer resolves its version pin relative to itself, so it reads the
 # base-staged pin rather than whatever the untrusted PR head carries.
 bash "${SCRIPTS_DIR}/install-claude-cli.sh"
 
-# Deduplicated so an adopter who set the same token twice does not pay for the
-# same failure twice, and empty rungs are stepped over rather than truncating the
-# ladder — an unset middle token must not hide the ones after it.
+# The one ordered rung list every resolver caller walks, so a credential this
+# job can resolve on is never one the pre-push review then cannot verify on.
 ladder=()
-for token in "${CLAUDE_CODE_OAUTH_TOKEN}" "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK:-}" \
-  "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2:-}" "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3:-}" \
-  "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_4:-}" "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_5:-}" \
-  "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_6:-}"; do
-  [[ -z "$token" ]] && continue
-  seen=false
-  for known in ${ladder[@]+"${ladder[@]}"}; do
-    [[ "$known" == "$token" ]] && seen=true
-  done
-  [[ "$seen" == "true" ]] && continue
-  ladder+=("$token")
-done
+while IFS= read -r token; do
+  [[ -n "$token" ]] && ladder+=("$token")
+done < <(claude_oauth_ladder)
 
 # The fan-out writes its aggregate log here every rung, overwriting the previous
 # rung's — so the rung that finally answers is the one the caller reads.

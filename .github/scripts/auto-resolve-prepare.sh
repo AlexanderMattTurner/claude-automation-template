@@ -67,10 +67,7 @@ is_modify_delete() {
 : "${GITHUB_TOKEN:?GITHUB_TOKEN required}"
 out="${GITHUB_OUTPUT:?GITHUB_OUTPUT required}"
 
-basic="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
-export GIT_CONFIG_COUNT=1
-export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
-export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${basic}"
+git_auth_header "$GITHUB_TOKEN"
 
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

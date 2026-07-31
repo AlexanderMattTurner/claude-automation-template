@@ -175,3 +175,39 @@ test("a modify/delete path with an unusable verdict is refused", () => {
   assert.notEqual(error, null);
   assert.ok(!existsSync(bundle));
 });
+
+test("the self-review runs on ANY configured credential — a short rung list would skip it silently", () => {
+  // Member-by-member coverage of the rung list lives in
+  // auto-resolve-lib.test.mjs; what is asserted here is that bundle's
+  // "is a reviewer configured?" probe reads that same list. With only this one
+  // rung set, the review must be attempted: it fails (no BASE_WORKTREE), and
+  // that refusal is the observable difference from silently skipping it.
+  for (const rung of [
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_4",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_5",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_6",
+  ]) {
+    const { work } = midMerge();
+    writeFileSync(join(work, "a.md"), "resolved\n");
+    const { error, bundle } = runBundle(work, "a.md", {
+      [rung]: "sk-ant-oat-x",
+    });
+    assert.notEqual(error, null, `${rung} must reach the reviewer`);
+    assert.ok(!existsSync(bundle), `${rung} must not bundle unreviewed`);
+  }
+});
+
+test("the self-review is skipped, and the merge still bundled, when it is turned off", () => {
+  const { work } = midMerge();
+  writeFileSync(join(work, "a.md"), "resolved\n");
+  const { error, bundle } = runBundle(work, "a.md", {
+    CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2: "sk-ant-oat-x",
+    AUTO_RESOLVE_SELF_REVIEW_DISABLED: "true",
+  });
+  assert.equal(error, null);
+  assert.ok(existsSync(bundle));
+});

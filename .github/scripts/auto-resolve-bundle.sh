@@ -15,6 +15,8 @@ set -euo pipefail
 
 # shellcheck source=.github/scripts/auto-resolve-lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/auto-resolve-lib.sh"
+# shellcheck source=.github/scripts/lib/claude-oauth-ladder.bash
+source "$(dirname "${BASH_SOURCE[0]}")/lib/claude-oauth-ladder.bash"
 
 : "${HEAD_REF:?HEAD_REF required}"
 : "${BASE_REF:?BASE_REF required}"
@@ -25,8 +27,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 fail() {
   echo "::error::$1"
-  # echo-fallback-ok: abort-path diagnostic to stderr; no merge in progress is an acceptable state here
-  git merge --abort || echo "[auto-resolve] merge --abort failed (no merge in progress?)" >&2
+  # Only while a merge is actually in progress: the self-review failures below
+  # run after the commit, and aborting there would print noise ahead of the
+  # diagnosis that matters.
+  if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+    # echo-fallback-ok: abort-path diagnostic to stderr; the run is already failing loudly via exit
+    git merge --abort || echo "[auto-resolve] merge --abort failed" >&2
+  fi
   # echo-fallback-ok: best-effort failure comment; the run is already failing loudly via exit
   gh pr comment "$PR" --body "⚠️ **Auto-resolve could not finish** — $2 Leaving the conflict for a human to resolve." || echo "[auto-resolve] failed to post failure comment on PR #${PR}" >&2
   exit 1
@@ -55,7 +62,7 @@ base_sha="$(git rev-parse MERGE_HEAD)"
 declare -A unmerged=()
 while IFS= read -r f; do
   [[ -n "$f" ]] && unmerged["$f"]=1
-done < <(git ls-files -u | cut -f2 | sort -u)
+done < <(git -c core.quotePath=false ls-files -u | cut -f2 | sort -u)
 read -ra allowed_list <<<"${CONFLICT_LIST:-}"
 declare -A allowed=()
 for f in "${allowed_list[@]}"; do allowed["$f"]=1; done
@@ -64,7 +71,7 @@ while IFS= read -r f; do
   if [[ -z "${allowed["$f"]:-}" ]]; then
     fail "the resolver modified a file outside the conflicted set ('${f}')" "the LLM edited a file it was not asked to touch."
   fi
-done < <(git diff --name-only)
+done < <(git -c core.quotePath=false diff --name-only)
 if [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
   fail "the resolver created new untracked files" "the LLM added files it was not asked to."
 fi
@@ -204,12 +211,11 @@ git commit --no-edit --no-verify
 # can introduce content present in NEITHER parent, so a flagged resolution is
 # never handed to LAND. It reads its prompts and its CLI from BASE_WORKTREE —
 # the trusted base checkout — never from the PR head it is reviewing.
+# Whether ANY credential can review at all, read from the one ladder every
+# resolver caller walks. A short hand-typed copy here fails OPEN — it would skip
+# the review silently on exactly the adopter whose only credential it omitted.
 review_configured=false
-for t in "${CLAUDE_CODE_OAUTH_TOKEN:-}" "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK:-}" \
-  "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3:-}" "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_4:-}" \
-  "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_5:-}" "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_6:-}"; do
-  [[ -n "$t" ]] && review_configured=true
-done
+[[ -n "$(claude_oauth_ladder)" ]] && review_configured=true
 if [[ "$review_configured" == "true" && "${AUTO_RESOLVE_SELF_REVIEW_DISABLED:-false}" != "true" ]]; then
   pre_review_head="$(git rev-parse HEAD)"
   review_rc=0
@@ -228,8 +234,15 @@ if [[ "$review_configured" == "true" && "${AUTO_RESOLVE_SELF_REVIEW_DISABLED:-fa
     fixed_list=()
     while IFS= read -r f; do
       [[ -n "$f" && -f "$f" ]] && fixed_list+=("$f")
-    done < <(git diff --name-only "$pre_review_head" HEAD)
-    if [[ -n "$(scan_for_markers "${fixed_list[@]}")" ]]; then
+    done < <(git -c core.quotePath=false diff --name-only "$pre_review_head" HEAD)
+    for f in ${fixed_list[@]+"${fixed_list[@]}"}; do
+      if [[ -z "${allowed["$f"]:-}" ]]; then
+        fail "the merge-delta fixer changed a file outside the conflicted set ('${f}')" "the correction pass edited a file the resolver was not asked to touch."
+      fi
+    done
+    fixed_markers="$(scan_for_markers ${fixed_list[@]+"${fixed_list[@]}"})"
+    if [[ -n "$fixed_markers" ]]; then
+      printf '%s\n' "$fixed_markers"
       fail "the merge-delta fixer left conflict markers behind" "the correction pass reintroduced conflict markers."
     fi
   fi

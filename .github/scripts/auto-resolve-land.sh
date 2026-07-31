@@ -38,6 +38,11 @@ if [[ ! -f "$bundle" ]]; then
   exit 0
 fi
 
+export GIT_AUTHOR_NAME="github-actions[bot]"
+export GIT_AUTHOR_EMAIL="41898282+github-actions[bot]@users.noreply.github.com"
+export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+
 git_auth_header "$GITHUB_TOKEN"
 git fetch --no-tags origin \
   "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" \
@@ -62,12 +67,23 @@ fi
 head_sha="${parents[0]}"
 base_sha="${parents[1]}"
 
-# Both parents must already be reachable from the branches they claim to be, and
-# this is what stops the replay below from being vacuous: without it the merge
-# would be replayed from two commits the untrusted job chose, and any tree at all
-# would reproduce itself.
-if ! git merge-base --is-ancestor "$base_sha" "refs/remotes/origin/${BASE_REF}"; then
-  fail "the bundled merge's base parent is not on ${BASE_REF}" "the resolution merged something other than the current base branch."
+# Both parents must be the tips this job fetched for itself, and THIS is what
+# keeps the replay below from being vacuous: it is replayed from two commits the
+# resolving job named, so without pinning them that job also chooses the size of
+# the "may differ" set. An ancestor check is not enough for the base side — an
+# ANCIENT commit on the base branch passes it, conflicts against most of the
+# tree, and the conflicted set that licenses differences swells to match.
+#
+# The base tip moving mid-resolution is a race, not a fault: the resolution
+# merged a base that is no longer current, so landing it would not clear the
+# PR's conflict anyway. Stand down and let the next scan redo it.
+base_tip="$(git rev-parse "refs/remotes/origin/${BASE_REF}")"
+if [[ "$base_sha" != "$base_tip" ]]; then
+  if git merge-base --is-ancestor "$base_sha" "$base_tip"; then
+    echo "PR #${PR}'s base moved to ${base_tip} while this resolution was computed against ${base_sha} — standing down; the next scan resolves against the current base."
+    exit 0
+  fi
+  fail "the bundled merge's base parent is not on ${BASE_REF}" "the resolution merged something other than the base branch."
 fi
 if ! git merge-base --is-ancestor "$head_sha" "refs/remotes/origin/${HEAD_REF}"; then
   fail "the bundled merge's head parent is not on ${HEAD_REF}" "the resolution was computed against a head this branch never had."
@@ -90,7 +106,7 @@ fi
 conflicted=()
 while IFS= read -r f; do
   [[ -n "$f" ]] && conflicted+=("$f")
-done < <(git -C "$replay" diff --name-only --diff-filter=U)
+done < <(git -c core.quotePath=false -C "$replay" diff --name-only --diff-filter=U)
 declare -A conflicted_set=()
 for f in "${conflicted[@]}"; do conflicted_set["$f"]=1; done
 
@@ -105,7 +121,7 @@ while IFS= read -r f; do
     fail "the resolved merge changes path(s) git never left conflicted ('${f}')" \
       "the resolution altered \`${f}\`, which merged cleanly on its own — content in neither side of the merge."
   fi
-done < <(git diff --no-renames --name-only "$replay_tree" "$merge_sha")
+done < <(git -c core.quotePath=false diff --no-renames --name-only "$replay_tree" "$merge_sha")
 
 # Markers are checked on the COMMITTED object, not on any working tree, and only
 # over the paths this job's own replay found conflicted — a whole-tree scan would

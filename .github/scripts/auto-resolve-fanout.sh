@@ -34,7 +34,6 @@
 #   FANOUT_DIR               per-shard + aggregate log dir
 #                            (default "${RUNNER_TEMP:-/tmp}/conflict-fanout")
 #   GITHUB_OUTPUT            appended with execution_file=<aggregate log>,
-#                            fanout_dir=<the log dir>, which the caller publishes,
 #                            and verdict_file=<the modify/delete verdicts>
 set -euo pipefail
 
@@ -530,12 +529,12 @@ main() {
   aggregate
   collect_verdicts
   report
-  # The directory, not just the aggregate: the per-shard result logs and stderr
-  # beside it are the only record of WHAT each resolution did, and they are
-  # deleted with the runner unless the caller publishes them.
+  # The per-shard result logs and stderr stay in FANOUT_DIR and die with the
+  # runner; report() has already replayed each failing shard's stderr into the
+  # step log, which is the record that outlives the run. Publishing the raw
+  # directory would need a redactor this repo does not have.
   [[ -z "${GITHUB_OUTPUT:-}" ]] || {
     echo "execution_file=${AGGREGATE_FILE}"
-    echo "fanout_dir=${FANOUT_DIR}"
     echo "verdict_file=${VERDICT_FILE}"
   } >>"$GITHUB_OUTPUT"
 }

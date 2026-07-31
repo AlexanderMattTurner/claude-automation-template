@@ -53,6 +53,13 @@ readonly _SELF_REVIEW_ALLOWED_TOOLS="Read,Edit,Write,Grep,Glob"
 # resolution.
 # shellcheck source=.github/scripts/lib/merge-delta-verdict.bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/merge-delta-verdict.bash"
+# CONFLICT_MARKER_RE — one spelling of "this line marks an unresolved hunk",
+# shared with the bundle and land steps.
+# shellcheck source=.github/scripts/auto-resolve-lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/auto-resolve-lib.sh"
+# claude_oauth_ladder — the one ordered rung list every resolver caller walks.
+# shellcheck source=.github/scripts/lib/claude-oauth-ladder.bash
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/claude-oauth-ladder.bash"
 
 # One fix round by default. The worst case is what sets the job's time budget:
 # (MAX_ROUNDS + 1) reviews + MAX_ROUNDS fixes, each capped at TIMEOUT_SECONDS —
@@ -89,21 +96,7 @@ render_delta() {
 
 # The credential ladder, in attempt order: the same secrets the resolve fan-out
 # walks, so a token that is expired, revoked or rate-limited takes down neither.
-# Empty rungs are dropped and duplicates collapse, so an unset middle tier is
-# stepped over rather than ending the ladder, and a repeat of an already-failed
-# token is not paid for twice.
-_oauth_ladder() {
-  local -A seen=()
-  local t
-  for t in "${CLAUDE_CODE_OAUTH_TOKEN:-}" "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK:-}" \
-    "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3:-}" "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_4:-}" \
-    "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_5:-}" "${CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_6:-}"; do
-    [[ -n "$t" && -z "${seen["$t"]:-}" ]] || continue
-    seen["$t"]=1
-    printf '%s\n' "$t"
-  done
-}
-mapfile -t _OAUTH_LADDER < <(_oauth_ladder)
+mapfile -t _OAUTH_LADDER < <(claude_oauth_ladder)
 
 # attempt_claude TOKEN PROMPT_FILE LOG — one bounded `claude` process against the
 # merge commit's working tree, on ONE credential. Same permission mode and tool
@@ -229,9 +222,16 @@ PROMPT
   run_claude "${SELF_REVIEW_DIR}/fix-prompt.txt" "${SELF_REVIEW_DIR}/fix-${round}.json"
 
   # A "fix" that leaves conflict markers behind has made the tree worse than the
-  # resolution it was correcting; refuse rather than amend it in.
-  if git grep -nI -E '^(<{7}|={7}|>{7})([ \t]|$)' -- . >/dev/null 2>&1; then
-    die "the fix round left conflict markers in the tree — refusing to amend"
+  # resolution it was correcting; refuse rather than amend it in. Scoped to what
+  # THIS round changed, and to CONFLICT_MARKER_RE's one spelling: a whole-tree
+  # scan hits a Markdown setext underline (`=======`) in any committed doc the
+  # base branch brought in, and would refuse every resolution in such a repo.
+  touched=()
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$f" ]] && touched+=("$f")
+  done < <(git -c core.quotePath=false status --porcelain --untracked-files=all | cut -c4-)
+  if [[ ${#touched[@]} -gt 0 ]] && git grep -nI -E "$CONFLICT_MARKER_RE" -- "${touched[@]}" >/dev/null; then
+    die "the fix round left conflict markers in the files it touched — refusing to amend"
   fi
 
   # Amend rather than stack a fixup: this merge commit has never been pushed, so
@@ -239,6 +239,11 @@ PROMPT
   # in its history plus a later repair is exactly the archaeology the watchdog
   # exists to prevent. --no-verify for the same reason the merge commit uses
   # it: the index carries the whole merge delta, not just the resolved files.
-  git add -A
+  # Only what this round actually touched. `git add -A` would also sweep in
+  # anything else sitting in the tree, and the caller's post-review membership
+  # check is the last thing standing between the fixer and the bundle.
+  if [[ ${#touched[@]} -gt 0 ]]; then
+    git add -- "${touched[@]}"
+  fi
   git commit --amend --no-edit --no-verify
 done

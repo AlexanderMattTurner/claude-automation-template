@@ -164,6 +164,59 @@ test("land does nothing, quietly, when the resolve job produced no bundle", () =
   assert.deepEqual(ghCalls, []);
 });
 
+test("land stands down when the BASE branch moved under the resolution", () => {
+  // The base parent is pinned to the tip this job fetched, not merely to an
+  // ancestor of it. An ancestor check would let the resolving job name an
+  // ANCIENT base commit, whose replay conflicts across most of the tree — and
+  // the conflicted set is exactly what licenses differences from the replay.
+  const { origin, bundleDir, landDir, root } = resolved();
+  const mover = join(root, "mover");
+  git(root, "clone", "-q", "-b", "main", origin, mover);
+  git(mover, "config", "user.email", "t@t");
+  git(mover, "config", "user.name", "t");
+  git(mover, "config", "commit.gpgsign", "false");
+  writeFileSync(join(mover, "later.md"), "the base moved on\n");
+  git(mover, "add", "later.md");
+  git(mover, "commit", "-q", "-m", "later work on main");
+  git(mover, "push", "-q", "origin", "main");
+  const before = git(origin, "rev-parse", "feature").trim();
+  const { error, ghCalls, stdout } = runLand(landDir, bundleDir);
+  assert.equal(error, null); // a race, not a fault
+  assert.equal(git(origin, "rev-parse", "feature").trim(), before);
+  assert.deepEqual(ghCalls, []);
+  assert.match(stdout, /standing down/);
+});
+
+test("land REFUSES a bundle whose base parent is not on the base branch at all", () => {
+  const { work, origin, bundleDir, landDir } = resolved();
+  // Re-parent the merge onto a base commit that was never pushed anywhere.
+  git(work, "checkout", "-q", "--detach", "HEAD^2");
+  writeFileSync(join(work, "unpushed.md"), "never on main\n");
+  git(work, "add", "unpushed.md");
+  git(work, "commit", "-q", "-m", "a base commit no branch carries");
+  const rogueBase = git(work, "rev-parse", "HEAD").trim();
+  const head = git(work, "rev-parse", "feature").trim();
+  git(work, "checkout", "-q", "--detach", head);
+  git(work, "merge", "--no-commit", "--no-ff", rogueBase);
+  git(work, "commit", "-q", "--no-edit", "--no-verify");
+  const merge = git(work, "rev-parse", "HEAD").trim();
+  git(work, "update-ref", "refs/auto-resolve/result", merge);
+  rmSync(join(bundleDir, "merge.bundle"));
+  git(
+    work,
+    "bundle",
+    "create",
+    join(bundleDir, "merge.bundle"),
+    "refs/auto-resolve/result",
+    "--not",
+    head,
+  );
+  const before = git(origin, "rev-parse", "feature").trim();
+  const { error } = runLand(landDir, bundleDir);
+  assert.notEqual(error, null);
+  assert.equal(git(origin, "rev-parse", "feature").trim(), before);
+});
+
 test("land REFUSES a bundle whose head parent is not on the PR branch", () => {
   // The replay is only meaningful against the branches the merge claims to
   // join: without this check the merge would be re-derived from two commits the
