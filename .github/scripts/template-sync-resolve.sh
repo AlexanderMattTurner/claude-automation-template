@@ -83,9 +83,9 @@ if [[ ${#remaining[@]} -gt 0 ]]; then
   else
     echo "Handing ${#remaining[@]} conflict(s) to the model: ${remaining[*]}"
     # fanout owns the per-file prompt, the concurrency bound and the actor gate.
-    # A non-zero exit is not fatal: the marker sweep below is the real verdict,
-    # and a file the model failed on must be reported unresolved rather than
+    # A file the model failed on must be reported unresolved rather than
     # collapsing the whole sync.
+    # echo-fallback-ok: the marker sweep below is the real verdict, not this exit status
     CONFLICT_LIST="${remaining[*]}" \
       MODIFY_DELETE_PATHS="" \
       PR_NUMBER="$PR_NUMBER" \

@@ -57,10 +57,16 @@ fi
 [[ "${HAS_DELETIONS:-false}" != "true" ]] ||
   refuse "the template deleted files this repo still carries; that is a decision."
 
+# CHANGED_PATHS is a whitespace-separated list. Split it into an array rather
+# than relying on an unquoted expansion, which shellharden re-quotes into one
+# path that then matches nothing — a fail-open on the supervision check.
+read -ra changed <<<"${CHANGED_PATHS:-}"
 protected=()
-while IFS= read -r p; do
-  [[ -n "$p" ]] && protected+=("$p")
-done < <(protected_matches ${CHANGED_PATHS:-})
+if [[ ${#changed[@]} -gt 0 ]]; then
+  while IFS= read -r p; do
+    [[ -n "$p" ]] && protected+=("$p")
+  done < <(protected_matches "${changed[@]}")
+fi
 if [[ ${#protected[@]} -gt 0 ]]; then
   refuse "it changes the supervision surface (${protected[*]}), which a human reviews."
 fi
