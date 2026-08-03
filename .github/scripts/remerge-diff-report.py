@@ -394,13 +394,13 @@ def _split_by_file(diff: str) -> list[tuple[str, str]]:
     out = []
     for i in range(len(starts)):
         section = diff[bounds[i] : bounds[i + 1]]
-        plus = re.search(r"(?m)^\+\+\+ b/(.*)$", section)
-        minus = re.search(r"(?m)^--- a/(.*)$", section)
+        plus = re.search(r"(?m)^\+\+\+ b/(?P<path>.*)$", section)
+        minus = re.search(r"(?m)^--- a/(?P<path>.*)$", section)
         path = ""
-        if plus and plus.group(1) != "/dev/null":
-            path = plus.group(1)
-        elif minus and minus.group(1) != "/dev/null":
-            path = minus.group(1)
+        if plus and plus.group("path") != "/dev/null":
+            path = plus.group("path")
+        elif minus and minus.group("path") != "/dev/null":
+            path = minus.group("path")
         out.append((path, section))
     return out
 
