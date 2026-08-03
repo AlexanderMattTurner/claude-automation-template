@@ -127,8 +127,8 @@ fi
 # repo has a resolve-generated script (else DEFERRED_REGEN is always empty).
 read -ra deferred_list <<<"${DEFERRED_REGEN:-}"
 if [[ ${#deferred_list[@]} -gt 0 ]] && has_resolve_generated; then
-  # echo-fallback-ok: regeneration is best-effort by design; the unmerged check below is the real gate
   # shellcheck disable=SC2119  # no flags: this is the plain regenerate-everything run
+  # echo-fallback-ok: regeneration is best-effort by design; the unmerged check below is the real gate
   run_resolve_generated || echo "resolve-generated errored — the unmerged check below decides."
   still_unmerged=()
   for f in "${deferred_list[@]}"; do

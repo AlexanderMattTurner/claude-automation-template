@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Auto-resolve merge conflicts — PREPARE step.
 #
-# Merges the PR's base branch into the checked-out PR head, runs an OPTIONAL
-# deterministic generated-file pre-pass (`pnpm resolve-generated`, only when the
-# repo defines that script), then partitions the remaining conflicted paths so
-# the LLM only ever sees hand-mergeable text conflicts (written to
-# $GITHUB_OUTPUT):
+# Merges the PR's base branch into the checked-out PR head, runs the
+# deterministic pre-passes (regenerating derived files declared in
+# config/auto-resolve-regen-rules.json, then a mergiraf structural merge of the
+# remaining source conflicts), then partitions whatever is left so the LLM only
+# ever sees hand-mergeable text conflicts it has a real chance of judging
+# (written to $GITHUB_OUTPUT):
 #   conflict_list=...   hand-mergeable text conflicts, for the LLM prompt
 #   deferred_regen=...  generator-owned outputs whose source also conflicted;
 #                       FINALIZE regenerates them after the LLM resolves the
 #                       sources — the LLM never sees a generated artifact
-#                       (always empty in a repo with no resolve-generated script)
+#                       (always empty in a repo declaring no regen rules)
 #   unresolvable=...    `-merge`-attributed (lockfile) or binary conflicts not
 #                       owned by a generator: git leaves NO text markers and the
 #                       working tree at "ours", so neither an LLM edit nor a
@@ -132,8 +133,8 @@ fi
 # whole generated-file classification collapses to empty) when the repo has no
 # such script.
 if has_resolve_generated; then
-  # echo-fallback-ok: regeneration is best-effort by design; the bundle step's unmerged check is the real gate
   # shellcheck disable=SC2119  # no flags: this is the plain regenerate-everything run
+  # echo-fallback-ok: regeneration is best-effort by design; the bundle step's unmerged check is the real gate
   run_resolve_generated || echo "resolve-generated made no change (or errored) — continuing."
 else
   echo "no $RESOLVE_GENERATED_CONFIG — skipping the deterministic generated-file pre-pass."
