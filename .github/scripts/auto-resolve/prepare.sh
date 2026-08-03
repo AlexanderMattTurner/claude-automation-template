@@ -302,6 +302,12 @@ if [[ ${#structural_candidates[@]} -gt 0 ]]; then
       still_conflicted+=("$f")
     fi
   done
+  # Both halves are logged, because together they are the only measurement of
+  # what this pass is worth: solved / (solved + left) over a run of real
+  # resolves is the share of structural conflicts that never cost a model call.
+  if [[ ${#still_conflicted[@]} -gt 0 ]]; then
+    echo "mergiraf left ${#still_conflicted[@]} conflict(s) for the model: ${still_conflicted[*]}"
+  fi
   if [[ ${#structurally_solved[@]} -gt 0 ]]; then
     echo "mergiraf structurally resolved ${#structurally_solved[@]} conflict(s): ${structurally_solved[*]}"
     # Drop the solved paths from the model's list, keeping every other member

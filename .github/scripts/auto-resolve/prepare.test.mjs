@@ -384,11 +384,22 @@ test("mergiraf solving a conflict keeps it away from the model entirely", () => 
   assert.equal(outputs.needs_commit, "true");
 });
 
-test("a conflict mergiraf cannot solve reaches the model unchanged", () => {
+test("a conflict mergiraf cannot solve reaches the model unchanged, and is named", () => {
   const work = fixtureConflictingOn("src/thing.js");
-  const { outputs } = runPrepare(work, {}, { mergiraf: "cannot-solve" });
+  const { outputs, stdout } = runPrepare(
+    work,
+    {},
+    { mergiraf: "cannot-solve" },
+  );
   assert.equal(outputs.conflict_list, "src/thing.js");
   assert.equal(outputs.needs_llm, "true");
+  // Both halves are logged so `solved / (solved + left)` is readable from a run
+  // of real resolves. That ratio is the only measure of what the pass is worth,
+  // and it needs no new code to collect.
+  assert.match(
+    stdout,
+    /mergiraf left 1 conflict\(s\) for the model: src\/thing\.js/,
+  );
 });
 
 test("a MISSING mergiraf fails the run rather than skipping the pre-pass", () => {
