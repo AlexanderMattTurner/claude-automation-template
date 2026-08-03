@@ -1008,8 +1008,17 @@ describe("post-pr-review: the severity config is the single source of truth", ()
     assert.match(payload.comments[0].body, /^🔵 /);
   });
 
+  it("an absent config keeps the shipped model rather than failing", () => {
+    // `config/` is not in template-sync's SYNC_PATHS, so every repo that syncs
+    // this script gets it WITHOUT the config file. Treating that as fatal would
+    // red every review in every downstream repo, on a file that cannot arrive.
+    const { code, payload } = runStaged(null, NIT);
+    assert.equal(code, 0);
+    assert.equal(payload.event, "REQUEST_CHANGES", "nit gates by default");
+    assert.match(payload.comments[0].body, /^🔵 /);
+  });
+
   for (const [why, text] of [
-    ["the config is missing", null],
     ["the config is not JSON", "{ not json"],
     // An empty gating set approves every review and retires the hold with no
     // other symptom — the one failure a default would make invisible.
