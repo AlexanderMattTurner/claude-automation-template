@@ -133,6 +133,7 @@ fi
 # such script.
 if has_resolve_generated; then
   # echo-fallback-ok: regeneration is best-effort by design; the bundle step's unmerged check is the real gate
+  # shellcheck disable=SC2119  # no flags: this is the plain regenerate-everything run
   run_resolve_generated || echo "resolve-generated made no change (or errored) — continuing."
 else
   echo "no $RESOLVE_GENERATED_CONFIG — skipping the deterministic generated-file pre-pass."
