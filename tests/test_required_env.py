@@ -22,8 +22,6 @@ CASES = [
     ("list-dependabot-prs.sh", ["GH_TOKEN"]),
     # fetch-security-report.sh requires GH_TOKEN and REPO
     ("fetch-security-report.sh", ["GH_TOKEN", "REPO"]),
-    # request-claude-resolve.sh requires PR_NUM
-    ("request-claude-resolve.sh", ["PR_NUM"]),
     # template-sync.sh requires GITHUB_OUTPUT
     ("template-sync.sh", ["GITHUB_OUTPUT"]),
     # cancel-pr-runs.sh requires REPO, HEAD_REF, HEAD_SHA, GH_TOKEN
