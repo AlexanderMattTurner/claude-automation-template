@@ -7,6 +7,12 @@
 # empty string — an empty label name would make `gh pr edit --add-label ""` fail
 # obscurely, and an empty status context would silently match nothing.
 
+# Sourced by more than one lib in the same process (each names its dependency
+# explicitly rather than relying on a sibling having sourced it first), so make a
+# repeat source free instead of re-running four jq processes.
+[[ -n "${_SHARED_NAMES_SOURCED:-}" ]] && return 0
+_SHARED_NAMES_SOURCED=1
+
 _SHARED_NAMES_JSON="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shared-names.json"
 
 [[ -f "$_SHARED_NAMES_JSON" ]] || {
