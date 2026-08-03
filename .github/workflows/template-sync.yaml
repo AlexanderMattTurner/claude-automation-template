@@ -30,16 +30,21 @@ on:
   workflow_dispatch:
     inputs:
       dry-run:
+        # A `type: boolean` input arrives as a real boolean, so both this default
+        # and every condition that reads it below must be boolean too. Comparing
+        # it to the STRING 'true' silently never matches: GitHub casts across
+        # types to a number, and `true == 'true'` compares 1 with NaN. That made
+        # every "dry run" dispatch open a real pull request.
         description: "Show what would be synced without making changes"
         required: false
-        default: "false"
+        default: false
         type: boolean
   schedule:
     # Run weekly on Mondays at 9am UTC
     - cron: "0 9 * * 1"
 
 env:
-  TEMPLATE_REPO: "${{ vars.TEMPLATE_SYNC_ORG || 'alexander-turner' }}/claude-automation-template"
+  TEMPLATE_REPO: "${{ vars.TEMPLATE_SYNC_ORG || 'AlexanderMattTurner' }}/claude-automation-template"
   # Whole directories of core automation files that are always template-owned.
   # Every file under these paths propagates to downstream consumers; new files
   # added to the template auto-sync without anyone having to edit this list.
@@ -127,7 +132,7 @@ jobs:
         run: bash .github/scripts/template-sync.sh
 
       - name: Show diff (dry run)
-        if: inputs.dry-run == 'true' && steps.sync.outputs.has_changes == 'true'
+        if: inputs.dry-run == true && steps.sync.outputs.has_changes == 'true'
         env:
           HAS_CONFLICTS: ${{ steps.sync.outputs.has_conflicts }}
           HAS_DELETIONS: ${{ steps.sync.outputs.has_deletions }}
@@ -136,7 +141,7 @@ jobs:
         run: bash .github/scripts/show-sync-diff.sh
 
       - name: Create Pull Request
-        if: inputs.dry-run != 'true' && (steps.sync.outputs.has_changes == 'true' || steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true')
+        if: inputs.dry-run != true && (steps.sync.outputs.has_changes == 'true' || steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true')
         id: create-pr
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
@@ -206,12 +211,12 @@ jobs:
       # After create-pull-request the workspace is back on the base ref and the
       # markers live on the sync branch, so switch to it before resolving.
       - name: Install mergiraf (pinned, digest-verified)
-        if: inputs.dry-run != 'true' && steps.sync.outputs.has_conflicts == 'true' && steps.create-pr.outputs.pull-request-number
+        if: inputs.dry-run != true && steps.sync.outputs.has_conflicts == 'true' && steps.create-pr.outputs.pull-request-number
         run: bash .github/scripts/install-mergiraf.sh
 
       - name: Resolve the sync conflicts
         id: resolve
-        if: inputs.dry-run != 'true' && steps.sync.outputs.has_conflicts == 'true' && steps.create-pr.outputs.pull-request-number
+        if: inputs.dry-run != true && steps.sync.outputs.has_conflicts == 'true' && steps.create-pr.outputs.pull-request-number
         env:
           CONFLICT_FILES: ${{ steps.sync.outputs.conflict_files }}
           PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
@@ -237,7 +242,7 @@ jobs:
       # for the full predicate; the two carve-outs are that a model-resolved file
       # never qualifies, and neither does a change to the supervision surface.
       - name: Enable auto-merge on a fully deterministic sync
-        if: inputs.dry-run != 'true' && steps.create-pr.outputs.pull-request-number && vars.TEMPLATE_SYNC_AUTOMERGE != 'false'
+        if: inputs.dry-run != true && steps.create-pr.outputs.pull-request-number && vars.TEMPLATE_SYNC_AUTOMERGE != 'false'
         env:
           GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || github.token }}
           GH_REPO: ${{ github.repository }}
