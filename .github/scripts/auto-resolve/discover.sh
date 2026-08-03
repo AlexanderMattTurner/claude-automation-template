@@ -40,9 +40,9 @@ out="${GITHUB_OUTPUT:?GITHUB_OUTPUT required}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=.github/scripts/lib-ci-retry.sh
-source "$SCRIPT_DIR/lib-ci-retry.sh"
+source "$SCRIPT_DIR/../lib-ci-retry.sh"
 # shellcheck source=.github/scripts/lib/auto-resolve-attempt.bash
-source "$SCRIPT_DIR/lib/auto-resolve-attempt.bash"
+source "$SCRIPT_DIR/../lib/auto-resolve-attempt.bash"
 
 fields="number,mergeable,isDraft,isCrossRepository,author,headRefName,headRefOid,baseRefName,state,labels"
 

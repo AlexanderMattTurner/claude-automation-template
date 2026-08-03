@@ -237,7 +237,13 @@ main() {
     local merge_result="$WORK_DIR/merge_result_${safe_name}"
     cp "$rel_path" "$merge_result"
 
-    if git merge-file -L "local" -L "base" -L "template" \
+    # --diff3 keeps the merge-base section between `|||||||` and `=======` in a
+    # conflict. It is what lets the structural resolver work on the result at
+    # all: mergiraf refuses a diff2-style conflict outright and returns no
+    # solution, so without this every sync conflict would need a model or a
+    # human. It also shows a human reviewer what the text was before either side
+    # touched it.
+    if git merge-file --diff3 -L "local" -L "base" -L "template" \
       "$merge_result" "$base_file" "$template_file" 2>/dev/null; then
       # Detect a silent downgrade: the merge base here is the single repo-wide
       # PREV_SHA, which can be STALE for a file first synced at a different

@@ -13,10 +13,10 @@
 # a half-resolved tree — a wrong auto-resolution must never reach the branch.
 set -euo pipefail
 
-# shellcheck source=.github/scripts/auto-resolve-lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/auto-resolve-lib.sh"
+# shellcheck source=.github/scripts/auto-resolve/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 # shellcheck source=.github/scripts/lib/claude-oauth-ladder.bash
-source "$(dirname "${BASH_SOURCE[0]}")/lib/claude-oauth-ladder.bash"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/claude-oauth-ladder.bash"
 
 : "${HEAD_REF:?HEAD_REF required}"
 : "${BASE_REF:?BASE_REF required}"
@@ -127,8 +127,9 @@ fi
 # repo has a resolve-generated script (else DEFERRED_REGEN is always empty).
 read -ra deferred_list <<<"${DEFERRED_REGEN:-}"
 if [[ ${#deferred_list[@]} -gt 0 ]] && has_resolve_generated; then
+  # shellcheck disable=SC2119  # no flags: this is the plain regenerate-everything run
   # echo-fallback-ok: regeneration is best-effort by design; the unmerged check below is the real gate
-  pnpm resolve-generated || echo "resolve-generated errored — the unmerged check below decides."
+  run_resolve_generated || echo "resolve-generated errored — the unmerged check below decides."
   still_unmerged=()
   for f in "${deferred_list[@]}"; do
     [[ -n "$(git ls-files -u -- "$f")" ]] && still_unmerged+=("$f")
@@ -219,7 +220,7 @@ review_configured=false
 if [[ "$review_configured" == "true" && "${AUTO_RESOLVE_SELF_REVIEW_DISABLED:-false}" != "true" ]]; then
   pre_review_head="$(git rev-parse HEAD)"
   review_rc=0
-  bash "${SCRIPT_DIR}/auto-resolve-self-review.sh" || review_rc=$?
+  bash "${SCRIPT_DIR}/self-review.sh" || review_rc=$?
   case "$review_rc" in
   0) ;;
   1) fail "the merge-delta reviewer FLAGGED this resolution and its fix rounds did not clear it" \

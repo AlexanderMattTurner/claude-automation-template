@@ -118,7 +118,7 @@ reviews_query='query($owner: String!, $name: String!, $pr: Int!, $endCursor: Str
     pullRequest(number: $pr) {
       reviews(first: 100, after: $endCursor) {
         pageInfo { hasNextPage endCursor }
-        nodes { author { login } state submittedAt }
+        nodes { databaseId author { login } state submittedAt }
       }
     }
   }
@@ -140,6 +140,49 @@ if [[ "$body_hold_cleared" == "true" ]]; then
 else
   cleared_by="every review conversation from the automated reviewer has been resolved"
 fi
+
+# Dismiss the REVIEWER'S OWN stale CHANGES_REQUESTED. Reached only when the hold
+# is already proven clear above and the approval was structurally refused, so it
+# is the fallback lever for a hold nothing else can clear.
+#
+# Dismissal is not approval: it needs write access rather than a different actor,
+# so it succeeds exactly where the approval cannot — including for GITHUB_TOKEN,
+# which GitHub bars from approving at all, so the periodic sweep gains it too.
+#
+# The selection is what makes this safe: it filters on the reviewer's own login,
+# so a HUMAN's CHANGES_REQUESTED is never a candidate. A human hold still blocks
+# and still needs that human. Dismissing is also idempotent — a dismissed review's
+# state stops being CHANGES_REQUESTED, so a re-run finds nothing and says so.
+dismiss_stale_hold() {
+  local reason="$1" review_id dismiss_err
+  # The most recent CHANGES_REQUESTED specifically, NOT the latest review: a
+  # CHANGES_REQUESTED keeps blocking until dismissed or superseded by an APPROVED
+  # from the same reviewer, and a later COMMENTED review does not clear it. So the
+  # blocking review is routinely not the latest one.
+  review_id="$(REVIEWER_LOGIN_BARE="$REVIEWER_LOGIN_BARE" gh api graphql --paginate \
+    -f query="$reviews_query" -f owner="$owner" -f name="$name" -F pr="$PR" \
+    --jq '.data.repository.pullRequest.reviews.nodes[]
+          | select((.author.login // "" | sub("\\[bot\\]$"; "")) == env.REVIEWER_LOGIN_BARE)
+          | select(.state == "CHANGES_REQUESTED")
+          | {databaseId, submittedAt}' |
+    jq -rs 'if length == 0 then "" else (sort_by(.submittedAt) | last | .databaseId) end')"
+
+  if [[ -z "$review_id" ]]; then
+    echo "no active CHANGES_REQUESTED from ${REVIEWER_LOGIN} to dismiss — its hold was a COMMENTED review, which does not block a merge." >&2
+    return 0
+  fi
+
+  # Unlike the approval refusals above, a failed dismissal is NOT structural:
+  # nothing about this PR makes it permanently impossible, so it is a real error
+  # and must be seen rather than logged past.
+  if ! dismiss_err="$(gh api --method PUT \
+    "repos/${GH_REPO}/pulls/${PR}/reviews/${review_id}/dismissals" \
+    -f message="$reason" -f event=DISMISS 2>&1)"; then
+    echo "failed to dismiss the reviewer's stale hold (review ${review_id}): ${dismiss_err}" >&2
+    return 1
+  fi
+  echo "dismissed the reviewer's stale CHANGES_REQUESTED (review ${review_id}) — ${reason}" >&2
+}
 # Two refusals here are STRUCTURAL — no permission, retry or configuration on
 # this PR makes them succeed, so failing the job on either would red every PR
 # whose hold clears, forever, and a check that can only fail teaches nothing.
@@ -153,12 +196,12 @@ if ! approve_err="$(gh pr review "$PR" --repo "$GH_REPO" --approve --body \
   "Automated approval: ${cleared_by}, so this satisfies the review-required ruleset. Re-request review if a human should take a closer look." 2>&1)"; then
   if [[ "$approve_err" == *"not permitted to approve pull requests"* ]]; then
     echo "hold is clear, but this token cannot approve: GitHub blocks approvals from GitHub Actions." >&2
-    echo "Set the TEMPLATE_SYNC_TOKEN secret (a user PAT) so this step can post the clearing approval; until then a human must approve." >&2
+    dismiss_stale_hold "${cleared_by}, so this hold no longer reflects the pull request's state." || exit 1
     exit 0
   fi
   if [[ "$approve_err" == *"Can not approve your own pull request"* ]]; then
     echo "hold is clear, but this token's actor authored PR #${PR}, and GitHub refuses a self-approval." >&2
-    echo "The hold itself is cleared — the resolved threads are the record; another account must post the approval the ruleset wants." >&2
+    dismiss_stale_hold "${cleared_by}, so this hold no longer reflects the pull request's state." || exit 1
     exit 0
   fi
   echo "failed to post the clearing approval: ${approve_err}" >&2

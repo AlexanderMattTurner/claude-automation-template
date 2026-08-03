@@ -217,11 +217,15 @@ jobs:
       group: remerge-diff-comment-${{ github.event.pull_request.head.repo.full_name }}-${{ github.head_ref }}
       cancel-in-progress: true
     steps:
-      # The BASE ref, never the PR head: this job holds pull-requests: write, so
-      # remerge-diff-comment.sh must come from a copy the PR author cannot edit.
+      # The DEFAULT branch, never the PR head: this job holds pull-requests:
+      # write, so remerge-diff-comment.sh must come from a copy the PR author
+      # cannot edit. base.sha does not give that — a PR's base is any branch, so
+      # an author who pushes branch A and opens a PR onto it makes base.sha a
+      # commit they wrote. This job only runs for same-repo PRs, which is
+      # exactly the population that can push branches.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           sparse-checkout: |
             .github/scripts

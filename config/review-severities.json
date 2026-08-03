@@ -1,0 +1,9 @@
+{
+  "comment": "SSOT for the review-finding severity model. `gating` lists the severities whose findings escalate the posted review to REQUEST_CHANGES, which is what holds the merge until the author addresses or the reviewer clears them; `icons` maps every severity to the emoji its posted finding leads with. Consumers: post-pr-review.mjs (renders findings, decides the review event). Editing this file changes review behavior with no code change.",
+  "gating": ["blocking", "warning", "nit"],
+  "icons": {
+    "blocking": "🔴",
+    "warning": "🟡",
+    "nit": "🔵"
+  }
+}

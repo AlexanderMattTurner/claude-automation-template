@@ -16,8 +16,8 @@
 # anyway.
 set -euo pipefail
 
-# shellcheck source=.github/scripts/auto-resolve-lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/auto-resolve-lib.sh"
+# shellcheck source=.github/scripts/auto-resolve/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 : "${HEAD_REF:?HEAD_REF required}"
 : "${BASE_REF:?BASE_REF required}"

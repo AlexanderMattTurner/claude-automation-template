@@ -7,7 +7,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(HERE, "auto-resolve-discover.sh");
+const SCRIPT = join(HERE, "discover.sh");
 const scratch = () => mkdtempSync(join(tmpdir(), "auto-resolve-discover-"));
 
 // A fake `gh` that answers from JSON fixtures and applies the requested `--jq`

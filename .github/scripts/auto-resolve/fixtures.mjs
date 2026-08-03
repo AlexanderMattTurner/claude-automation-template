@@ -14,7 +14,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(HERE, "auto-resolve-bundle.sh");
+const SCRIPT = join(HERE, "bundle.sh");
 const scratch = () => mkdtempSync(join(tmpdir(), "auto-resolve-bundle-"));
 const git = (cwd, ...args) =>
   execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
@@ -44,8 +44,7 @@ function midMerge({ bContent = "b base\n", extraConflict = null } = {}) {
   git(work, "push", "-q", "origin", "main");
   git(work, "checkout", "-q", "-b", "feature");
   writeFileSync(join(work, "a.md"), "feature side\n");
-  if (extraConflict)
-    writeFileSync(join(work, extraConflict), "feature side\n");
+  if (extraConflict) writeFileSync(join(work, extraConflict), "feature side\n");
   git(work, "commit", "-q", "-am", "feature");
   git(work, "push", "-q", "origin", "feature");
   git(work, "checkout", "-q", "main");
@@ -160,6 +159,5 @@ function runBundle(work, conflictList, env = {}) {
     bundle: join(bundleDir, "merge.bundle"),
   };
 }
-
 
 export { midMerge, midMergeModifyDelete, runBundle };

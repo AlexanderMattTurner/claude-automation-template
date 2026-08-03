@@ -4,7 +4,7 @@
 # One spelling of "this line marks an unresolved hunk", so the bundling job and
 # the landing job cannot disagree about what a leftover conflict looks like.
 # shellcheck disable=SC2034  # read by the scripts that source this file, which shellcheck lints separately
-CONFLICT_MARKER_RE='^(<{7}|={7}|>{7})([ \t]|$)'
+CONFLICT_MARKER_RE='^(<{7}|\|{7}|={7}|>{7})([ \t]|$)'
 
 # The ref the resolved merge commit travels under, inside the git bundle that
 # crosses from the credential-less BUNDLE job to the LAND job. Deliberately not
@@ -68,12 +68,25 @@ is_unmergeable() {
     [[ "$(git diff --numstat HEAD MERGE_HEAD -- "$1" | cut -f1)" == "-" ]]
 }
 
-# True when this repo defines a `resolve-generated` npm script — an OPTIONAL
-# deterministic pre-pass that regenerates/stages fully-generated conflicted
-# files so the LLM only ever sees genuine source conflicts. Most repos have no
-# such generator; when the script is absent the pre-pass is skipped and every
-# conflict falls through to the LLM/unresolvable classification unchanged.
+# True when this repo declares derived-file rules — an OPTIONAL deterministic
+# pre-pass that regenerates/stages fully-generated conflicted files so the LLM
+# only ever sees genuine source conflicts. Most repos declare none; the pre-pass
+# is then skipped and every conflict falls through to the LLM/unresolvable
+# classification unchanged.
+#
+# The declaration is the CONFIG FILE, not a package.json script: a repo may have
+# no package.json at all (a dotfiles or shell repo), and mid-merge the one it
+# does have can itself carry conflict markers, which would make a package-manager
+# entrypoint die parsing its own manifest.
+RESOLVE_GENERATED_CONFIG="config/auto-resolve-regen-rules.json"
+
 has_resolve_generated() {
-  [[ -f package.json ]] &&
-    jq -e '(.scripts // {}) | has("resolve-generated")' package.json >/dev/null 2>&1
+  [[ -f "$RESOLVE_GENERATED_CONFIG" ]]
+}
+
+# Run the resolver, forwarding any flags. Invoked through `node` directly, for
+# the same reason the declaration is a config file: no package manager, no
+# manifest, nothing to parse that a mid-merge conflict could have corrupted.
+run_resolve_generated() {
+  node .github/scripts/resolve-generated.mjs "$@"
 }

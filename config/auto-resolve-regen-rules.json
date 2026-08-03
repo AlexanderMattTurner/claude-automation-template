@@ -1,0 +1,27 @@
+{
+  "comment": "Derived-file rules for the auto-resolver's deterministic pre-pass. A file listed in a rule's `owns` is GENERATED, so a merge conflict in it is never a question for a human or a model — the answer is to merge the sources and re-run the generator. .github/scripts/resolve-generated.mjs reads this file; auto-resolve/prepare.sh uses it to route generated conflicts away from the LLM, and to defer the ones whose sources also conflicted until after those sources are resolved. Ships EMPTY: a rule that names a tool the repo does not have would fail a repo that never asked for it. Add your own — the two commented examples below are the common ones.",
+
+  "schema": {
+    "command": "argv array to run, from the repo root. Exactly one of `command` or `generator`.",
+    "generator": "path to a script to run. `interpreter` (argv array) defaults to [\"node\"].",
+    "sources": "exact paths whose change requires re-running this rule.",
+    "sourcesPattern": "optional regex (string) matched against changed paths, in addition to `sources`.",
+    "owns": "exact paths this rule GENERATES. A conflict in one of these is resolved by regenerating, never by editing.",
+    "ownsPrefix": "optional path prefix, ending in '/', whose whole subtree this rule generates."
+  },
+
+  "examples": [
+    {
+      "command": ["uv", "lock"],
+      "sources": ["pyproject.toml"],
+      "owns": ["uv.lock"]
+    },
+    {
+      "command": ["pnpm", "install", "--lockfile-only"],
+      "sources": ["package.json"],
+      "owns": ["pnpm-lock.yaml"]
+    }
+  ],
+
+  "rules": []
+}

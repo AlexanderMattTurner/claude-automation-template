@@ -15,7 +15,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(HERE, "auto-resolve-self-review.sh");
+const SCRIPT = join(HERE, "self-review.sh");
 const scratch = () => mkdtempSync(join(tmpdir(), "self-review-"));
 
 const git = (cwd, ...args) =>
@@ -157,7 +157,7 @@ function fixtureBaseWorktree(root) {
   mkdirSync(join(base, ".github", "scripts"), { recursive: true });
   mkdirSync(join(base, ".github", "prompts"), { recursive: true });
   copyFileSync(
-    join(HERE, "remerge-diff-report.py"),
+    join(HERE, "..", "remerge-diff-report.py"),
     join(base, ".github", "scripts", "remerge-diff-report.py"),
   );
   for (const p of [
@@ -165,7 +165,7 @@ function fixtureBaseWorktree(root) {
     "claude-merge-delta-fix.md",
   ]) {
     copyFileSync(
-      join(HERE, "..", "prompts", p),
+      join(HERE, "..", "..", "prompts", p),
       join(base, ".github", "prompts", p),
     );
   }

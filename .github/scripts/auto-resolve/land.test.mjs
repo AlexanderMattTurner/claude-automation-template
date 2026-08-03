@@ -13,10 +13,10 @@ import {
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { midMerge, runBundle } from "./auto-resolve-fixtures.mjs";
+import { midMerge, runBundle } from "./fixtures.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(HERE, "auto-resolve-land.sh");
+const SCRIPT = join(HERE, "land.sh");
 const git = (cwd, ...args) =>
   execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
 

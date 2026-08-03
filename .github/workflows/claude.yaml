@@ -7,7 +7,7 @@ name: Claude
 #
 # WHY THIS EXISTS — template-sync linkage:
 #   template-sync.yaml opens a sync PR and, when a sync hits merge conflicts,
-#   posts an "@claude Resolve this..." comment (see request-claude-resolve.sh).
+#   posts an "@claude ..." comment asking for help.
 #   Without a listener, that comment lands in the void, so a human has to
 #   remember to open a Claude session and resolve the conflicts by hand. This
 #   workflow IS that listener — it turns the existing @claude comment into a
