@@ -136,9 +136,19 @@ let event = EVENT_BY_VERDICT[verdict] || "COMMENT";
 // detail-less finding is still dropped below and never gates (nothing to
 // resolve).
 //
-// Read from the copy that shipped beside this script. The reviewer runs against
-// an untrusted PR head, so resolving the config through the repo root would let
-// a PR author's copy decide which of its own findings hold the merge.
+// The shipped model. `config/` is NOT in template-sync's SYNC_PATHS, so an
+// adopter repo receives this script without the config file — absent therefore
+// means "kept the shipped defaults", exactly as config/pr-review-paths.json is
+// read. Treating absent as fatal would red every review in every repo that
+// syncs this script, since the file cannot arrive.
+const DEFAULT_SEVERITIES = {
+  gating: ["blocking", "warning", "nit"],
+  icons: { blocking: "🔴", warning: "🟡", nit: "🔵" },
+};
+
+// Read relative to this script, not the repo root. The reviewer runs against an
+// untrusted PR head, so a root-relative lookup would let a PR author's copy
+// decide which of its own findings hold the merge.
 const SEVERITY_CONFIG = new URL(
   "../../config/review-severities.json",
   import.meta.url,
@@ -147,18 +157,30 @@ const SEVERITY_CONFIG = new URL(
 const normSeverity = (s) =>
   typeof s === "string" ? s.trim().toLowerCase() : "";
 
-// Fail closed on every malformed shape. This refusal is what prevents the
-// vacuous green: an empty `gating` set makes hasGatingFinding permanently false,
-// so every review posts as APPROVE and the reviewer silently stops holding
-// anything — indistinguishable from a repo where nothing is ever wrong.
+// Absent is a choice; malformed is a mistake. A repo that never wrote the file
+// gets DEFAULT_SEVERITIES. A repo that DID write one and got it wrong fails
+// loud, because the failure it would otherwise cause is invisible: an empty
+// `gating` set makes hasGatingFinding permanently false, so every review posts
+// as APPROVE and the reviewer silently stops holding anything —
+// indistinguishable from a repo where nothing is ever wrong.
 function loadSeverities() {
+  let text;
+  try {
+    text = readFileSync(SEVERITY_CONFIG, "utf8");
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+    return {
+      gating: new Set(DEFAULT_SEVERITIES.gating),
+      icons: new Map(Object.entries(DEFAULT_SEVERITIES.icons)),
+    };
+  }
   let raw;
   try {
-    raw = JSON.parse(readFileSync(SEVERITY_CONFIG, "utf8"));
+    raw = JSON.parse(text);
   } catch (err) {
     throw new Error(
-      `config/review-severities.json is unreadable (${err.message}); refusing to ` +
-        "review with an unknown severity model.",
+      `config/review-severities.json is unparsable (${err.message}); refusing to ` +
+        "review with a severity model somebody meant to set and got wrong.",
     );
   }
   const bad = (why) => new Error(`config/review-severities.json: ${why}`);
