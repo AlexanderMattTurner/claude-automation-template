@@ -152,10 +152,15 @@ jobs:
           persist-credentials: false
           # A pull_request event checks out the merge ref by default, which would
           # run the PR-authored copy of this CI script — whose `prs` output drives
-          # the write-token resolve job. Pin to the trusted base so discover always
-          # runs the base version (matches the labeler's base-only checkout); on
-          # push this resolves to the pushed main SHA.
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          # the write-token resolve job. Pin to the default branch, which no PR
+          # author can write (matches the labeler's base-only checkout).
+          #
+          # base.sha is NOT sufficient here: a PR's base is any branch, so an
+          # author who can push branch A and open a PR onto it makes base.sha a
+          # commit they wrote — the exact substitution this pin exists to refuse.
+          # default_branch also resolves on push and schedule, where there is no
+          # pull_request object at all.
+          ref: ${{ github.event.repository.default_branch }}
       - name: Discover conflicting PRs
         id: discover
         env:
