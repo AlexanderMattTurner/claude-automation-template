@@ -39,8 +39,8 @@
 # out-of-band via an HTTP extraheader (the token is never written to .git/config).
 set -euo pipefail
 
-# shellcheck source=.github/scripts/auto-resolve-lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/auto-resolve-lib.sh"
+# shellcheck source=.github/scripts/auto-resolve/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # True when one side DELETED the path and the other MODIFIED it (git's
 # modify/delete): stage 1 (the merge base) exists, but only one of stage 2

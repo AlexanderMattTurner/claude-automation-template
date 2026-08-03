@@ -18,10 +18,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib-ci-retry.sh disable=SC1091
-source "$SCRIPT_DIR/lib-ci-retry.sh"
-# shellcheck source=lib/auto-resolve-attempt.bash disable=SC1091
-source "$SCRIPT_DIR/lib/auto-resolve-attempt.bash"
+# shellcheck source=../lib-ci-retry.sh disable=SC1091
+source "$SCRIPT_DIR/../lib-ci-retry.sh"
+# shellcheck source=../lib/auto-resolve-attempt.bash disable=SC1091
+source "$SCRIPT_DIR/../lib/auto-resolve-attempt.bash"
 
 : "${REPO:?REPO required}"
 

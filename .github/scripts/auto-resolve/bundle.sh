@@ -13,10 +13,10 @@
 # a half-resolved tree — a wrong auto-resolution must never reach the branch.
 set -euo pipefail
 
-# shellcheck source=.github/scripts/auto-resolve-lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/auto-resolve-lib.sh"
+# shellcheck source=.github/scripts/auto-resolve/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 # shellcheck source=.github/scripts/lib/claude-oauth-ladder.bash
-source "$(dirname "${BASH_SOURCE[0]}")/lib/claude-oauth-ladder.bash"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/claude-oauth-ladder.bash"
 
 : "${HEAD_REF:?HEAD_REF required}"
 : "${BASE_REF:?BASE_REF required}"
@@ -219,7 +219,7 @@ review_configured=false
 if [[ "$review_configured" == "true" && "${AUTO_RESOLVE_SELF_REVIEW_DISABLED:-false}" != "true" ]]; then
   pre_review_head="$(git rev-parse HEAD)"
   review_rc=0
-  bash "${SCRIPT_DIR}/auto-resolve-self-review.sh" || review_rc=$?
+  bash "${SCRIPT_DIR}/self-review.sh" || review_rc=$?
   case "$review_rc" in
   0) ;;
   1) fail "the merge-delta reviewer FLAGGED this resolution and its fix rounds did not clear it" \

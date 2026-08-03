@@ -13,7 +13,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SCRIPT = join(HERE, "auto-resolve-prepare.sh");
+const SCRIPT = join(HERE, "prepare.sh");
 const scratch = () => mkdtempSync(join(tmpdir(), "auto-resolve-"));
 
 const git = (cwd, ...args) =>
@@ -246,7 +246,7 @@ test("an add/add conflict leaves modify_delete empty", () => {
 
 test("a conflict in a PROTECTED path is handed to the LLM and logged, not escalated away", () => {
   // Which paths count as protected is the shared predicate's contract, covered
-  // member-by-member in auto-resolve-lib.test.mjs; what prepare owns is that a
+  // member-by-member in lib.test.mjs; what prepare owns is that a
   // protected conflict still goes to the LLM and is named in the run's log.
   const work = fixtureConflictingOn(".github/workflows/ci.yaml");
   const { outputs, merging, ghCalls, stdout } = runPrepare(work);

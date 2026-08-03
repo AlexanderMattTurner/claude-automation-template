@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LIB = join(HERE, "auto-resolve-lib.sh");
+const LIB = join(HERE, "lib.sh");
 
 // The protected set is the one definition BOTH the prepare log and the land
 // step's pushed-resolution warning read, so it is tested where it lives rather
@@ -65,7 +65,7 @@ test("protected_matches on an empty list is empty, not an error", () => {
 // The OAuth rung list is the fact three callers used to re-type; it is tested
 // where it now lives, member by member, so a dropped rung reds here rather than
 // only on the adopter who provisioned exactly that one.
-const LADDER = join(HERE, "lib", "claude-oauth-ladder.bash");
+const LADDER = join(HERE, "..", "lib", "claude-oauth-ladder.bash");
 function ladder(env) {
   return execFileSync(
     "bash",

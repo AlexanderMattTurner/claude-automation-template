@@ -52,14 +52,14 @@ readonly _SELF_REVIEW_ALLOWED_TOOLS="Read,Edit,Write,Grep,Glob"
 # merge and writes a per-merge all-clear under another heading is NOT a clean
 # resolution.
 # shellcheck source=.github/scripts/lib/merge-delta-verdict.bash
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/merge-delta-verdict.bash"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/merge-delta-verdict.bash"
 # CONFLICT_MARKER_RE — one spelling of "this line marks an unresolved hunk",
 # shared with the bundle and land steps.
-# shellcheck source=.github/scripts/auto-resolve-lib.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/auto-resolve-lib.sh"
+# shellcheck source=.github/scripts/auto-resolve/lib.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 # claude_oauth_ladder — the one ordered rung list every resolver caller walks.
 # shellcheck source=.github/scripts/lib/claude-oauth-ladder.bash
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/claude-oauth-ladder.bash"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/claude-oauth-ladder.bash"
 
 # One fix round by default. The worst case is what sets the job's time budget:
 # (MAX_ROUNDS + 1) reviews + MAX_ROUNDS fixes, each capped at TIMEOUT_SECONDS —
