@@ -78,13 +78,15 @@ is_unmergeable() {
 # no package.json at all (a dotfiles or shell repo), and mid-merge the one it
 # does have can itself carry conflict markers, which would make a package-manager
 # entrypoint die parsing its own manifest.
-resolve_generated_config() { echo "config/auto-resolve-regen-rules.json"; }
+RESOLVE_GENERATED_CONFIG="config/auto-resolve-regen-rules.json"
 
 has_resolve_generated() {
-  [[ -f "$(resolve_generated_config)" ]]
+  [[ -f "$RESOLVE_GENERATED_CONFIG" ]]
 }
 
-# The resolver entrypoint, run through `node` directly for the same reason.
-resolve_generated_cmd() {
-  echo "node .github/scripts/resolve-generated.mjs"
+# Run the resolver, forwarding any flags. Invoked through `node` directly, for
+# the same reason the declaration is a config file: no package manager, no
+# manifest, nothing to parse that a mid-merge conflict could have corrupted.
+run_resolve_generated() {
+  node .github/scripts/resolve-generated.mjs "$@"
 }

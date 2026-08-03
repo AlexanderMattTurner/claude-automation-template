@@ -11,7 +11,7 @@ _SHARED_NAMES_JSON="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shared-names.j
 
 [[ -f "$_SHARED_NAMES_JSON" ]] || {
   echo "shared-names: ${_SHARED_NAMES_JSON} is missing; refusing to guess label and status names." >&2
-  return 1 2>/dev/null || exit 1
+  return 1
 }
 
 # One jq pass per name, each with -e so a missing key is an error rather than the

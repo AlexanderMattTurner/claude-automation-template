@@ -128,7 +128,7 @@ fi
 read -ra deferred_list <<<"${DEFERRED_REGEN:-}"
 if [[ ${#deferred_list[@]} -gt 0 ]] && has_resolve_generated; then
   # echo-fallback-ok: regeneration is best-effort by design; the unmerged check below is the real gate
-  $(resolve_generated_cmd) || echo "resolve-generated errored — the unmerged check below decides."
+  run_resolve_generated || echo "resolve-generated errored — the unmerged check below decides."
   still_unmerged=()
   for f in "${deferred_list[@]}"; do
     [[ -n "$(git ls-files -u -- "$f")" ]] && still_unmerged+=("$f")

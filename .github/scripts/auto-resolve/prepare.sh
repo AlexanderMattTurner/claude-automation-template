@@ -133,9 +133,9 @@ fi
 # such script.
 if has_resolve_generated; then
   # echo-fallback-ok: regeneration is best-effort by design; the bundle step's unmerged check is the real gate
-  $(resolve_generated_cmd) || echo "resolve-generated made no change (or errored) — continuing."
+  run_resolve_generated || echo "resolve-generated made no change (or errored) — continuing."
 else
-  echo "no $(resolve_generated_config) — skipping the deterministic generated-file pre-pass."
+  echo "no $RESOLVE_GENERATED_CONFIG — skipping the deterministic generated-file pre-pass."
 fi
 
 mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
@@ -177,10 +177,10 @@ fi
 declare -A owned=()
 owned_prefixes=()
 if has_resolve_generated; then
-  owned_out="$($(resolve_generated_cmd) --owned)" || {
-    echo "auto-resolve/prepare: the ownership oracle ($(resolve_generated_cmd) --owned) failed." >&2
+  owned_out="$(run_resolve_generated --owned)" || {
+    echo "auto-resolve/prepare: the ownership oracle (resolve-generated --owned) failed." >&2
     echo "  Refusing to continue: treating its silence as 'nothing is generated' would hand a" >&2
-    echo "  generated artifact to the model to hand-edit. Fix $(resolve_generated_config)." >&2
+    echo "  generated artifact to the model to hand-edit. Fix ${RESOLVE_GENERATED_CONFIG}." >&2
     exit 1
   }
   while IFS= read -r f; do

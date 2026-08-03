@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2034  # every value here is consumed by a script that SOURCES this file
 # Pinned versions and digests for tools CI downloads directly, rather than
 # through a package manager that would do its own integrity check.
 #
