@@ -73,6 +73,14 @@ git_auth_header "$GITHUB_TOKEN"
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+# diff3 markers, which keep the merge-base section between `|||||||` and `=======`.
+# This is what makes the structural pre-pass work AT ALL: mergiraf refuses a
+# diff2 conflict outright ("Cannot solve conflicts in diff2 style") and returns
+# no solution, so with git's default style every structural conflict would route
+# to the paid model pass while the pre-pass reported nothing wrong. The extra
+# section also gives the model the base text it otherwise has to infer.
+git config merge.conflictStyle diff3
+
 # The EXPLICIT refspec is load-bearing. A bare `git fetch origin "$BASE_REF"`
 # updates FETCH_HEAD but not necessarily refs/remotes/origin/<base> when the
 # checkout was made with a narrowed fetch refspec — so the merge below reads a
@@ -293,7 +301,13 @@ if [[ ${#structural_candidates[@]} -gt 0 ]]; then
   structurally_solved=()
   still_conflicted=()
   for f in "${structural_candidates[@]}"; do
+    # -s (non-empty) is load-bearing, not belt-and-braces. mergiraf exits 0 and
+    # prints NOTHING when it cannot generate a solution, so an exit-status and
+    # marker-absence test alone accepts an empty result — and this loop would
+    # then overwrite the conflicted file with nothing, stage it, and drop it
+    # from the model's list. Silent data loss, reported as a structural solve.
     if timeout 60 "$mergiraf_bin" solve -p "./${f}" >"$mergiraf_scratch/solved" 2>"$mergiraf_scratch/log" &&
+      [[ -s "$mergiraf_scratch/solved" ]] &&
       ! grep -q '^<<<<<<<' "$mergiraf_scratch/solved"; then
       cat "$mergiraf_scratch/solved" >"$f"
       git add "./${f}"

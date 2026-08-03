@@ -128,6 +128,9 @@ function fixtureModifyDelete(file, deletedOn) {
 //                              staged and dropped from the model's list.
 //   "absent"                  — no binary at all, to prove prepare refuses
 //                              rather than silently skipping the pass.
+//   "empty-success"           — exits 0 printing NOTHING, which is what the real
+//                              binary does when it cannot generate a solution.
+//                              The file must survive untouched.
 // The stubs keep these unit tests hermetic; the real binary's behavior is
 // pinned separately by install-mergiraf.sh's own CLI-contract probe.
 function runPrepare(work, extraEnv = {}, { mergiraf = "cannot-solve" } = {}) {
@@ -147,10 +150,12 @@ function runPrepare(work, extraEnv = {}, { mergiraf = "cannot-solve" } = {}) {
     const mergirafPath = join(ghBin, "mergiraf");
     // "solves" emits the conflicted file with the marker lines stripped, which
     // is a marker-free result and so counts as a full solve.
-    const body =
-      mergiraf === "solves"
-        ? `#!/usr/bin/env bash\nf="\${!#}"\ngrep -v -E '^(<<<<<<<|=======|>>>>>>>|\\|\\|\\|\\|\\|\\|\\|)' "$f"\nexit 0\n`
-        : `#!/usr/bin/env bash\nexit 1\n`;
+    const bodies = {
+      solves: `#!/usr/bin/env bash\nf="\${!#}"\ngrep -v -E '^(<<<<<<<|=======|>>>>>>>|\\|\\|\\|\\|\\|\\|\\|)' "$f"\nexit 0\n`,
+      "empty-success": `#!/usr/bin/env bash\nexit 0\n`,
+      "cannot-solve": `#!/usr/bin/env bash\nexit 1\n`,
+    };
+    const body = bodies[mergiraf] ?? bodies["cannot-solve"];
     writeFileSync(mergirafPath, body);
     chmodSync(mergirafPath, 0o755);
   }
@@ -399,6 +404,41 @@ test("a conflict mergiraf cannot solve reaches the model unchanged, and is named
   assert.match(
     stdout,
     /mergiraf left 1 conflict\(s\) for the model: src\/thing\.js/,
+  );
+});
+
+test("an EMPTY mergiraf success never overwrites the file", () => {
+  // The real binary exits 0 and prints nothing when it cannot generate a
+  // solution — notably on diff2-style markers, which it refuses outright. An
+  // exit-status-and-no-markers test alone accepts that empty output, and the
+  // file would be overwritten with nothing, staged, and dropped from the
+  // model's list: silent data loss reported as a structural solve.
+  const work = fixtureConflictingOn("src/thing.js");
+  const { outputs } = runPrepare(work, {}, { mergiraf: "empty-success" });
+  assert.equal(
+    outputs.conflict_list,
+    "src/thing.js",
+    "the conflict must reach the model",
+  );
+  const onDisk = readFileSync(join(work, "src/thing.js"), "utf8");
+  assert.notEqual(onDisk.trim(), "", "prepare truncated the conflicted file");
+  assert.match(
+    onDisk,
+    /<<<<<<</,
+    "the unresolved conflict must be left intact",
+  );
+});
+
+test("the merge uses diff3 markers, without which mergiraf solves nothing", () => {
+  // mergiraf refuses a diff2 conflict outright ("Cannot solve conflicts in
+  // diff2 style"). With git's default style the structural pass would be inert:
+  // every structural conflict routes to the paid pass and nothing reports it.
+  const work = fixtureConflictingOn("src/thing.js");
+  runPrepare(work, {}, { mergiraf: "cannot-solve" });
+  assert.match(
+    readFileSync(join(work, "src/thing.js"), "utf8"),
+    /^\|{7}/m,
+    "no diff3 base section — mergiraf cannot solve these markers",
   );
 });
 

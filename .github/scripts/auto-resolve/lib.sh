@@ -4,7 +4,7 @@
 # One spelling of "this line marks an unresolved hunk", so the bundling job and
 # the landing job cannot disagree about what a leftover conflict looks like.
 # shellcheck disable=SC2034  # read by the scripts that source this file, which shellcheck lints separately
-CONFLICT_MARKER_RE='^(<{7}|={7}|>{7})([ \t]|$)'
+CONFLICT_MARKER_RE='^(<{7}|\|{7}|={7}|>{7})([ \t]|$)'
 
 # The ref the resolved merge commit travels under, inside the git bundle that
 # crosses from the credential-less BUNDLE job to the LAND job. Deliberately not
