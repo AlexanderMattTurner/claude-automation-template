@@ -128,7 +128,10 @@ const GIT_CONFIG_INJECTION = /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)$/;
 const RUNNER_CHANNEL = /^GITHUB_(ENV|PATH|OUTPUT|STATE)$/;
 
 function scrubbedEnv() {
-  const out = {};
+  // Null-prototype: the keys here are environment variable names, which are
+  // attacker-influenceable, and a plain object would route a variable named
+  // `__proto__` through the prototype chain instead of storing it.
+  const out = Object.create(null);
   for (const [k, v] of Object.entries(process.env)) {
     if (
       SECRETISH.test(k) ||
