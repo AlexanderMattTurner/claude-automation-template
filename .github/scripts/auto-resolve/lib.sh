@@ -68,12 +68,23 @@ is_unmergeable() {
     [[ "$(git diff --numstat HEAD MERGE_HEAD -- "$1" | cut -f1)" == "-" ]]
 }
 
-# True when this repo defines a `resolve-generated` npm script — an OPTIONAL
-# deterministic pre-pass that regenerates/stages fully-generated conflicted
-# files so the LLM only ever sees genuine source conflicts. Most repos have no
-# such generator; when the script is absent the pre-pass is skipped and every
-# conflict falls through to the LLM/unresolvable classification unchanged.
+# True when this repo declares derived-file rules — an OPTIONAL deterministic
+# pre-pass that regenerates/stages fully-generated conflicted files so the LLM
+# only ever sees genuine source conflicts. Most repos declare none; the pre-pass
+# is then skipped and every conflict falls through to the LLM/unresolvable
+# classification unchanged.
+#
+# The declaration is the CONFIG FILE, not a package.json script: a repo may have
+# no package.json at all (a dotfiles or shell repo), and mid-merge the one it
+# does have can itself carry conflict markers, which would make a package-manager
+# entrypoint die parsing its own manifest.
+resolve_generated_config() { echo "config/auto-resolve-regen-rules.json"; }
+
 has_resolve_generated() {
-  [[ -f package.json ]] &&
-    jq -e '(.scripts // {}) | has("resolve-generated")' package.json >/dev/null 2>&1
+  [[ -f "$(resolve_generated_config)" ]]
+}
+
+# The resolver entrypoint, run through `node` directly for the same reason.
+resolve_generated_cmd() {
+  echo "node .github/scripts/resolve-generated.mjs"
 }

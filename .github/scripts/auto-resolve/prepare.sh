@@ -72,7 +72,12 @@ git_auth_header "$GITHUB_TOKEN"
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-git fetch --no-tags origin "$BASE_REF"
+# The EXPLICIT refspec is load-bearing. A bare `git fetch origin "$BASE_REF"`
+# updates FETCH_HEAD but not necessarily refs/remotes/origin/<base> when the
+# checkout was made with a narrowed fetch refspec — so the merge below reads a
+# STALE origin/<base> and merges an out-of-date base, and no command fails. The
+# run then reports a resolution against a base that has since moved.
+git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
 
 # Captured before the merge: a clean merge (or fast-forward) moves HEAD, and the
 # no-op exit must report the commit the mark-attempt step recorded, not the tip
@@ -80,12 +85,43 @@ git fetch --no-tags origin "$BASE_REF"
 # SHA that was marked.
 premerge_head="$(git rev-parse HEAD)"
 
-if git merge --no-edit "origin/${BASE_REF}"; then
-  echo "No conflicts merging ${BASE_REF} into ${HEAD_REF} — nothing to resolve."
+no_op_exit() {
+  # A no-op is reported as a WARNING, never a silent green: this step runs
+  # because something upstream said the PR was conflicting, so a run that
+  # resolves nothing means the two disagree. Silent, that disagreement is
+  # invisible for as long as it persists.
+  echo "::warning::auto-resolve/prepare: $1"
   {
     echo "needs_llm=false"
     echo "needs_commit=false"
     echo "no_op_head=${premerge_head}"
+  } >>"$out"
+  exit 0
+}
+
+# A clean `git merge` has THREE outcomes, and they need different answers.
+# Treating all three as "nothing to do" strands a PR that git could merge, and
+# treating all three as "push it" empties a PR that only fast-forwarded.
+if git merge --no-edit "origin/${BASE_REF}"; then
+  if git merge-base --is-ancestor "origin/${BASE_REF}" "$premerge_head"; then
+    no_op_exit "${HEAD_REF} already contains ${BASE_REF}; nothing to merge."
+  fi
+
+  if [[ "$(git rev-list --count "${premerge_head}..HEAD")" -gt 0 ]] &&
+    git merge-base --is-ancestor "$premerge_head" "origin/${BASE_REF}"; then
+    # The merge FAST-FORWARDED: the PR branch had no commits of its own that the
+    # base lacks, so HEAD moved onto the base tip. Pushing that would make the
+    # pull request's diff empty. Refuse, loudly.
+    no_op_exit "merging ${BASE_REF} fast-forwarded ${HEAD_REF}, which would empty the pull request; refusing to push."
+  fi
+
+  # Genuinely clean, and a real merge commit: git merged what the API called
+  # conflicting. Push it — this is the case the old code stranded, having
+  # already marked the head attempted so nothing retried it.
+  echo "Merged ${BASE_REF} into ${HEAD_REF} with no conflicts — committing without Claude."
+  {
+    echo "needs_llm=false"
+    echo "needs_commit=true"
   } >>"$out"
   exit 0
 fi
@@ -97,9 +133,9 @@ fi
 # such script.
 if has_resolve_generated; then
   # echo-fallback-ok: regeneration is best-effort by design; the bundle step's unmerged check is the real gate
-  pnpm resolve-generated || echo "resolve-generated made no change (or errored) — continuing."
+  $(resolve_generated_cmd) || echo "resolve-generated made no change (or errored) — continuing."
 else
-  echo "no resolve-generated script defined — skipping deterministic generated-file pre-pass."
+  echo "no $(resolve_generated_config) — skipping the deterministic generated-file pre-pass."
 fi
 
 mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
@@ -126,15 +162,41 @@ if [[ ${#conflicts[@]} -eq 0 ]]; then
   exit 0
 fi
 
-# Generator-owned paths (empty with no resolve-generated script, or when the head
-# branch's resolve-generated predates `--owned`; those conflicts then fall
-# through to the LLM/unresolvable classes).
+# Generator-owned paths: the ownership oracle deciding which conflicts are
+# GENERATED, and so have no correct hand resolution.
+#
+# This FAILS CLOSED. An oracle that answers "nothing is owned" when it breaks
+# misroutes exactly the paths it exists to route: a generated artifact would
+# reach the model, which would hand-edit it into a state matching neither the
+# sources nor what the generator produces. So a non-zero exit here aborts the
+# run rather than degrading into an empty owned set.
+#
+# A trailing-slash entry is a PREFIX — the rule generates that whole subtree,
+# which covers output directories whose filenames it cannot enumerate ahead of
+# time, and paths present on only one side of the merge.
 declare -A owned=()
+owned_prefixes=()
 if has_resolve_generated; then
+  owned_out="$($(resolve_generated_cmd) --owned)" || {
+    echo "auto-resolve/prepare: the ownership oracle ($(resolve_generated_cmd) --owned) failed." >&2
+    echo "  Refusing to continue: treating its silence as 'nothing is generated' would hand a" >&2
+    echo "  generated artifact to the model to hand-edit. Fix $(resolve_generated_config)." >&2
+    exit 1
+  }
   while IFS= read -r f; do
-    [[ -n "$f" ]] && owned["$f"]=1
-  done < <(pnpm -s resolve-generated --owned 2>/dev/null || true) # allow-double-swallow: best-effort — an older head branch's resolve-generated lacks --owned, so the empty owned map is the documented, intended fallthrough to the LLM/unresolvable classes
+    [[ -z "$f" ]] && continue
+    if [[ "$f" == */ ]]; then owned_prefixes+=("$f"); else owned["$f"]=1; fi
+  done <<<"$owned_out"
 fi
+
+is_owned() {
+  [[ -n "${owned["$1"]:-}" ]] && return 0
+  local p
+  for p in "${owned_prefixes[@]}"; do
+    [[ "$1" == "$p"* ]] && return 0
+  done
+  return 1
+}
 
 # Partition. An owned conflict means its source ALSO conflicted (the pre-pass
 # already resolved the clean-source ones) — the bundle step regenerates it after the
@@ -152,14 +214,23 @@ llm_list=()
 deferred_regen=()
 unresolvable=()
 modify_delete=()
+structural_candidates=()
 for f in "${conflicts[@]}"; do
-  if [[ -n "${owned["$f"]:-}" ]]; then
+  if is_owned "$f"; then
     deferred_regen+=("$f")
   elif is_unmergeable "$f"; then
     unresolvable+=("$f")
   else
     if is_modify_delete "$f"; then
       modify_delete+=("$f")
+    else
+      # Modify/delete paths are excluded from the structural pass BY
+      # CONSTRUCTION, not filtered out afterwards. Git writes no markers for
+      # one — it leaves the surviving side's content verbatim — so a
+      # marker-free result there is not a solve, and staging it would silently
+      # resurrect a file the branch deliberately deleted, without the model
+      # ever seeing the path.
+      structural_candidates+=("$f")
     fi
     llm_list+=("$f")
   fi
@@ -191,6 +262,56 @@ while IFS= read -r f; do
 done < <(protected_matches "${conflicts[@]}")
 if [[ ${#protected_hits[@]} -gt 0 ]]; then
   echo "Conflict in protected path(s) '${protected_hits[*]}' — the land step will flag for human review; still auto-resolving."
+fi
+
+# Structural pre-pass: a syntax-aware merge. Where git compares lines, mergiraf
+# parses both sides and merges by syntax node, so two branches that each add a
+# different import, a different key to the same object, or move a declaration
+# past one another are merged rather than conflicting. Every file it fully
+# solves is staged here and never reaches the paid model pass.
+#
+# A file counts as solved only on exit 0 AND a marker-free result. `-p` prints to
+# stdout and leaves the file untouched, so anything less than a full solve
+# reaches the model byte-identical to what git wrote.
+#
+# The binary is REQUIRED once there is a source conflict. A missing tool that
+# silently routed every structural conflict to the paid pass is the inert-feature
+# failure: nothing goes red, the feature is simply dead, and the only symptom is
+# the bill. Override with MERGIRAF_BIN for tests.
+if [[ ${#structural_candidates[@]} -gt 0 ]]; then
+  mergiraf_bin="${MERGIRAF_BIN:-mergiraf}"
+  command -v "$mergiraf_bin" >/dev/null || {
+    echo "auto-resolve/prepare: '${mergiraf_bin}' not found on PATH. The resolve job installs it" >&2
+    echo "  via .github/scripts/install-mergiraf.sh; refusing to silently skip the structural" >&2
+    echo "  pre-pass and route every structural conflict to the paid model pass." >&2
+    exit 1
+  }
+  mergiraf_scratch="$(mktemp -d)"
+  trap 'rm -rf "$mergiraf_scratch"' EXIT
+  structurally_solved=()
+  still_conflicted=()
+  for f in "${structural_candidates[@]}"; do
+    if timeout 60 "$mergiraf_bin" solve -p "./${f}" >"$mergiraf_scratch/solved" 2>"$mergiraf_scratch/log" &&
+      ! grep -q '^<<<<<<<' "$mergiraf_scratch/solved"; then
+      cat "$mergiraf_scratch/solved" >"$f"
+      git add "./${f}"
+      structurally_solved+=("$f")
+    else
+      still_conflicted+=("$f")
+    fi
+  done
+  if [[ ${#structurally_solved[@]} -gt 0 ]]; then
+    echo "mergiraf structurally resolved ${#structurally_solved[@]} conflict(s): ${structurally_solved[*]}"
+    # Drop the solved paths from the model's list, keeping every other member
+    # (the modify/delete paths never entered structural_candidates).
+    remaining=()
+    for f in "${llm_list[@]}"; do
+      solved=false
+      for s in "${structurally_solved[@]}"; do [[ "$f" == "$s" ]] && solved=true && break; done
+      [[ "$solved" == true ]] || remaining+=("$f")
+    done
+    llm_list=("${remaining[@]}")
+  fi
 fi
 
 needs_llm=false

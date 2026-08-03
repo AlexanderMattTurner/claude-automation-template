@@ -335,6 +335,17 @@ jobs:
             echo "mark-attempt script absent on base ref (bootstrap window) — skipping."
           fi
 
+      - name: Install mergiraf (pinned, digest-verified)
+        # Backs prepare.sh's structural pre-pass: a syntax-aware merge that
+        # resolves the structural subset of the conflicts, so only genuinely
+        # semantic ones reach the paid model pass. Run from the STAGED resolver
+        # copy, not the PR's own, for the same reason every other step here is.
+        # prepare.sh refuses to continue without it rather than routing every
+        # structural conflict to the model, so a failure here is loud.
+        env:
+          RESOLVER_DIR: ${{ steps.resolver.outputs.dir }}
+        run: bash "${RESOLVER_DIR}/install-mergiraf.sh"
+
       - name: Merge base, deterministic pre-pass, and protected-path flag
         id: prepare
         env:
