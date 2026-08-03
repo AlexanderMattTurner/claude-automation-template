@@ -180,9 +180,9 @@ jobs:
         # that bootstrap window emit an empty set (resolve is skipped) rather than
         # failing on the missing file — a missing discover can only under-act.
         run: |
-          script=.github/scripts/auto-resolve/discover.sh
+          script=.github/scripts/auto-resolve/discover.py
           if [[ -f "$script" ]]; then
-            bash "$script"
+            python3 "$script"
           else
             echo "discover script absent on base ref (bootstrap window) — nothing to resolve."
             echo "prs=[]" >>"$GITHUB_OUTPUT"
@@ -268,10 +268,10 @@ jobs:
       # commits.
       MAX_PARALLEL: "4"
       SHARD_TIMEOUT_SECONDS: "420"
-      # Repository-variable knobs, empty when unset (every script defaults an
-      # empty value): the attempt TTL this job's mark is written under, and the
-      # paths a resolution here wants a human's eye on.
-      AUTO_RESOLVE_ATTEMPT_TTL_HOURS: ${{ vars.AUTO_RESOLVE_ATTEMPT_TTL_HOURS }}
+      # Repository-variable knob, empty when unset (every script defaults an
+      # empty value): the paths a resolution here wants a human's eye on. The
+      # attempt TTL is not passed: this job only WRITES the mark, and the TTL is
+      # read where the mark is read, in discover.py.
       AUTO_RESOLVE_PROTECTED_RE: ${{ vars.AUTO_RESOLVE_PROTECTED_RE }}
     steps:
       - name: Checkout PR head

@@ -71,7 +71,7 @@ test("it releases the SHA prepare reported, on the context discover reads", () =
   // The fast-forward no-op moves HEAD off the marked commit; releasing HEAD
   // would hand back an attempt on the base's tip and leave the real head marked.
   assert.ok(!post.includes(worktreeHead), post);
-  // `-released` is the suffix commit_status_mark_fresh subtracts; any other
+  // `-released` is the suffix discover.py's freshness read subtracts; any other
   // context posts a status no reader ever consults.
   assert.ok(post.includes("context=auto-resolve/attempted-released"), post);
   // Green, not red: a failing status on the PR head reports the head UNSTABLE,
