@@ -71,7 +71,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 1
@@ -129,7 +129,7 @@ jobs:
       # persist-credentials stays on (artipacked ignored): this job uploads no
       # artifacts, so no token can leak into one, and the script needs the token
       # to `git fetch` a possibly-orphaned pre-push SHA from a private repo.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 # zizmor: ignore[artipacked]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0 # zizmor: ignore[artipacked]
         with:
           fetch-depth: 0
       - name: Check the push dropped no prior commit
@@ -169,7 +169,7 @@ jobs:
       # exist for a conflicted PR, and conflicted PRs are exactly where merge
       # commits (and their resolutions) accumulate. Full history — remerge
       # reconstruction needs both parents' trees.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # frozen-head-ok: this ref: selects which commit to fetch, not a diff
           # range computation — the run: step below re-derives the range head
@@ -194,7 +194,7 @@ jobs:
           if [[ -s "$RUNNER_TEMP/remerge-report.md" ]]; then
             cat "$RUNNER_TEMP/remerge-report.md" >>"$GITHUB_STEP_SUMMARY"
           fi
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: remerge-report
           path: ${{ runner.temp }}/remerge-report.md
@@ -223,14 +223,14 @@ jobs:
       # an author who pushes branch A and opens a PR onto it makes base.sha a
       # commit they wrote. This job only runs for same-repo PRs, which is
       # exactly the population that can push branches.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           sparse-checkout: |
             .github/scripts
           sparse-checkout-cone-mode: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: remerge-report
           path: ${{ runner.temp }}

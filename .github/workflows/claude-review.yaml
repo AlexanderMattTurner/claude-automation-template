@@ -102,7 +102,7 @@ jobs:
       model: ${{ steps.decide.outputs.model }}
     steps:
       - name: Checkout base (trusted) decide script
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Default branch only (trusted), never the untrusted PR head — the
           # same posture the review job takes. The script is read as trusted
@@ -144,7 +144,7 @@ jobs:
       pull-requests: write # post the review
     steps:
       - name: Checkout base (trusted) branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # This refusal to check out anything a PR author can write is what
           # keeps pull_request_target's secrets out of PR-authored code.
@@ -310,7 +310,7 @@ jobs:
       pull-requests: write # submit an approving review; no other scope
     steps:
       - name: Checkout base (trusted) approval script
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Default branch only (trusted) — never the untrusted PR head, and
           # never base.ref, which a PR author can write. Matches the
@@ -376,7 +376,7 @@ jobs:
       PR: ${{ github.event.pull_request.number }}
     steps:
       - name: Checkout base (trusted) branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Default branch (trusted repo content), never the untrusted PR head
           # and never the author-writable base.ref — same rationale as the
@@ -504,7 +504,7 @@ jobs:
       PR: ${{ github.event.pull_request.number }}
     steps:
       - name: Checkout base (trusted) branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Default branch (trusted repo content), never the untrusted PR head —
           # same rationale as the review job: base.ref is author-writable, and
