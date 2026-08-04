@@ -141,6 +141,34 @@ def test_opt_out_comment_suppresses(tmp_path: Path, source: str) -> None:
     assert result.returncode == 0, result.stderr
 
 
+# The hook's `files:` pattern must match the extensionless git hooks, so it also
+# matches anything else sitting beside them. Parsing a non-shell neighbour as
+# bash turns a `| head` inside a prose code span into a reported pipeline.
+def test_ignores_a_non_shell_file(tmp_path: Path) -> None:
+    doc = tmp_path / "README.md"
+    doc.write_text("# Hooks\n\nRun `set -o pipefail`, then `producer | head -5`.\n")
+    result = subprocess.run(
+        [sys.executable, str(LINT), str(doc)], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "shebang",
+    ["#!/bin/bash\n", "#!/bin/sh\n", "#!/usr/bin/env bash\n"],
+    ids=["bash", "sh", "env-bash"],
+)
+def test_checks_an_extensionless_shell_script(tmp_path: Path, shebang: str) -> None:
+    """The skip above must not swallow the git hooks it exists alongside: they
+    carry no extension, so the shebang is the only thing marking them shell."""
+    hook = tmp_path / "pre-commit"
+    hook.write_text(shebang + PIPEFAIL + "producer | head -5\n")
+    result = subprocess.run(
+        [sys.executable, str(LINT), str(hook)], capture_output=True, text=True
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
 @pytest.mark.parametrize(
     "source",
     [

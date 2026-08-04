@@ -533,11 +533,32 @@ def violations(source: bytes) -> list[tuple[int, str]]:
     return sorted(found)
 
 
+_SHELL_SUFFIXES = (".sh", ".bash")
+
+
+def is_shell(path: str, source: bytes) -> bool:
+    """Whether *source* should be read as shell at all.
+
+    The pre-commit `files:` pattern has to match the extensionless git hooks
+    (`.hooks/pre-commit`), which makes it match anything else that lands beside
+    them — a `.hooks/README.md` would otherwise be parsed as bash, and a
+    `| head` inside a prose code span reported as a pipeline. The skip is narrow
+    rather than vacuous: a file is dropped only when it neither carries a shell
+    extension nor declares a shell interpreter, which no real script does.
+    """
+    if path.endswith(_SHELL_SUFFIXES):
+        return True
+    shebang = source.split(b"\n", 1)[0]
+    return shebang.startswith(b"#!") and b"sh" in shebang.rsplit(b"/", 1)[-1]
+
+
 def main(argv: list[str]) -> None:
     failed = False
     for path in argv:
         with open(path, "rb") as fh:
             source = fh.read()
+        if not is_shell(path, source):
+            continue
         for line, reason in violations(source):
             failed = True
             print(
