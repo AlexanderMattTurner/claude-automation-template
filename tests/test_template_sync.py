@@ -60,6 +60,7 @@ def run_sync(
     *,
     sync_paths: str,
     exclude_paths: str = "",
+    opt_in_paths: str = "",
 ) -> tuple[subprocess.CompletedProcess, Path]:
     template_copy = child / "_template"
     if template_copy.exists():
@@ -76,6 +77,7 @@ def run_sync(
         **GIT_IDENTITY_ENV,
         "SYNC_PATHS": sync_paths,
         "EXCLUDE_PATHS": exclude_paths,
+        "OPT_IN_PATHS": opt_in_paths,
         "GITHUB_OUTPUT": str(output_file),
         "TEMPLATE_SYNC_WORK_DIR": str(work),
     }
@@ -310,6 +312,48 @@ def test_per_file_excludes_within_synced_directory(workdir: Path) -> None:
 
     assert (child / "config" / "keep.txt").read_text() == "keep this\n"
     assert not (child / "config" / "skip.txt").exists()
+
+
+def test_opt_in_path_absent_locally_is_not_introduced(workdir: Path) -> None:
+    """The collision guard: a repo that never had the release workflow must not
+    be handed one. Two publishers on one default branch race the same semver
+    bump, and the loser fails with an npm 404 that names no duplicate."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "always.txt", "always synced\n")
+    write(template / "config" / "opt-in.txt", "only if you already have it\n")
+    commit_all(template)
+
+    result, _ = run_sync(
+        child,
+        template,
+        sync_paths="config",
+        opt_in_paths="config/opt-in.txt",
+    )
+    assert result.returncode == 0, result.stderr
+
+    assert (child / "config" / "always.txt").exists()
+    assert not (child / "config" / "opt-in.txt").exists()
+    assert "Opt-in only, not present locally: config/opt-in.txt" in result.stdout
+
+
+def test_opt_in_path_present_locally_is_updated(workdir: Path) -> None:
+    """Opting in is creating the file once — after that it syncs like any other."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "opt-in.txt", "v2 from template\n")
+    commit_all(template)
+    write(child / "config" / "opt-in.txt", "v1 adopted earlier\n")
+    commit_all(child)
+
+    result, _ = run_sync(
+        child,
+        template,
+        sync_paths="config",
+        opt_in_paths="config/opt-in.txt",
+    )
+    assert result.returncode == 0, result.stderr
+    assert (child / "config" / "opt-in.txt").read_text() == "v2 from template\n"
 
 
 def test_per_file_exclude_suppresses_deletion_report(workdir: Path) -> None:

@@ -131,6 +131,18 @@ repos:
         args: [".github/"]
         files: ^\.github/
 
+      # The template's JS propagates into consumers who point `eslint .` at their
+      # whole tree, so template-owned files that violate a common rule set break
+      # THEIR lint — and, where a release gates on it, their publish. Lint the
+      # propagated files here under that rule set (eslint.config.mjs) so the
+      # breakage lands on the template's own PR instead of downstream.
+      - id: eslint-propagated-js
+        name: eslint (files the template propagates)
+        entry: pnpm exec eslint .
+        language: system
+        pass_filenames: false
+        files: ^(\.claude/.*|\.github/scripts/.*|tests/.*|eslint\.config)\.(js|mjs|cjs)$
+
       - id: validate-config
         name: validate Claude hook configuration
         entry: bash .github/scripts/validate-config.sh

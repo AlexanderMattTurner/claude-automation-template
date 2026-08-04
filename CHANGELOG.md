@@ -12,6 +12,30 @@ the prose from the release's commits.
 
 ## Unreleased
 
+### Fixed
+
+- Template-sync no longer introduces `auto-version.yaml` into a repo that does
+  not already have it (new `OPT_IN_PATHS` mechanism). A consumer with its own
+  release workflow used to end up with two publishers on the default branch;
+  their concurrency groups differ, so both computed the same semver bump and the
+  loser died on an `npm error code E404 … PUT` that named no duplicate. Adopting
+  the workflow is copying the file in once; opting out is deleting it.
+- `version-bump.sh` recognizes losing that race instead of failing on it: it
+  skips when the version's tag is already on the remote, and classifies a
+  publish `E404` by re-probing the registry rather than by reading the message.
+  A 404 on a version that is genuinely absent still fails loud.
+- The release checkout accepts an optional `RELEASE_BYPASS_TOKEN` (an own-owner
+  PAT registered as a ruleset bypass actor) and falls back to `GITHUB_TOKEN`, so
+  a protected default branch no longer rejects the release commit and tag with
+  GH013 and strands every release.
+
+### Changed
+
+- The template's own JavaScript is linted (`eslint.config.mjs`, wired into
+  pre-commit) under the rule set a consumer running `eslint .` over its whole
+  tree would apply. Template-owned files previously contributed dozens of errors
+  to consumers' lint, blocking publishing where a release gates on it.
+
 ### Added
 
 - `drop-superseded-ci-events.mjs` UserPromptSubmit hook: when a subscribed PR
