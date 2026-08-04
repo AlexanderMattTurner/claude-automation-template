@@ -314,6 +314,93 @@ def test_per_file_excludes_within_synced_directory(workdir: Path) -> None:
     assert not (child / "config" / "skip.txt").exists()
 
 
+def test_a_directory_exclusion_covers_the_files_under_it(workdir: Path) -> None:
+    """An EXCLUDE_PATHS entry that names a directory keeps every file under it out.
+
+    The sync tests one file path at a time, so an equality-only match never
+    recognises the directory entry and copies each file in anyway. That is the
+    silent form of the failure: the exclusion is present, and it excludes
+    nothing.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "keep" / "a.txt", "from template\n")
+    write(template / "config" / "skip" / "b.txt", "also from template\n")
+    commit_all(template)
+
+    result, _ = run_sync(
+        child, template, sync_paths="config", exclude_paths="config/skip"
+    )
+    assert result.returncode == 0, result.stderr
+
+    assert (child / "config" / "keep" / "a.txt").exists()
+    assert not (child / "config" / "skip" / "b.txt").exists()
+
+
+def test_a_directory_opt_in_covers_the_files_under_it(workdir: Path) -> None:
+    """An OPT_IN_PATHS entry that names a directory covers every file under it."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "always.txt", "always synced\n")
+    write(template / "config" / "opt-in" / "a.txt", "only on request\n")
+    commit_all(template)
+
+    result, _ = run_sync(
+        child, template, sync_paths="config", opt_in_paths="config/opt-in"
+    )
+    assert result.returncode == 0, result.stderr
+
+    assert (child / "config" / "always.txt").exists()
+    assert not (child / "config" / "opt-in" / "a.txt").exists()
+
+
+def test_a_file_the_adopter_deleted_is_not_re_added(workdir: Path) -> None:
+    """A template file the adopter deleted after a sync stays deleted.
+
+    Case 1 copies in any template file the adopter lacks, so a deletion there
+    used to survive only until the next sync. The file's presence in the
+    template at the recorded `.template-version` proves the last sync delivered
+    it, so its absence now is the adopter's own decision.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "kept.txt", "x\n")
+    write(template / "config" / "unwanted.txt", "y\n")
+    prev_sha = commit_all(template)
+    # The child took `kept.txt` at the last sync and deleted `unwanted.txt`.
+    write(child / "config" / "kept.txt", "x\n")
+    (child / ".template-version").write_text(prev_sha)
+    commit_all(child)
+    write(template / "config" / "brand-new.txt", "z\n")
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    assert not (child / "config" / "unwanted.txt").exists()
+    # A file the template added since that sync was never delivered to the
+    # adopter, so it is genuinely new and still arrives.
+    assert (child / "config" / "brand-new.txt").exists()
+    assert parse_outputs(output_file)["declined_files"].split() == [
+        "config/unwanted.txt"
+    ]
+
+
+def test_a_first_sync_still_adds_every_template_file(workdir: Path) -> None:
+    """Without a recorded template version nothing was delivered before, so the
+    declined-file check must not swallow the whole first sync."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "a.txt", "x\n")
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    assert (child / "config" / "a.txt").exists()
+    assert "declined_files" not in parse_outputs(output_file)
+
+
 def test_opt_in_path_absent_locally_is_not_introduced(workdir: Path) -> None:
     """The collision guard: a repo that never had the release workflow must not
     be handed one. Two publishers on one default branch race the same semver
