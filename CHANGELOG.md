@@ -14,6 +14,13 @@ the prose from the release's commits.
 
 ### Added
 
+- `check-pipefail-sigpipe.py` pre-commit lint: under `set -o pipefail`, a pipe
+  consumer that stops reading mid-stream (`head -N`, `grep -q/-l/-m`, `sed '5q'`)
+  SIGPIPEs its still-writing producer, so the pipeline exits 141 and `set -e`
+  aborts — on exactly the large inputs the cap exists for, and only on a slow
+  enough machine to be invisible in local testing. Detection is a real bash AST
+  (`tree-sitter-bash`), fires only in scripts that enable `pipefail`, and a
+  provably-bounded producer opts out with `# sigpipe-ok: <reason>`.
 - `drop-superseded-ci-events.mjs` UserPromptSubmit hook: when a subscribed PR
   delivers a red CI-failure webhook whose HeadSHA no longer heads any remote
   branch (a newer push already superseded that run), the turn is ended before
