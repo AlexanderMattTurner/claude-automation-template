@@ -28,7 +28,9 @@
 #
 # So the mark carries a TTL instead. A head is skipped only while its newest mark
 # is younger than AUTO_RESOLVE_ATTEMPT_TTL_HOURS; after that the resolver may try
-# again. This keeps the crash-loop bound the mark exists for — spend per head is
+# again. This file only WRITES the mark — discover.py reads it, applies the TTL,
+# and owns that knob, so the two never disagree about what fresh means.
+# This keeps the crash-loop bound the mark exists for — spend per head is
 # capped at (commit-age window / TTL) attempts — while making every failure class
 # self-healing: whatever broke, once the fix is on the base ref the next scan past
 # the TTL picks the PR up with no human action.
@@ -45,35 +47,16 @@
 # head's budget while the base keeps moving underneath it. Releasing on a no-op
 # is what keeps the resolver from disabling itself on the PRs it just resolved.
 #
-# The outer bound is the commit-age window in auto-resolve-discover.sh: a branch
+# The outer bound is the commit-age window in auto-resolve/discover.py: a branch
 # nobody has touched leaves the candidate set entirely, so retries only ever
 # accrue to branches someone is actively working on.
 
-AUTO_RESOLVE_ATTEMPT_CONTEXT="auto-resolve/attempted"
-
-# How long one attempt suppresses the next against the SAME head. Must be a positive
-# whole number of hours; to ignore the mark entirely for one run, use the existing
-# AUTO_RESOLVE_IGNORE_ATTEMPT_MARK bypass rather than a zero here. The default of 6
-# bounds spend at four attempts per head (the 24h commit-age window / 6h TTL).
-_auto_resolve_attempt_ttl_hours="${AUTO_RESOLVE_ATTEMPT_TTL_HOURS:-6}"
-[[ "$_auto_resolve_attempt_ttl_hours" =~ ^[1-9][0-9]*$ ]] ||
-  {
-    echo "::error::AUTO_RESOLVE_ATTEMPT_TTL_HOURS must be a positive whole number of hours, got '${_auto_resolve_attempt_ttl_hours}'." >&2
-    exit 1
-  }
-AUTO_RESOLVE_ATTEMPT_TTL_SECS=$((_auto_resolve_attempt_ttl_hours * 3600))
-
+# shellcheck source=lib/shared-names.bash disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shared-names.bash"
 # shellcheck source=lib/commit-status-mark.bash disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/commit-status-mark.bash"
 
-# auto_resolve_attempted REPO SHA — true when SHA carries a mark that is still
-# FRESH (younger than the TTL). An older mark is treated as no mark: whatever the
-# earlier run concluded, the code that concluded it may since have been fixed, and
-# nothing else would ever retry this tree.
-auto_resolve_attempted() {
-  commit_status_mark_fresh "$1" "$2" "$AUTO_RESOLVE_ATTEMPT_CONTEXT" \
-    "$AUTO_RESOLVE_ATTEMPT_TTL_SECS"
-}
+AUTO_RESOLVE_ATTEMPT_CONTEXT="$_COMMIT_STATUS_AUTO_RESOLVE_ATTEMPT"
 
 # auto_resolve_mark_attempt REPO SHA DESCRIPTION — record that an attempt ran
 # against SHA.

@@ -38,8 +38,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib-ci-retry.sh disable=SC1091
-source "$SCRIPT_DIR/lib-ci-retry.sh"
+# shellcheck source=../lib-ci-retry.sh disable=SC1091
+source "$SCRIPT_DIR/../lib-ci-retry.sh"
 
 # The exact claude-code-action `claude_args` this fan-out replaces, held here
 # once so no shard can be launched with a wider model or tool set than another.

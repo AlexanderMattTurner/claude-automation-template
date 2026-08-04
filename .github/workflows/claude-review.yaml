@@ -104,10 +104,10 @@ jobs:
       - name: Checkout base (trusted) decide script
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # Base BRANCH only (trusted), never the untrusted PR head — the same
-          # posture the review job takes. The script is read as trusted repo
-          # content; the PR head is only ever read as DATA via the API.
-          ref: ${{ github.event.pull_request.base.ref }}
+          # Default branch only (trusted), never the untrusted PR head — the
+          # same posture the review job takes. The script is read as trusted
+          # repo content; the PR head is only ever read as DATA via the API.
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           sparse-checkout: .github/scripts/decide-pr-review-trigger.sh
           sparse-checkout-cone-mode: false
@@ -146,16 +146,27 @@ jobs:
       - name: Checkout base (trusted) branch
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # The base BRANCH is trusted repo content; the untrusted PR head is
-          # never checked out. Do NOT change this to head.sha/head.ref. It must
-          # be base.ref (the branch, resolved at checkout) rather than base.sha:
-          # base.sha is a stale snapshot of the base branch recorded when the PR
-          # was created, so on any PR opened before this workflow's scripts
-          # landed it checks out a tree WITHOUT them and every run dies with
-          # "No such file or directory" — while pull_request_target takes the
-          # workflow file itself from the branch tip. base.ref keeps the
-          # checkout and the workflow definition on the same (trusted) commit.
-          ref: ${{ github.event.pull_request.base.ref }}
+          # This refusal to check out anything a PR author can write is what
+          # keeps pull_request_target's secrets out of PR-authored code.
+          #
+          # The default branch is trusted repo content; the untrusted PR head is
+          # never checked out. Do NOT change this to head.sha/head.ref, and do
+          # NOT change it to base.ref: a PR's base is any branch, and anyone who
+          # can push a branch can open a PR onto it. That makes base.ref
+          # author-controlled — push branch A carrying a rewritten
+          # .github/scripts, open PR B onto A, and this step stages A's scripts
+          # for the run steps below to execute with CLAUDE_CODE_OAUTH_TOKEN and
+          # the PAT-backed write tokens live. Repo-write then buys secrets and a
+          # push that bypasses the default branch's protection.
+          #
+          # It must also be a branch NAME, not base.sha: that sha is a stale
+          # snapshot recorded when the PR was created, so a PR opened before
+          # this workflow's scripts landed checks out a tree without them and
+          # every run dies with "No such file or directory" — while
+          # pull_request_target takes the workflow file itself from the default
+          # branch tip. default_branch resolves at checkout, so it keeps the
+          # scripts and the workflow definition on the same trusted commit.
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           fetch-depth: 1
 
@@ -301,9 +312,10 @@ jobs:
       - name: Checkout base (trusted) approval script
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # Base BRANCH only (trusted) — never the untrusted PR head. Matches the
+          # Default branch only (trusted) — never the untrusted PR head, and
+          # never base.ref, which a PR author can write. Matches the
           # decide/review jobs: the script is trusted repo content, no PR code runs.
-          ref: ${{ github.event.pull_request.base.ref }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           sparse-checkout: .github/scripts/auto-approve-skipped-pr.sh
           sparse-checkout-cone-mode: false
@@ -366,10 +378,11 @@ jobs:
       - name: Checkout base (trusted) branch
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # Base BRANCH (trusted repo content), never the untrusted PR head — same
-          # rationale as the review job. fetch-depth: 0 so the merge-base of
-          # the PR head (fetched as objects) resolves.
-          ref: ${{ github.event.pull_request.base.ref }}
+          # Default branch (trusted repo content), never the untrusted PR head
+          # and never the author-writable base.ref — same rationale as the
+          # review job. fetch-depth: 0 so the merge-base of the PR head
+          # (fetched as objects) resolves.
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           fetch-depth: 0
 
@@ -493,11 +506,11 @@ jobs:
       - name: Checkout base (trusted) branch
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          # Base BRANCH (trusted repo content), never the untrusted PR head — same
-          # rationale as the review job: base.ref keeps the checkout and the
-          # workflow definition on the same trusted commit, and base.sha would be a
-          # stale snapshot missing scripts that landed after the PR opened.
-          ref: ${{ github.event.pull_request.base.ref }}
+          # Default branch (trusted repo content), never the untrusted PR head —
+          # same rationale as the review job: base.ref is author-writable, and
+          # base.sha would be a stale snapshot missing scripts that landed after
+          # the PR opened. default_branch is neither.
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           fetch-depth: 1
 

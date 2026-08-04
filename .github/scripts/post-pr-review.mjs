@@ -126,17 +126,90 @@ const EVENT_BY_VERDICT = {
 };
 let event = EVENT_BY_VERDICT[verdict] || "COMMENT";
 
-// Severities that HOLD the merge. The gate blocks on the finding, not only on a
+// The severity model is CONFIG, not code: config/review-severities.json says
+// which severities hold the merge and what emoji each finding leads with.
+//
+// `gating` lists the severities that escalate the posted event to
+// REQUEST_CHANGES. The gate blocks on the FINDING, not only on a
 // needs_changes/blocking VERDICT: a reviewer that files a finding but still
-// stamps looks_good would otherwise let it ride through on an APPROVE. Every
-// severity — 🔴 blocking, 🟡 warning, and 🔵 nit — escalates the posted event to
-// REQUEST_CHANGES so any concrete concern holds the merge until resolved (cleared
-// automatically when a later re-review, seeing it addressed, approves). A
+// stamps looks_good would otherwise let it ride through on an APPROVE. A
 // detail-less finding is still dropped below and never gates (nothing to
 // resolve).
-const GATING_SEVERITIES = new Set(["warning", "blocking", "nit"]);
+//
+// The shipped model. `config/` is NOT in template-sync's SYNC_PATHS, so an
+// adopter repo receives this script without the config file — absent therefore
+// means "kept the shipped defaults", exactly as config/pr-review-paths.json is
+// read. Treating absent as fatal would red every review in every repo that
+// syncs this script, since the file cannot arrive.
+const DEFAULT_SEVERITIES = {
+  gating: ["blocking", "warning", "nit"],
+  icons: { blocking: "🔴", warning: "🟡", nit: "🔵" },
+};
+
+// Read relative to this script, not the repo root. The reviewer runs against an
+// untrusted PR head, so a root-relative lookup would let a PR author's copy
+// decide which of its own findings hold the merge.
+const SEVERITY_CONFIG = new URL(
+  "../../config/review-severities.json",
+  import.meta.url,
+);
+
 const normSeverity = (s) =>
   typeof s === "string" ? s.trim().toLowerCase() : "";
+
+// Absent is a choice; malformed is a mistake. A repo that never wrote the file
+// gets DEFAULT_SEVERITIES. A repo that DID write one and got it wrong fails
+// loud, because the failure it would otherwise cause is invisible: an empty
+// `gating` set makes hasGatingFinding permanently false, so every review posts
+// as APPROVE and the reviewer silently stops holding anything —
+// indistinguishable from a repo where nothing is ever wrong.
+function loadSeverities() {
+  let text;
+  try {
+    text = readFileSync(SEVERITY_CONFIG, "utf8");
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+    return {
+      gating: new Set(DEFAULT_SEVERITIES.gating),
+      icons: new Map(Object.entries(DEFAULT_SEVERITIES.icons)),
+    };
+  }
+  let raw;
+  try {
+    raw = JSON.parse(text);
+  } catch (err) {
+    throw new Error(
+      `config/review-severities.json is unparsable (${err.message}); refusing to ` +
+        "review with a severity model somebody meant to set and got wrong.",
+    );
+  }
+  const bad = (why) => new Error(`config/review-severities.json: ${why}`);
+  const isPlainObject = (v) =>
+    typeof v === "object" && v !== null && !Array.isArray(v);
+  if (!isPlainObject(raw)) throw bad("the top level must be a JSON object.");
+  if (!isPlainObject(raw.icons))
+    throw bad("`icons` must be an object mapping each severity to its emoji.");
+  const icons = new Map(Object.entries(raw.icons));
+  for (const [sev, glyph] of icons)
+    if (typeof glyph !== "string" || !glyph)
+      throw bad(`severity '${sev}' has a non-string icon.`);
+  if (!Array.isArray(raw.gating) || raw.gating.length === 0)
+    throw bad(
+      "`gating` must be a non-empty array — an empty one approves every review " +
+        "and retires the reviewer's hold with no other symptom.",
+    );
+  const gating = new Set();
+  for (const sev of raw.gating) {
+    if (typeof sev !== "string" || !sev)
+      throw bad("every `gating` entry must be a non-empty string.");
+    if (!icons.has(sev))
+      throw bad(`gating severity '${sev}' has no entry in \`icons\`.`);
+    gating.add(sev);
+  }
+  return { gating, icons };
+}
+
+const { gating: GATING_SEVERITIES, icons: ICONS } = loadSeverities();
 
 // Commentable (path, line) positions per side, parsed from the unified diff.
 // Context lines are commentable on both sides; added lines on RIGHT, removed on
@@ -200,8 +273,10 @@ function remapDiffViewAnchor(findingPath, viewLine, hasSuggestion) {
   return { line: m.newLine, side: "RIGHT" };
 }
 
-const ICON = { blocking: "🔴", warning: "🟡", nit: "🔵" };
-const icon = (sev) => ICON[sev] || "•";
+// Normalized the same way the gate normalizes, so a severity that HOLDS the
+// merge always renders the glyph its hold is named after — a cased "Blocking"
+// that gated but posted the "•" fallback would read as an unclassified note.
+const icon = (sev) => ICONS.get(normSeverity(sev)) || "•";
 
 // A `suggestion` renders as a GitHub suggested-change block the author can apply
 // with one click. Suggestions can only target the new file (RIGHT side), so a

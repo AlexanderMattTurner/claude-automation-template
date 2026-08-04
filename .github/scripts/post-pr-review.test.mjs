@@ -9,8 +9,11 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   mkdtempSync,
+  mkdirSync,
   writeFileSync,
   readFileSync,
+  copyFileSync,
+  symlinkSync,
   existsSync,
   rmSync,
 } from "node:fs";
@@ -900,4 +903,142 @@ describe("post-pr-review: output sanitization", () => {
     assert.ok(!payload.body.includes("\x1b"));
     assert.equal(payload.body, "all good here");
   });
+});
+
+// The severity model lives in config/review-severities.json. These tests stage a
+// COPY of the script beside a config of their own, because the script resolves
+// that file relative to its own location — the property that keeps an untrusted
+// PR head from supplying the config that decides which of its findings hold the
+// merge. Editing the real config in place would race every other test.
+describe("post-pr-review: the severity config is the single source of truth", () => {
+  const SCRIPTS = __dirname;
+
+  // Stage <root>/.github/scripts/{post-pr-review,lib-review-cost}.mjs beside
+  // <root>/config/review-severities.json, with node_modules symlinked so the
+  // sanitizer import still resolves. Returns the staged script's path.
+  function stage(configText) {
+    const root = mkdtempSync(join(tmpdir(), "prr-ssot-"));
+    dirs.push(root);
+    const scripts = join(root, ".github", "scripts");
+    mkdirSync(scripts, { recursive: true });
+    mkdirSync(join(root, "config"), { recursive: true });
+    for (const f of ["post-pr-review.mjs", "lib-review-cost.mjs"])
+      copyFileSync(join(SCRIPTS, f), join(scripts, f));
+    symlinkSync(join(SCRIPTS, "node_modules"), join(scripts, "node_modules"));
+    if (configText !== null)
+      writeFileSync(join(root, "config", "review-severities.json"), configText);
+    return join(scripts, "post-pr-review.mjs");
+  }
+
+  // Same contract as run() above, against a staged script + config.
+  function runStaged(configText, review) {
+    const script = stage(configText);
+    const dir = mkdtempSync(join(tmpdir(), "prr-in-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "diff.txt"), DIFF);
+    writeFileSync(join(dir, "review.json"), JSON.stringify(review));
+    const env = { ...process.env, PR_INPUT_DIR: dir, EXECUTION_FILE: "" };
+    delete env.RUNNER_TEMP;
+    const res = spawnSync("node", [script], { env, encoding: "utf8" });
+    const payloadPath = join(dir, "review-payload.json");
+    return {
+      code: res.status,
+      stderr: res.stderr,
+      payload: existsSync(payloadPath)
+        ? JSON.parse(readFileSync(payloadPath, "utf8"))
+        : null,
+    };
+  }
+
+  const NIT = {
+    verdict: "looks_good",
+    summary: "one small thing",
+    findings: [
+      {
+        path: "src/foo.js",
+        line: 2,
+        side: "RIGHT",
+        severity: "nit",
+        title: "naming",
+        body: "prefer b2",
+      },
+    ],
+  };
+  const config = (over) =>
+    JSON.stringify({
+      gating: ["blocking", "warning", "nit"],
+      icons: { blocking: "🔴", warning: "🟡", nit: "🔵" },
+      ...over,
+    });
+
+  it("drops a severity from `gating` and the review stops holding the merge", () => {
+    // THE falsifier for the whole wiring: identical input, one edited config
+    // value, and the posted review event changes. If both runs agreed, the
+    // config would be documentation nobody reads.
+    const held = runStaged(config({}), NIT);
+    assert.equal(held.payload.event, "REQUEST_CHANGES");
+    const released = runStaged(
+      config({ gating: ["blocking", "warning"] }),
+      NIT,
+    );
+    assert.equal(released.payload.event, "APPROVE");
+    assert.equal(
+      released.payload.comments.length,
+      1,
+      "the finding still posts",
+    );
+  });
+
+  it("an edited icon reaches the posted comment body", () => {
+    const { payload } = runStaged(
+      config({ icons: { blocking: "🔴", warning: "🟡", nit: "🧢" } }),
+      NIT,
+    );
+    assert.match(payload.comments[0].body, /^🧢 /);
+  });
+
+  it("renders the icon for a severity the model cased differently", () => {
+    // The gate lowercases before testing membership, so a cased severity holds
+    // the merge; the glyph must follow it rather than falling back to "•".
+    const { payload } = runStaged(config({}), {
+      ...NIT,
+      findings: [{ ...NIT.findings[0], severity: " Nit " }],
+    });
+    assert.equal(payload.event, "REQUEST_CHANGES");
+    assert.match(payload.comments[0].body, /^🔵 /);
+  });
+
+  it("an absent config keeps the shipped model rather than failing", () => {
+    // `config/` is not in template-sync's SYNC_PATHS, so every repo that syncs
+    // this script gets it WITHOUT the config file. Treating that as fatal would
+    // red every review in every downstream repo, on a file that cannot arrive.
+    const { code, payload } = runStaged(null, NIT);
+    assert.equal(code, 0);
+    assert.equal(payload.event, "REQUEST_CHANGES", "nit gates by default");
+    assert.match(payload.comments[0].body, /^🔵 /);
+  });
+
+  for (const [why, text] of [
+    ["the config is not JSON", "{ not json"],
+    // An empty gating set approves every review and retires the hold with no
+    // other symptom — the one failure a default would make invisible.
+    ["`gating` is empty", config({ gating: [] })],
+    ["`gating` is absent", '{"icons":{"nit":"🔵"}}'],
+    ["`icons` is absent", '{"gating":["nit"]}'],
+    ["the config is a bare JSON null", "null"],
+    ["`icons` is an array", '{"gating":["0"],"icons":["🔵"]}'],
+    ["a gating severity has no icon", config({ icons: { blocking: "🔴" } })],
+    ["an icon is not a string", config({ icons: { nit: 7 } })],
+  ]) {
+    it(`fails closed when ${why}`, () => {
+      const { code, payload, stderr } = runStaged(text, NIT);
+      assert.notEqual(code, 0, stderr);
+      assert.equal(
+        payload,
+        null,
+        "nothing may post on an unknown severity model",
+      );
+      assert.match(stderr, /review-severities\.json/);
+    });
+  }
 });

@@ -3,11 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import {
-  midMerge,
-  midMergeModifyDelete,
-  runBundle,
-} from "./auto-resolve-fixtures.mjs";
+import { midMerge, midMergeModifyDelete, runBundle } from "./fixtures.mjs";
 
 const git = (cwd, ...args) =>
   execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
@@ -178,7 +174,7 @@ test("a modify/delete path with an unusable verdict is refused", () => {
 
 test("the self-review runs on ANY configured credential — a short rung list would skip it silently", () => {
   // Member-by-member coverage of the rung list lives in
-  // auto-resolve-lib.test.mjs; what is asserted here is that bundle's
+  // lib.test.mjs; what is asserted here is that bundle's
   // "is a reviewer configured?" probe reads that same list. With only this one
   // rung set, the review must be attempted: it fails (no BASE_WORKTREE), and
   // that refusal is the observable difference from silently skipping it.

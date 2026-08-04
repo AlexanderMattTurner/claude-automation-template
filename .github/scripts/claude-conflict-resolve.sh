@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Resolves a PR's merge conflicts: install the pinned Claude CLI from the trusted
 # base worktree, then walk the configured credentials, running the per-file
-# fan-out (auto-resolve-fanout.sh) under each until one produces a resolution.
+# fan-out (auto-resolve/fanout.sh) under each until one produces a resolution.
 #
 # A rung advances only when the one before it produced NO usable run at all —
 # no execution log, or a log reporting is_error. A run that reached the model and
@@ -18,7 +18,7 @@
 # merge state.
 #
 # Env: CLAUDE_CODE_OAUTH_TOKEN (required) plus the optional _FALLBACK and
-# _FALLBACK_2 … _FALLBACK_6 rungs; the rest is auto-resolve-fanout.sh's own
+# _FALLBACK_2 … _FALLBACK_6 rungs; the rest is auto-resolve/fanout.sh's own
 # contract — see its header. Needs node/npm on PATH for the CLI install, and must
 # run with the mid-merge working tree as the current directory, like every
 # resolver entrypoint.
@@ -53,7 +53,7 @@ for token in "${ladder[@]}"; do
   rung=$((rung + 1))
   echo "Conflict resolution: credential ${rung} of ${#ladder[@]}."
   rc=0
-  CLAUDE_CODE_OAUTH_TOKEN="$token" bash "${SCRIPTS_DIR}/auto-resolve-fanout.sh" || rc=$?
+  CLAUDE_CODE_OAUTH_TOKEN="$token" bash "${SCRIPTS_DIR}/auto-resolve/fanout.sh" || rc=$?
   log="${fanout_dir}/execution.json"
   if [[ "$rc" -eq 0 && -s "$log" ]] && ! jq -e '.is_error == true' "$log" >/dev/null; then
     exit 0

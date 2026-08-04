@@ -23,8 +23,6 @@ CASES = [
     ("list-dependabot-prs.sh", ["GH_TOKEN"]),
     # fetch-security-report.sh requires GH_TOKEN and REPO
     ("fetch-security-report.sh", ["GH_TOKEN", "REPO"]),
-    # request-claude-resolve.sh requires PR_NUM
-    ("request-claude-resolve.sh", ["PR_NUM"]),
     # template-sync.sh requires GITHUB_OUTPUT
     ("template-sync.sh", ["GITHUB_OUTPUT"]),
     # cancel-pr-runs.sh requires REPO, HEAD_REF, HEAD_SHA, GH_TOKEN
@@ -47,12 +45,12 @@ CASES = [
     ("precommit-range-base.sh", ["GITHUB_REPOSITORY", "GITHUB_BASE_REF", "GH_TOKEN"]),
     # auto-resolve: the resolving job bundles, the landing job pushes, and the
     # self-review reads its prompts from the trusted base worktree
-    ("auto-resolve-bundle.sh", ["HEAD_REF", "BASE_REF", "PR", "BUNDLE_DIR"]),
+    ("auto-resolve/bundle.sh", ["HEAD_REF", "BASE_REF", "PR", "BUNDLE_DIR"]),
     (
-        "auto-resolve-land.sh",
+        "auto-resolve/land.sh",
         ["HEAD_REF", "BASE_REF", "PR", "GITHUB_TOKEN", "BUNDLE_DIR"],
     ),
-    ("auto-resolve-self-review.sh", ["BASE_WORKTREE"]),
+    ("auto-resolve/self-review.sh", ["BASE_WORKTREE"]),
     ("claude-conflict-resolve.sh", ["CLAUDE_CODE_OAUTH_TOKEN"]),
 ]
 
