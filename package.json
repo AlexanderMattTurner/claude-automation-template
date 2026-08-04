@@ -14,7 +14,7 @@
     "dev": "echo 'ERROR: Configure dev script in package.json' && exit 1",
     "build": "echo 'ERROR: Configure build script in package.json' && exit 1",
     "start": "echo 'ERROR: Configure start script in package.json' && exit 1",
-    "test": "bash .github/scripts/install-input-sanitizer.sh && node --test .github/scripts/*.test.mjs",
+    "test": "bash .github/scripts/install-input-sanitizer.sh && node --test \".github/scripts/**/*.test.mjs\" \"tests/**/*.test.mjs\"",
     "lint": "echo 'ERROR: Configure lint script in package.json' && exit 1",
     "lint:md": "markdownlint-cli2 \"**/*.md\"",
     "lint:md:fix": "markdownlint-cli2 --fix \"**/*.md\"",

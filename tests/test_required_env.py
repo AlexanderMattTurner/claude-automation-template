@@ -4,6 +4,7 @@ a workflow change silently drops an env var, leaving the script to misbehave
 on an empty value."""
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,7 @@ CASES = [
     # merge-delta reviewer + remerge-diff report suite
     ("prepare-merge-delta-input.sh", ["PR", "PR_INPUT_DIR"]),
     ("post-merge-delta-review.sh", ["PR", "GH_REPO", "PR_INPUT_DIR"]),
+    ("remerge-diff-report.py", ["BASE_SHA", "HEAD_SHA"]),
     ("precommit-range-base.sh", ["GITHUB_REPOSITORY", "GITHUB_BASE_REF", "GH_TOKEN"]),
     # auto-resolve: the resolving job bundles, the landing job pushes, and the
     # self-review reads its prompts from the trusted base worktree
@@ -59,14 +61,17 @@ CASES = [
 def test_script_exits_when_required_var_missing(
     tmp_path: Path, script: str, required_vars: list[str]
 ) -> None:
-    # Run with all required vars scrubbed so the script's `${VAR:?…}` guard fires.
+    # Run with all required vars scrubbed so the script's `${VAR:?…}` guard (or,
+    # for a Python script, its bare `os.environ[...]` lookup) fires.
+    interpreter = [sys.executable] if script.endswith(".py") else ["bash"]
     env = {"PATH": "/usr/bin:/bin"}
     result = subprocess.run(
-        ["bash", str(SCRIPTS / script)],
+        [*interpreter, str(SCRIPTS / script)],
         cwd=tmp_path,
         env=env,
         capture_output=True,
         text=True,
+        check=False,
     )
     assert result.returncode != 0, (
         f"{script} should exit non-zero with no env vars set, got 0"
