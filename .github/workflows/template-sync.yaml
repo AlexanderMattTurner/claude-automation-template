@@ -5,6 +5,8 @@ name: Sync from Template
 # No setup required - works out of the box.
 #
 # Features:
+# - Skips entirely in the template repository itself, and fails loud when
+#   TEMPLATE_SYNC_ORG points the sync at a fork of the running repo
 # - 3-way merges local customizations with template updates automatically
 # - Falls back to template version + Claude resolution when no merge base exists
 # - Detects new files, changed files, and deleted files from the template
@@ -82,13 +84,40 @@ concurrency:
   group: template-sync
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 jobs:
-  sync:
+  # A repo cannot be its own upstream. This runs as a separate job because a
+  # job-level `if:` cannot read workflow `env`, and the alternative — repeating
+  # the guard on every step below — is a condition that a newly added step
+  # silently opts out of.
+  preflight:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      self_sync: ${{ steps.check.outputs.self_sync }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Refuse to sync this repository from itself
+        id: check
+        env:
+          # token-fallback-ok: designed graceful degradation, not an accident.
+          GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || github.token }}
+        run: bash .github/scripts/template-sync-preflight.sh
+
+  sync:
+    needs: preflight
+    if: needs.preflight.outputs.self_sync != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     timeout-minutes: 30
     steps:
       - name: Checkout child repository
