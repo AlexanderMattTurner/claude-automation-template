@@ -25,7 +25,8 @@ name: Sync from Template
 # 3. When in doubt, keep local changes - they exist for a reason
 # 4. Check for duplicate CI: if the target repo already has test/lint/format
 #    workflows, don't add the template's versions — exclude them via
-#    EXCLUDE_PATHS instead
+#    EXCLUDE_PATHS instead. A workflow that must never be introduced into a repo
+#    that has its own equivalent (the release flow) belongs in OPT_IN_PATHS.
 # =============================================================================
 
 on:
@@ -61,24 +62,34 @@ env:
   # Common candidates: .github/workflows/node-tests.yaml,
   # .github/workflows/lint.yaml, .github/workflows/format-check.yaml
   #
-  # VERSIONED-APP-ONLY: the release flow below only makes sense for a repo that
-  # is published to npm. auto-version.yaml runs on EVERY push to the default
-  # branch and, for a real (non-private) package, decides a Conventional-Commits
-  # semver bump and runs `pnpm publish` (OIDC provenance — no NPM_TOKEN). The
-  # template's own package.json sets "private": true, so version-bump.sh skips
-  # publishing there; a downstream repo opts in by dropping `private` and setting
-  # a real, publishable name. A repo that is not an npm package at all (e.g. a
-  # website like TurnTrout.com) should list these here to opt out entirely:
-  #   .github/workflows/auto-version.yaml
-  #   .github/scripts/version-bump.sh
-  #   .github/scripts/promote-changelog.mjs
-  #   .github/scripts/lib/retry.bash
-  # (CHANGELOG.md lives outside SYNC_PATHS and never syncs, so a versioned
-  # consumer must create it to bootstrap the flow.)
   # The security-vulnerability-scan workflow + prompt are intentionally NOT
   # propagated to downstream repos; each consumer owns its own security-scan
   # cadence and model pin, so the template stops overwriting them on sync.
   EXCLUDE_PATHS: ".github/workflows/security-vulnerability-scan.yaml .github/prompts/security-vulnerability-scan.md"
+  # Files the sync UPDATES but never INTRODUCES. Absent from the child repo they
+  # are skipped; present, they sync like anything else. This is the opt-in half
+  # of EXCLUDE_PATHS: opting in is creating the file once, opting out is deleting
+  # it (and it stays deleted — no EXCLUDE_PATHS entry needed).
+  #
+  # auto-version.yaml is the release flow's entry point: it runs on EVERY push to
+  # the default branch and, for a non-private package, decides a
+  # Conventional-Commits semver bump and runs `pnpm publish` (OIDC provenance —
+  # no NPM_TOKEN). Introducing it into a repo that already publishes gives that
+  # repo TWO publishers; because the concurrency groups differ they never
+  # serialize, so both compute the same version and one loses the race with an
+  # unrecognizable `npm error code E404 ... PUT` on an already-published version.
+  # Opt in by copying it from the template:
+  #   curl -fsSL https://raw.githubusercontent.com/AlexanderMattTurner/claude-automation-template/main/.github/workflows/auto-version.yaml \
+  #     -o .github/workflows/auto-version.yaml
+  # CHANGELOG.md lives outside SYNC_PATHS and never syncs, so a versioned
+  # consumer must also create it to bootstrap the flow.
+  #
+  # A consumer that KEEPS its own release workflow instead should give it the
+  # template's workflow name — "Auto version bump and publish" — or add its own
+  # name to the `workflows:` lists in ci-failure-notify.yaml and
+  # build-publish-notify.yaml, which bind by name, not filename. Otherwise its
+  # release failures notify nobody.
+  OPT_IN_PATHS: ".github/workflows/auto-version.yaml"
 
 concurrency:
   group: template-sync
@@ -158,6 +169,7 @@ jobs:
         env:
           SYNC_PATHS: ${{ env.SYNC_PATHS }}
           EXCLUDE_PATHS: ${{ env.EXCLUDE_PATHS }}
+          OPT_IN_PATHS: ${{ env.OPT_IN_PATHS }}
         run: bash .github/scripts/template-sync.sh
 
       - name: Show diff (dry run)

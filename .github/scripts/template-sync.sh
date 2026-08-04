@@ -7,6 +7,10 @@
 #                     (path names containing spaces are NOT supported)
 #   EXCLUDE_PATHS     Space-separated paths to exclude (whole SYNC_PATHS entries
 #                     or individual file paths within synced directories)
+#   OPT_IN_PATHS      Space-separated file paths the template only UPDATES, never
+#                     INTRODUCES: absent from the child repo, they are skipped;
+#                     present, they sync normally. Opting in is creating the file
+#                     once; opting out is deleting it.
 #   GITHUB_OUTPUT     Path to GitHub Actions output file
 #
 # Assumes a sibling `_template/` directory containing a checkout of the
@@ -45,6 +49,7 @@ main() {
 
   SYNC_PATHS="${SYNC_PATHS:-}"
   EXCLUDE_PATHS="${EXCLUDE_PATHS:-}"
+  OPT_IN_PATHS="${OPT_IN_PATHS:-}"
   : "${GITHUB_OUTPUT:?GITHUB_OUTPUT must be set}"
 
   # Allow tests to point at alternative temp dirs.
@@ -68,6 +73,19 @@ main() {
     local candidate="$1" exclude
     for exclude in $EXCLUDE_PATHS; do
       [[ "$candidate" = "$exclude" ]] && return 0
+    done
+    return 1
+  }
+
+  # A file the template may update but must never introduce. Some template
+  # features are only correct in a repo that has no equivalent of its own — the
+  # release workflow is the case that motivated this: a consumer with its own
+  # publisher that also received auto-version.yaml ended up with two workflows
+  # racing the same semver bump on every push to the default branch.
+  is_opt_in() {
+    local candidate="$1" opt_in
+    for opt_in in $OPT_IN_PATHS; do
+      [[ "$candidate" = "$opt_in" ]] && return 0
     done
     return 1
   }
@@ -192,6 +210,10 @@ main() {
 
     # Case 1: new file in template.
     if [[ ! -f "$rel_path" ]]; then
+      if is_opt_in "$rel_path"; then
+        echo "Opt-in only, not present locally: $rel_path (skipping — copy it from the template to adopt it)"
+        return
+      fi
       cp "$template_file" "$rel_path"
       echo "Added: $rel_path"
       return

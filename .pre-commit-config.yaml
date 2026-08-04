@@ -128,8 +128,27 @@ repos:
         language: python
         additional_dependencies: ["zizmor==1.25.2"]
         pass_filenames: false
-        args: [".github/"]
+        # --offline: the `known-vulnerable-actions` audit queries
+        # api.github.com/advisories, which a sandboxed or repo-scoped session
+        # cannot reach — and zizmor aborts the WHOLE run on that error ("fatal:
+        # no audit was performed"), so one unreachable endpoint takes every
+        # other audit down with it and blocks the commit. Offline keeps the
+        # local run useful. The advisory audit still runs, with network, in
+        # .github/workflows/zizmor.yaml — a required check, so it is not lost.
+        args: ["--offline", ".github/"]
         files: ^\.github/
+
+      # The template's JS propagates into consumers who point `eslint .` at their
+      # whole tree, so template-owned files that violate a common rule set break
+      # THEIR lint — and, where a release gates on it, their publish. Lint the
+      # propagated files here under that rule set (eslint.config.mjs) so the
+      # breakage lands on the template's own PR instead of downstream.
+      - id: eslint-propagated-js
+        name: eslint (files the template propagates)
+        entry: pnpm lint:js
+        language: system
+        pass_filenames: false
+        files: ^(\.claude/.*|\.github/scripts/.*|tests/.*|eslint\.config)\.(js|mjs|cjs)$
 
       - id: validate-config
         name: validate Claude hook configuration
