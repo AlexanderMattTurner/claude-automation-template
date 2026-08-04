@@ -145,7 +145,7 @@ repos:
       # breakage lands on the template's own PR instead of downstream.
       - id: eslint-propagated-js
         name: eslint (files the template propagates)
-        entry: pnpm exec eslint .
+        entry: pnpm lint:js
         language: system
         pass_filenames: false
         files: ^(\.claude/.*|\.github/scripts/.*|tests/.*|eslint\.config)\.(js|mjs|cjs)$
