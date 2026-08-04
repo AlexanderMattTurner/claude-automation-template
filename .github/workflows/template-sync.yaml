@@ -53,7 +53,17 @@ env:
   # added to the template auto-sync without anyone having to edit this list.
   # Downstream-added files in these directories are left alone (sync only
   # copies files that exist in the template).
-  SYNC_PATHS: ".claude .hooks .github/actions .github/scripts .github/workflows .github/prompts"
+  #
+  # An entry may also be a single FILE, which is how a synced file's DATA
+  # dependency travels when it lives outside every synced directory. A synced
+  # script that reads such a file arrives downstream without it and dies on the
+  # read, so each one a synced file names by a fixed path is listed here:
+  #   .github/tool-versions.sh                 <- .github/scripts/install-mergiraf.sh
+  #   .github/claude-cli-version               <- .github/scripts/install-claude-cli.sh
+  #   config/javascript/commitlint.config.js   <- .hooks/commit-msg
+  # A consumer that maintains its own richer copy of one of these (extra tools
+  # pinned for its own CI) keeps it by adding that path to EXCLUDE_PATHS.
+  SYNC_PATHS: ".claude .hooks .github/actions .github/scripts .github/workflows .github/prompts .github/tool-versions.sh .github/claude-cli-version config/javascript/commitlint.config.js"
   # Paths to exclude from syncing. Supports both whole directories (matching
   # entries in SYNC_PATHS) and individual files within synced directories.
   #
