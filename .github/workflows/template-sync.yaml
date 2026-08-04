@@ -84,9 +84,7 @@ concurrency:
   group: template-sync
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 jobs:
   # A repo cannot be its own upstream. This runs as a separate job because a
@@ -96,6 +94,8 @@ jobs:
   preflight:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     outputs:
       self_sync: ${{ steps.check.outputs.self_sync }}
     steps:
@@ -115,6 +115,9 @@ jobs:
     needs: preflight
     if: needs.preflight.outputs.self_sync != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     timeout-minutes: 30
     steps:
       - name: Checkout child repository
