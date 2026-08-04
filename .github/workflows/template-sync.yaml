@@ -242,7 +242,13 @@ jobs:
 
             `{0}`
 
-            ', steps.sync.outputs.declined_files) || '' }}${{ steps.sync.outputs.has_deletions == 'true' && format('---
+            ', steps.sync.outputs.declined_files) || '' }}${{ steps.sync.outputs.inert_entries && format('### Inert EXCLUDE_PATHS / OPT_IN_PATHS entries
+
+            These entries name nothing in the template, so they cover nothing. Correct the spelling, or delete the entry.
+
+            `{0}`
+
+            ', steps.sync.outputs.inert_entries) || '' }}${{ steps.sync.outputs.has_deletions == 'true' && format('---
 
             ## Files Removed from Template
 

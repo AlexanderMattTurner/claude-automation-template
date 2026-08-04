@@ -401,6 +401,33 @@ def test_a_first_sync_still_adds_every_template_file(workdir: Path) -> None:
     assert "declined_files" not in parse_outputs(output_file)
 
 
+def test_a_list_entry_that_names_nothing_is_reported(workdir: Path) -> None:
+    """An EXCLUDE_PATHS or OPT_IN_PATHS entry naming a path the template does not
+    ship covers nothing, and it does so silently. The run reports it so a
+    misspelled or stale entry is visible instead of reading as though it covers
+    a file."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "a.txt", "x\n")
+    commit_all(template)
+
+    result, output_file = run_sync(
+        child,
+        template,
+        sync_paths="config",
+        exclude_paths="config/a.txt config/gone",
+        opt_in_paths="config/never-shipped",
+    )
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["inert_entries"].split() == [
+        "config/gone",
+        "config/never-shipped",
+    ]
+    assert "list entry names nothing in the template" in result.stdout
+
+
 def test_opt_in_path_absent_locally_is_not_introduced(workdir: Path) -> None:
     """The collision guard: a repo that never had the release workflow must not
     be handed one. Two publishers on one default branch race the same semver

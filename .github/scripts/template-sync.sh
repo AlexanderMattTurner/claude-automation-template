@@ -22,7 +22,7 @@
 #   - Creates/updates files inside the current repo to match the template
 #   - Writes /tmp/conflict_files.txt, /tmp/conflict_report.md,
 #     /tmp/deleted_files.txt, /tmp/auto_merged_files.txt,
-#     /tmp/declined_files.txt
+#     /tmp/declined_files.txt, /tmp/inert_entries.txt
 #   - Writes .template-sync-conflicts if there are unresolved conflicts
 #   - Appends key=value lines to $GITHUB_OUTPUT
 
@@ -63,6 +63,7 @@ main() {
   DOWNGRADE_FILES="$WORK_DIR/downgrade_files.txt"
   DOWNGRADE_REPORT="$WORK_DIR/downgrade_report.md"
   DECLINED_FILES="$WORK_DIR/declined_files.txt"
+  INERT_ENTRIES="$WORK_DIR/inert_entries.txt"
   PREV_TEMPLATE_FILES="$WORK_DIR/prev_template_files.txt"
 
   : >"$CONFLICT_FILES"
@@ -72,6 +73,7 @@ main() {
   : >"$DOWNGRADE_FILES"
   : >"$DOWNGRADE_REPORT"
   : >"$DECLINED_FILES"
+  : >"$INERT_ENTRIES"
   # WORK_DIR persists between runs, so a stale list from an earlier run would
   # otherwise decide which files count as delivered before.
   : >"$PREV_TEMPLATE_FILES"
@@ -97,6 +99,21 @@ main() {
   # decision the adopter made. This refusal is what makes that deletion hold.
   was_delivered_before() {
     [[ -s "$PREV_TEMPLATE_FILES" ]] && grep -Fxq -- "$1" "$PREV_TEMPLATE_FILES"
+  }
+
+  # PROBLEM CLASS — a configuration entry that is accepted and matches nothing.
+  # An EXCLUDE_PATHS or OPT_IN_PATHS entry naming a path the template does not
+  # ship covers nothing, and it fails silently: the entry sits in the list, the
+  # sync treats the file as unlisted, and the list reads as though it covers it.
+  # This warning is what makes a misspelled or stale entry visible. Read the
+  # template tree before the run deletes it.
+  report_inert_entries() {
+    local entry
+    for entry in $EXCLUDE_PATHS $OPT_IN_PATHS; do
+      [[ -e "_template/$entry" ]] && continue
+      echo "::warning::list entry names nothing in the template: $entry"
+      echo "$entry" >>"$INERT_ENTRIES"
+    done
   }
 
   # A file the template may update but must never introduce. Some template
@@ -410,6 +427,7 @@ main() {
     fi
   done
 
+  report_inert_entries
   rm -rf _template
 
   #############################################
@@ -419,6 +437,11 @@ main() {
   if [[ -s "$AUTO_MERGED_FILES" ]]; then
     auto_merged=$(tr '\n' ' ' <"$AUTO_MERGED_FILES")
     echo "auto_merged_files=$auto_merged" >>"$GITHUB_OUTPUT"
+  fi
+
+  if [[ -s "$INERT_ENTRIES" ]]; then
+    inert=$(tr '\n' ' ' <"$INERT_ENTRIES")
+    echo "inert_entries=$inert" >>"$GITHUB_OUTPUT"
   fi
 
   if [[ -s "$DECLINED_FILES" ]]; then
