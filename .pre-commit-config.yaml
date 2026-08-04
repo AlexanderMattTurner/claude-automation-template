@@ -128,7 +128,14 @@ repos:
         language: python
         additional_dependencies: ["zizmor==1.25.2"]
         pass_filenames: false
-        args: [".github/"]
+        # --offline: the `known-vulnerable-actions` audit queries
+        # api.github.com/advisories, which a sandboxed or repo-scoped session
+        # cannot reach — and zizmor aborts the WHOLE run on that error ("fatal:
+        # no audit was performed"), so one unreachable endpoint takes every
+        # other audit down with it and blocks the commit. Offline keeps the
+        # local run useful. The advisory audit still runs, with network, in
+        # .github/workflows/zizmor.yaml — a required check, so it is not lost.
+        args: ["--offline", ".github/"]
         files: ^\.github/
 
       # The template's JS propagates into consumers who point `eslint .` at their
