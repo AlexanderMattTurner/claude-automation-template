@@ -75,7 +75,7 @@ main() {
   : >"$DECLINED_FILES"
   : >"$INERT_ENTRIES"
   # WORK_DIR persists between runs, so a stale list from an earlier run would
-  # otherwise decide which files count as delivered before.
+  # otherwise feed the deleted-in-template scan below.
   : >"$PREV_TEMPLATE_FILES"
 
   # An EXCLUDE_PATHS entry names one file or one directory, and a directory
@@ -94,11 +94,19 @@ main() {
   # PROBLEM CLASS — a template file the adopter deleted comes back on the next
   # sync. Case 1 copies in any template file the adopter does not have, so a
   # deletion there survives only until the next sync run: one sync restored 44
-  # files an adopter had already removed more than once. A file present in the
-  # template at PREV_SHA was delivered by the last sync, so its absence now is a
-  # decision the adopter made. This refusal is what makes that deletion hold.
-  was_delivered_before() {
-    [[ -s "$PREV_TEMPLATE_FILES" ]] && grep -Fxq -- "$1" "$PREV_TEMPLATE_FILES"
+  # files an adopter had already removed more than once. This refusal is what
+  # makes that deletion hold.
+  #
+  # The evidence is the adopter's own history, not the template's tree. A commit
+  # that deleted the path IS the adopter saying it does not want the file. The
+  # template tree at PREV_SHA only says the file was available then, which is
+  # also true of every template file the adopter never adopted — reading that as
+  # a deletion would decline a genuinely new file forever. A path with no
+  # deletion commit was never there, so it is new and still arrives. The sync
+  # checks out with fetch-depth: 0; a shallow checkout finds no deletion and
+  # falls back to copying in.
+  was_deleted_here() {
+    [[ -n "$(git log --diff-filter=D --format=%H -1 -- "$1")" ]]
   }
 
   # PROBLEM CLASS — a configuration entry that is accepted and matches nothing.
@@ -255,7 +263,7 @@ main() {
         echo "Opt-in only, not present locally: $rel_path (skipping — copy it from the template to adopt it)"
         return
       fi
-      if was_delivered_before "$rel_path"; then
+      if was_deleted_here "$rel_path"; then
         echo "Declined: $rel_path (deleted in the adopter since the last sync; not re-added)"
         echo "$rel_path" >>"$DECLINED_FILES"
         return
