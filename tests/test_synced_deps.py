@@ -52,9 +52,9 @@ def tracked_files() -> frozenset[str]:
 @functools.cache
 def sync_paths() -> tuple[str, ...]:
     text = TEMPLATE_SYNC_YAML.read_text(encoding="utf-8")
-    match = re.search(r'^\s*SYNC_PATHS:\s*"([^"]*)"', text, re.MULTILINE)
+    match = re.search(r'^\s*SYNC_PATHS:\s*"(?P<paths>[^"]*)"', text, re.MULTILINE)
     assert match, "template-sync.yaml declares SYNC_PATHS"
-    return tuple(match.group(1).split())
+    return tuple(match.group("paths").split())
 
 
 def is_delivered(path: str) -> bool:
