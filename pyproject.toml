@@ -4,7 +4,12 @@ version = "0.0.0"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
-dev = ["pytest>=7,<10", "pyyaml>=6,<7"]
+dev = [
+    "pytest>=7,<10",
+    "pyyaml>=6,<7",
+    "tree-sitter>=0.23,<1",
+    "tree-sitter-bash>=0.23,<1",
+]
 
 [tool.ruff]
 target-version = "py310"
