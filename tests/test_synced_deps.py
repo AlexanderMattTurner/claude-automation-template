@@ -50,15 +50,40 @@ def tracked_files() -> frozenset[str]:
 
 
 @functools.cache
-def sync_paths() -> tuple[str, ...]:
+def path_list(name: str) -> tuple[str, ...]:
+    """One of the workflow's space-separated path lists."""
     text = TEMPLATE_SYNC_YAML.read_text(encoding="utf-8")
-    match = re.search(r'^\s*SYNC_PATHS:\s*"(?P<paths>[^"]*)"', text, re.MULTILINE)
-    assert match, "template-sync.yaml declares SYNC_PATHS"
+    match = re.search(rf'^\s*{name}:\s*"(?P<paths>[^"]*)"', text, re.MULTILINE)
+    assert match, f"template-sync.yaml declares {name}"
     return tuple(match.group("paths").split())
 
 
+def sync_paths() -> tuple[str, ...]:
+    return path_list("SYNC_PATHS")
+
+
 def is_delivered(path: str) -> bool:
-    return any(path == entry or path.startswith(entry + "/") for entry in sync_paths())
+    """Whether every consumer receives this file, modelling template-sync.sh.
+
+    Coverage by SYNC_PATHS is necessary but not sufficient. The sync subtracts
+    two sets, both matched EXACTLY (`is_excluded`, `is_opt_in`), and a guard
+    whose model is more permissive than the sync reintroduces the very
+    fail-open it exists to close — one level down, where only a downstream
+    break would ever reveal it.
+    """
+    covered = next(
+        (e for e in sync_paths() if path == e or path.startswith(e + "/")), None
+    )
+    if covered is None:
+        return False
+    excluded = path_list("EXCLUDE_PATHS")
+    # An opt-in file is never INTRODUCED, so a consumer without it stays without
+    # it — undeliverable for a reader that needs it present.
+    return (
+        covered not in excluded
+        and path not in excluded
+        and path not in path_list("OPT_IN_PATHS")
+    )
 
 
 def synced_shell_files() -> list[str]:
@@ -175,3 +200,24 @@ def test_an_annotation_excuses_only_the_path_it_names() -> None:
     other = undelivered_examples()[1]
     blind = f'#!/bin/bash\n# {ALLOW} {target} — consumer-owned\ncat "{other}"\n'
     assert undelivered_in_source(".hooks/probe.sh", blind) == [(3, other)]
+
+
+def test_delivery_subtracts_excluded_and_opt_in_paths() -> None:
+    """A path under SYNC_PATHS is not delivered if the sync then skips it.
+
+    Pins the three subtractions template-sync.sh makes, against the live lists.
+    """
+    assert is_delivered(".github/scripts/install-mergiraf.sh")
+
+    for excluded in path_list("EXCLUDE_PATHS"):
+        assert not is_delivered(excluded), f"{excluded} is in EXCLUDE_PATHS"
+    for opt_in in path_list("OPT_IN_PATHS"):
+        assert not is_delivered(opt_in), f"{opt_in} is in OPT_IN_PATHS"
+
+    # Excluding a whole SYNC_PATHS entry withdraws everything beneath it, which
+    # is the case an exact-match-only reading of EXCLUDE_PATHS would miss.
+    assert ".github/prompts" not in path_list("EXCLUDE_PATHS")
+    excluded_prompt = next(
+        p for p in path_list("EXCLUDE_PATHS") if p.startswith(".github/prompts/")
+    )
+    assert not is_delivered(excluded_prompt)
