@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -23,7 +24,7 @@ const TEMPLATE_SYNC_YAML = join(
 
 // SYNC_PATHS is the whole contract: a consumer receives these paths and nothing
 // else. Reading it here rather than restating the list is what makes the tests
-// below fail when an installer's data dependency stops being delivered.
+// below fail when a synced file's data dependency stops being delivered.
 function syncPaths() {
   const yaml = readFileSync(TEMPLATE_SYNC_YAML, "utf8");
   const match = /^\s*SYNC_PATHS:\s*"(?<paths>[^"]*)"/m.exec(yaml);
@@ -93,6 +94,25 @@ test("template-sync delivers the CLI pin install-claude-cli reads", () => {
       /REACHED-INSTALL .*@anthropic-ai\/claude-code@\d+\.\d+\.\d+/,
     );
     assert.equal(run.status, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// The commit-msg hook passes this path to commitlint with no fallback, and the
+// hook runs under `set -euo pipefail`. Undelivered, every commit in the consumer
+// fails with a commitlint ENOENT rather than a message about the hook.
+test("template-sync delivers the commitlint config the commit-msg hook names", () => {
+  const hook = readFileSync(join(REPO_ROOT, ".hooks", "commit-msg"), "utf8");
+  const declared = /^config="(?<path>[^"]+)"$/m.exec(hook);
+  assert.ok(declared, ".hooks/commit-msg declares its commitlint config path");
+
+  const root = consumerTree();
+  try {
+    assert.ok(
+      existsSync(join(root, declared.groups.path)),
+      `${declared.groups.path} is read by .hooks/commit-msg but no SYNC_PATHS entry delivers it`,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
