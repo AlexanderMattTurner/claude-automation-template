@@ -218,17 +218,17 @@ Turning the workflow off does not disable anything else: conflicts simply stay f
 
 Repository **settings and secrets are never copied** when you create a repo from a template or when `template-sync` runs—both only move files. So each consuming repo configures these once. The workflows read:
 
-| Secret                                    | Used by                                                                                    | Required?                                                                                          |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `CLAUDE_CODE_OAUTH_TOKEN`                 | Every Claude-backed workflow (via the `claude-run` composite)                              | For Claude-backed workflows                                                                        |
-| `CLAUDE_CODE_OAUTH_TOKEN_FALLBACK` … `_6` | Same — the credential ladder's fallback rungs, tried in order when an earlier token errors | Optional—each unset rung is stepped over                                                           |
-| `ANTHROPIC_API_KEY`                       | `auto-version` (changelog prose, as the direct-API ladder's last, metered rung)            | Optional—falls back to a plain commit list                                                         |
-| `TEMPLATE_SYNC_TOKEN`                     | `template-sync`, `phone-home`, `claude-review`, `auto-resolve-conflicts`                   | Optional—falls back to `GITHUB_TOKEN` (which cannot resolve review threads or push workflow files) |
-| `RELEASE_BYPASS_TOKEN`                    | `auto-version` (the release commit + tag push)                                             | Only for a protected default branch—an own-owner PAT registered as a ruleset bypass actor          |
-| `RULESET_SYNC_TOKEN_ORG`                  | `sync-required-checks`                                                                     | For required-check syncing (`administration: write`)                                               |
-| `PUSH_TOKEN`                              | `security-vulnerability-scan`                                                              | Optional—falls back to `GITHUB_TOKEN`                                                              |
-| `GH_NTFY_SUBJECT`                         | `build-publish-notify`                                                                     | Optional—enables the ntfy failure alert (a no-op if unset)                                         |
-| `GH_NTFY_URL`                             | `build-publish-notify`                                                                     | Optional—targets a self-hosted ntfy server (defaults to ntfy.sh)                                   |
+| Secret                                    | Used by                                                                                  | Required?                                                                                          |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `CLAUDE_CODE_OAUTH_TOKEN`                 | Every Claude-backed workflow (via the `claude-run` composite), as the ladder's LAST rung | For Claude-backed workflows                                                                        |
+| `CLAUDE_CODE_OAUTH_TOKEN_FALLBACK` … `_6` | Same — the rungs tried BEFORE it, in order, so CI spends them first                      | Optional—each unset rung is skipped, at no cost                                                    |
+| `ANTHROPIC_API_KEY`                       | `auto-version` (changelog prose, as the direct-API ladder's last, metered rung)          | Optional—falls back to a plain commit list                                                         |
+| `TEMPLATE_SYNC_TOKEN`                     | `template-sync`, `phone-home`, `claude-review`, `auto-resolve-conflicts`                 | Optional—falls back to `GITHUB_TOKEN` (which cannot resolve review threads or push workflow files) |
+| `RELEASE_BYPASS_TOKEN`                    | `auto-version` (the release commit + tag push)                                           | Only for a protected default branch—an own-owner PAT registered as a ruleset bypass actor          |
+| `RULESET_SYNC_TOKEN_ORG`                  | `sync-required-checks`                                                                   | For required-check syncing (`administration: write`)                                               |
+| `PUSH_TOKEN`                              | `security-vulnerability-scan`                                                            | Optional—falls back to `GITHUB_TOKEN`                                                              |
+| `GH_NTFY_SUBJECT`                         | `build-publish-notify`                                                                   | Optional—enables the ntfy failure alert (a no-op if unset)                                         |
+| `GH_NTFY_URL`                             | `build-publish-notify`                                                                   | Optional—targets a self-hosted ntfy server (defaults to ntfy.sh)                                   |
 
 `TEMPLATE_SYNC_TOKEN` should be a **fine-grained PAT** (it lets sync/release PRs touch workflow files and clear tag protection, which `GITHUB_TOKEN` can’t):
 

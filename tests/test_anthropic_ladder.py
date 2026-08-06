@@ -162,8 +162,8 @@ def test_empty_middle_rung_is_skipped(tmp_path: Path) -> None:
     proc, calls, _ = _run_messages(
         tmp_path,
         {
-            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-first",
-            "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2": "sk-ant-oat-third",
+            "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK": "sk-ant-oat-first",
+            "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3": "sk-ant-oat-third",
         },
         ["401", "200"],
     )
