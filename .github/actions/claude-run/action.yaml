@@ -187,6 +187,7 @@ runs:
       shell: bash
       env:
         PRIOR: "true"
+        ANY_PRIOR: "false"
         ERRORED: ${{ steps.c1.outputs.errored }}
       run: |
         set -euo pipefail
@@ -195,6 +196,13 @@ runs:
           still="true"
         fi
         echo "still_needs_attempt=${still}" >>"$GITHUB_OUTPUT"
+        # An EMPTY errored means this rung's check never ran, i.e. the rung was
+        # skipped for an unset token. `any_attempt` is what lets a backoff below
+        # wait only BETWEEN attempts: before the first one there is no blip to
+        # straddle, so the wait would only idle a runner.
+        any="$ANY_PRIOR"
+        [[ -n "$ERRORED" ]] && any="true"
+        echo "any_attempt=${any}" >>"$GITHUB_OUTPUT"
     # A dead/expired credential is rejected in roughly half a second without
     # ever reaching inference, so back-to-back rungs spend the whole ladder
     # inside a few seconds — long enough for one provider-side blip to take out
@@ -203,7 +211,9 @@ runs:
     # first and the ladder straddles a blip, while the added wall clock stays
     # under five minutes.
     - name: Back off before the second-tier attempt
-      if: steps.s1.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token != ''
+      if: >-
+        steps.s1.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token != ''
+        && steps.s1.outputs.any_attempt == 'true'
       shell: bash
       env:
         BACKOFF_SECONDS: "10"
@@ -236,6 +246,7 @@ runs:
       shell: bash
       env:
         PRIOR: ${{ steps.s1.outputs.still_needs_attempt }}
+        ANY_PRIOR: ${{ steps.s1.outputs.any_attempt }}
         ERRORED: ${{ steps.c2.outputs.errored }}
       run: |
         set -euo pipefail
@@ -244,8 +255,13 @@ runs:
           still="true"
         fi
         echo "still_needs_attempt=${still}" >>"$GITHUB_OUTPUT"
+        any="$ANY_PRIOR"
+        [[ -n "$ERRORED" ]] && any="true"
+        echo "any_attempt=${any}" >>"$GITHUB_OUTPUT"
     - name: Back off before the third-tier attempt
-      if: steps.s2.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token_2 != ''
+      if: >-
+        steps.s2.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token_2 != ''
+        && steps.s2.outputs.any_attempt == 'true'
       shell: bash
       env:
         BACKOFF_SECONDS: "20"
@@ -276,6 +292,7 @@ runs:
       shell: bash
       env:
         PRIOR: ${{ steps.s2.outputs.still_needs_attempt }}
+        ANY_PRIOR: ${{ steps.s2.outputs.any_attempt }}
         ERRORED: ${{ steps.c3.outputs.errored }}
       run: |
         set -euo pipefail
@@ -284,8 +301,13 @@ runs:
           still="true"
         fi
         echo "still_needs_attempt=${still}" >>"$GITHUB_OUTPUT"
+        any="$ANY_PRIOR"
+        [[ -n "$ERRORED" ]] && any="true"
+        echo "any_attempt=${any}" >>"$GITHUB_OUTPUT"
     - name: Back off before the fourth-tier attempt
-      if: steps.s3.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token_3 != ''
+      if: >-
+        steps.s3.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token_3 != ''
+        && steps.s3.outputs.any_attempt == 'true'
       shell: bash
       env:
         BACKOFF_SECONDS: "30"
@@ -316,6 +338,7 @@ runs:
       shell: bash
       env:
         PRIOR: ${{ steps.s3.outputs.still_needs_attempt }}
+        ANY_PRIOR: ${{ steps.s3.outputs.any_attempt }}
         ERRORED: ${{ steps.c4.outputs.errored }}
       run: |
         set -euo pipefail
@@ -324,8 +347,13 @@ runs:
           still="true"
         fi
         echo "still_needs_attempt=${still}" >>"$GITHUB_OUTPUT"
+        any="$ANY_PRIOR"
+        [[ -n "$ERRORED" ]] && any="true"
+        echo "any_attempt=${any}" >>"$GITHUB_OUTPUT"
     - name: Back off before the fifth-tier attempt
-      if: steps.s4.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token_4 != ''
+      if: >-
+        steps.s4.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token_4 != ''
+        && steps.s4.outputs.any_attempt == 'true'
       shell: bash
       env:
         BACKOFF_SECONDS: "45"
@@ -356,6 +384,7 @@ runs:
       shell: bash
       env:
         PRIOR: ${{ steps.s4.outputs.still_needs_attempt }}
+        ANY_PRIOR: ${{ steps.s4.outputs.any_attempt }}
         ERRORED: ${{ steps.c5.outputs.errored }}
       run: |
         set -euo pipefail
@@ -364,8 +393,13 @@ runs:
           still="true"
         fi
         echo "still_needs_attempt=${still}" >>"$GITHUB_OUTPUT"
+        any="$ANY_PRIOR"
+        [[ -n "$ERRORED" ]] && any="true"
+        echo "any_attempt=${any}" >>"$GITHUB_OUTPUT"
     - name: Back off before the sixth-tier attempt
-      if: steps.s5.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token_5 != ''
+      if: >-
+        steps.s5.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token_5 != ''
+        && steps.s5.outputs.any_attempt == 'true'
       shell: bash
       env:
         BACKOFF_SECONDS: "60"
@@ -396,6 +430,7 @@ runs:
       shell: bash
       env:
         PRIOR: ${{ steps.s5.outputs.still_needs_attempt }}
+        ANY_PRIOR: ${{ steps.s5.outputs.any_attempt }}
         ERRORED: ${{ steps.c6.outputs.errored }}
       run: |
         set -euo pipefail
@@ -404,8 +439,13 @@ runs:
           still="true"
         fi
         echo "still_needs_attempt=${still}" >>"$GITHUB_OUTPUT"
+        any="$ANY_PRIOR"
+        [[ -n "$ERRORED" ]] && any="true"
+        echo "any_attempt=${any}" >>"$GITHUB_OUTPUT"
     - name: Back off before the seventh-tier attempt
-      if: steps.s6.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token_6 != ''
+      if: >-
+        steps.s6.outputs.still_needs_attempt == 'true' && inputs.fallback_oauth_token_6 != ''
+        && steps.s6.outputs.any_attempt == 'true'
       shell: bash
       env:
         BACKOFF_SECONDS: "75"
@@ -436,6 +476,7 @@ runs:
       shell: bash
       env:
         PRIOR: ${{ steps.s6.outputs.still_needs_attempt }}
+        ANY_PRIOR: ${{ steps.s6.outputs.any_attempt }}
         ERRORED: ${{ steps.c7.outputs.errored }}
       run: |
         set -euo pipefail
@@ -444,6 +485,9 @@ runs:
           still="true"
         fi
         echo "still_needs_attempt=${still}" >>"$GITHUB_OUTPUT"
+        any="$ANY_PRIOR"
+        [[ -n "$ERRORED" ]] && any="true"
+        echo "any_attempt=${any}" >>"$GITHUB_OUTPUT"
     # The free retry, on the LAST rung because that is the rung a minimal setup
     # reaches. claude-run-errored.sh reports zero_cost=true only when the attempt
     # billed nothing (total_cost_usd == 0, or no log at all), which proves
@@ -494,6 +538,7 @@ runs:
       shell: bash
       env:
         PRIOR: ${{ steps.s7.outputs.still_needs_attempt }}
+        ANY_PRIOR: ${{ steps.s7.outputs.any_attempt }}
         ERRORED: ${{ steps.c7r.outputs.errored }}
       run: |
         set -euo pipefail
@@ -502,6 +547,9 @@ runs:
           still="true"
         fi
         echo "still_needs_attempt=${still}" >>"$GITHUB_OUTPUT"
+        any="$ANY_PRIOR"
+        [[ -n "$ERRORED" ]] && any="true"
+        echo "any_attempt=${any}" >>"$GITHUB_OUTPUT"
     # Resolve the winning rung's log ONCE. Both the `execution_file` output and
     # the gate below read this step, so the coalesce has a single source rather
     # than a copy per consumer that could drift apart.
