@@ -287,7 +287,10 @@ jobs:
         env:
           CONFLICT_FILES: ${{ steps.sync.outputs.conflict_files }}
           PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # token-fallback-ok: the dedicated CI token is preferred so a sync does not
+          # spend the operator's own account; CLAUDE_CODE_OAUTH_TOKEN is the same
+          # credential the ladder ends on, so the fallback costs nothing but order.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
           GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || github.token }}
           GH_REPO: ${{ github.repository }}
