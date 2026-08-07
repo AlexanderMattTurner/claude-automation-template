@@ -131,10 +131,7 @@ function runScript(dir, binDir) {
   // Clear every credential-ladder rung so the sandboxed runs never reach the
   // real Claude API and always take the commit-list changelog fallback.
   for (const key of Object.keys(env)) {
-    if (
-      key === "ANTHROPIC_API_KEY" ||
-      key.startsWith("CLAUDE_CODE_OAUTH_TOKEN")
-    ) {
+    if (key.startsWith("CLAUDE_CODE_OAUTH_TOKEN")) {
       delete env[key];
     }
   }

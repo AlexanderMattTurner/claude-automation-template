@@ -3,11 +3,11 @@
 # place (sourced, not run).
 #
 # Every caller that walks credentials — the conflict resolver's fan-out, the
-# pre-push self-review, and the direct-API ladder, which appends its own
-# ANTHROPIC_API_KEY rung — reads this list. A hand-typed copy is how a rung goes
-# missing: the omission is invisible until the one credential an adopter
-# actually provisioned is the one that got skipped, and a caller that decides
-# "is any credential configured?" from a short copy then fails OPEN.
+# pre-push self-review, and the direct-API caller in anthropic-ladder.bash —
+# reads this list. A hand-typed copy is how a rung goes missing: the omission
+# is invisible until the one credential an adopter actually provisioned is the
+# one that got skipped, and a caller that decides "is any credential
+# configured?" from a short copy then fails OPEN.
 
 # CLAUDE_CODE_OAUTH_TOKEN is LAST, not first. It is the account an operator
 # already has, so it is the one credential a minimal setup configures — and
