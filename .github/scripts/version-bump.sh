@@ -44,11 +44,11 @@ false) ;;
   ;;
 esac
 
-# An Anthropic credential (any rung of the anthropic-ladder.bash ladder) is
+# An Anthropic credential (any rung of the claude-oauth-ladder.bash ladder) is
 # optional: it is used only for changelog prose. The version decision never
 # depends on it. npm authentication uses OIDC trusted publishing (id-token:
 # write in the workflow), so no NODE_AUTH_TOKEN / NPM_TOKEN is required.
-if [[ -z "$(anthropic_ladder)" ]]; then
+if [[ -z "$(claude_oauth_ladder)" ]]; then
   log "Note: no Anthropic credential is configured. Changelog prose will fall back to a plain commit list."
 fi
 
@@ -199,7 +199,7 @@ $COMMITS"
 fi
 CHANGELOG_SECTION="$CHANGELOG_FALLBACK"
 
-if [[ -n "$(anthropic_ladder)" ]]; then
+if [[ -n "$(claude_oauth_ladder)" ]]; then
   # The prompt uses clear delimiters to resist injection from commit messages
   # and the existing changelog block.
   PROMPT="Draft the body of the next CHANGELOG entry for these commits.
