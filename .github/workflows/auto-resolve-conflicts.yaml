@@ -146,7 +146,7 @@ jobs:
     outputs:
       prs: ${{ steps.discover.outputs.prs }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github/scripts
           persist-credentials: false
@@ -275,7 +275,7 @@ jobs:
       AUTO_RESOLVE_PROTECTED_RE: ${{ vars.AUTO_RESOLVE_PROTECTED_RE }}
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # matrix.pr.head_ref is a same-repo branch name (discover drops forks),
           # so this is a trusted ref; scripts authenticate git out-of-band, so no
@@ -474,7 +474,7 @@ jobs:
       # push" rather than as a second failure to report.
       - name: Upload the resolved merge for the land job
         if: steps.bundle.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: auto-resolve-merge-${{ matrix.pr.number }}
           path: ${{ runner.temp }}/auto-resolve-bundle
@@ -520,7 +520,7 @@ jobs:
       AUTO_RESOLVE_PROTECTED_RE: ${{ vars.AUTO_RESOLVE_PROTECTED_RE }}
     steps:
       - name: Checkout the PR head
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The PR's own content, but nothing in this job executes it: it is
           # here so git has the objects the bundle is thin against and a
@@ -556,7 +556,7 @@ jobs:
         # resolve). The land script reports that and exits 0 rather than
         # manufacturing a second red.
         continue-on-error: true
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: auto-resolve-merge-${{ matrix.pr.number }}
           path: ${{ runner.temp }}/auto-resolve-bundle
