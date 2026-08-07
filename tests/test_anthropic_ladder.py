@@ -68,7 +68,7 @@ def _run_messages(
     env = {
         k: v
         for k, v in os.environ.items()
-        if k != "ANTHROPIC_API_KEY" and not k.startswith("CLAUDE_CODE_OAUTH_TOKEN")
+        if not k.startswith("CLAUDE_CODE_OAUTH_TOKEN")
     }
     env["PATH"] = f"{stub_dir}{os.pathsep}{env['PATH']}"
     env["STUB_DIR"] = str(stub_dir)
@@ -86,11 +86,11 @@ def _run_messages(
 
 
 def _run_ladder_listing(creds: dict[str, str]) -> list[str]:
-    """Print anthropic_ladder's output under exactly `creds` configured."""
+    """Print claude_oauth_ladder's output under exactly `creds` configured."""
     env = {
         k: v
         for k, v in os.environ.items()
-        if k != "ANTHROPIC_API_KEY" and not k.startswith("CLAUDE_CODE_OAUTH_TOKEN")
+        if not k.startswith("CLAUDE_CODE_OAUTH_TOKEN")
     }
     env.update(creds)
     proc = subprocess.run(
@@ -98,7 +98,7 @@ def _run_ladder_listing(creds: dict[str, str]) -> list[str]:
             "bash",
             "-c",
             'set -euo pipefail; source "$1/retry.bash"; '
-            'source "$1/anthropic-ladder.bash"; anthropic_ladder',
+            'source "$1/anthropic-ladder.bash"; claude_oauth_ladder',
             "lister",
             str(LIB_DIR),
         ],
@@ -114,15 +114,15 @@ def test_401_on_rung_one_steps_to_rung_two_and_succeeds(tmp_path: Path) -> None:
     proc, calls, response_file = _run_messages(
         tmp_path,
         {
-            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-first",
-            "ANTHROPIC_API_KEY": "sk-ant-api-second",
+            "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK": "sk-ant-oat-first",
+            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-second",
         },
         ["401", "200"],
     )
     assert proc.returncode == 0, proc.stderr
     assert len(calls) == 2, calls
     assert "sk-ant-oat-first" in calls[0]
-    assert "sk-ant-api-second" in calls[1]
+    assert "sk-ant-oat-second" in calls[1]
     assert "was rejected (HTTP 401)" in proc.stderr
     assert '"content"' in response_file.read_text()
 
@@ -131,15 +131,15 @@ def test_persistent_429_exhausts_three_attempts_then_steps_rung(tmp_path: Path) 
     proc, calls, _ = _run_messages(
         tmp_path,
         {
-            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-first",
-            "ANTHROPIC_API_KEY": "sk-ant-api-second",
+            "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK": "sk-ant-oat-first",
+            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-second",
         },
         ["429", "429", "429", "200"],
     )
     assert proc.returncode == 0, proc.stderr
     assert len(calls) == 4, calls
     assert all("sk-ant-oat-first" in c for c in calls[:3])
-    assert "sk-ant-api-second" in calls[3]
+    assert "sk-ant-oat-second" in calls[3]
     assert "still rate-limited after 3 attempts" in proc.stderr
 
 
@@ -147,23 +147,23 @@ def test_400_fails_immediately_without_touching_rung_two(tmp_path: Path) -> None
     proc, calls, _ = _run_messages(
         tmp_path,
         {
-            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-first",
-            "ANTHROPIC_API_KEY": "sk-ant-api-second",
+            "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK": "sk-ant-oat-first",
+            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-second",
         },
         ["400"],
     )
     assert proc.returncode == 1
     assert len(calls) == 1, calls
     assert "rejected the request (HTTP 400)" in proc.stderr
-    assert "sk-ant-api-second" not in "".join(calls)
+    assert "sk-ant-oat-second" not in "".join(calls)
 
 
 def test_empty_middle_rung_is_skipped(tmp_path: Path) -> None:
     proc, calls, _ = _run_messages(
         tmp_path,
         {
-            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-first",
-            "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2": "sk-ant-oat-third",
+            "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK": "sk-ant-oat-first",
+            "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3": "sk-ant-oat-third",
         },
         ["401", "200"],
     )
@@ -177,10 +177,10 @@ def test_duplicate_credential_collapses_to_one_rung() -> None:
         {
             "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-same",
             "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK": "sk-ant-oat-same",
-            "ANTHROPIC_API_KEY": "sk-ant-api-last",
+            "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2": "sk-ant-oat-other",
         }
     )
-    assert rungs == ["sk-ant-oat-same", "sk-ant-api-last"]
+    assert rungs == ["sk-ant-oat-same", "sk-ant-oat-other"]
 
 
 def test_oauth_token_gets_bearer_and_beta_headers(tmp_path: Path) -> None:
@@ -193,14 +193,26 @@ def test_oauth_token_gets_bearer_and_beta_headers(tmp_path: Path) -> None:
     assert "x-api-key" not in calls[0]
 
 
-def test_api_key_gets_x_api_key_header(tmp_path: Path) -> None:
+def test_metered_key_under_oauth_var_gets_x_api_key_and_warns(tmp_path: Path) -> None:
     proc, calls, _ = _run_messages(
-        tmp_path, {"ANTHROPIC_API_KEY": "sk-ant-api-key"}, ["200"]
+        tmp_path, {"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-api-key"}, ["200"]
     )
     assert proc.returncode == 0, proc.stderr
     assert "x-api-key: sk-ant-api-key" in calls[0]
     assert "authorization: Bearer" not in calls[0]
     assert "anthropic-beta" not in calls[0]
+    assert "metered Anthropic API key" in proc.stderr
+
+
+def test_anthropic_api_key_var_is_not_a_rung(tmp_path: Path) -> None:
+    """The ladder walks subscription tokens only; a metered credit spend must
+    be a loud refusal, never a silent fallback."""
+    proc, calls, _ = _run_messages(
+        tmp_path, {"ANTHROPIC_API_KEY": "sk-ant-api-key"}, []
+    )
+    assert proc.returncode == 1
+    assert calls == []
+    assert "no Anthropic credential is configured" in proc.stderr
 
 
 def test_no_credentials_exits_one_naming_the_vars(tmp_path: Path) -> None:
@@ -209,7 +221,6 @@ def test_no_credentials_exits_one_naming_the_vars(tmp_path: Path) -> None:
     assert calls == []
     assert "no Anthropic credential is configured" in proc.stderr
     assert "CLAUDE_CODE_OAUTH_TOKEN" in proc.stderr
-    assert "ANTHROPIC_API_KEY" in proc.stderr
 
 
 def test_retry_cmd_rejects_max_zero_with_status_two() -> None:

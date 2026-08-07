@@ -16,6 +16,7 @@
     "start": "echo 'ERROR: Configure start script in package.json' && exit 1",
     "test": "bash .github/scripts/install-input-sanitizer.sh && node --test \".github/scripts/**/*.test.mjs\" \"tests/**/*.test.mjs\"",
     "lint": "echo 'ERROR: Configure lint script in package.json' && exit 1",
+    "lint:js": "eslint .",
     "lint:md": "markdownlint-cli2 \"**/*.md\"",
     "lint:md:fix": "markdownlint-cli2 --fix \"**/*.md\"",
     "check": "echo 'ERROR: Configure check script in package.json' && exit 1",
@@ -59,6 +60,10 @@
   "devDependencies": {
     "@commitlint/cli": "^21.0.1",
     "@commitlint/config-conventional": "^21.0.1",
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-regexp": "^2.10.0",
+    "globals": "^17.9.0",
     "lint-staged": "^17.0.5",
     "markdownlint": "^0.41.1",
     "markdownlint-cli2": "^0.23.1",

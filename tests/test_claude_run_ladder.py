@@ -61,7 +61,16 @@ def _token_inputs() -> tuple[str, ...]:
 
 TOKEN_INPUTS = _token_inputs()
 RUNGS = range(1, len(TOKEN_INPUTS) + 1)
-RETRY_ATTEMPT = "a1r"
+# The free same-credential retry, and the rung it repeats — both READ from the
+# action, because which rung carries the retry is a design choice the action
+# owns. It sits on the LAST rung: that is the rung a caller who configures a
+# single token reaches, and such a caller has no next credential to fall to.
+RETRY_ATTEMPT = next(
+    step_id
+    for step in _steps()
+    if (step_id := str(step.get("id", ""))).startswith("a") and step_id.endswith("r")
+)
+RETRY_RUNG = int(RETRY_ATTEMPT[1:-1])
 
 _ATTEMPT_ID = re.compile(r"^a\d+r?$")
 _CHECK_ID = re.compile(r"^c\d+r?$")
@@ -80,20 +89,28 @@ def test_every_credential_input_has_a_rung_that_can_spend_it() -> None:
     assert tiers == [f"a{rung}" for rung in RUNGS]
 
 
-def test_the_free_retry_spends_the_primary_credential_and_no_other() -> None:
+def test_the_free_retry_spends_its_own_rungs_credential_and_no_other() -> None:
     """A retry wired to any other token input is neither same-credential nor free —
-    it would spend a fallback secret on a failure the primary might still serve,
-    and a zero-cost proof about the primary says nothing about that token's bill.
+    it would spend another secret on a failure this rung might still serve, and a
+    zero-cost proof about one credential says nothing about another's bill.
     Which input a step is wired to is invisible to the simulation below (no runner
-    resolves the `with:` block), so it is pinned against the primary rung's own
+    resolves the `with:` block), so it is pinned against the repeated rung's own
     expression rather than a copied literal."""
     by_id = {str(s.get("id", "")): s for s in _steps()}
     assert RETRY_ATTEMPT in by_id, (
-        f"no {RETRY_ATTEMPT} step — a zero-billed failure with no fallback token "
-        "configured would get no retry at all"
+        f"no {RETRY_ATTEMPT} step — a zero-billed failure on a single-token setup "
+        "would get no retry at all"
     )
-    primary = by_id["a1"]["with"]["claude_code_oauth_token"]
-    assert by_id[RETRY_ATTEMPT]["with"]["claude_code_oauth_token"] == primary
+    repeated = by_id[f"a{RETRY_RUNG}"]["with"]["claude_code_oauth_token"]
+    assert by_id[RETRY_ATTEMPT]["with"]["claude_code_oauth_token"] == repeated
+
+
+def test_the_retry_sits_on_the_last_rung_the_ladder_can_reach() -> None:
+    """The retry is the only one a single-token caller gets, and after the
+    reorder that caller's token fills the LAST rung — every earlier tier is
+    skipped as unset. A retry left on an earlier rung would be unreachable for
+    exactly the caller it exists to serve."""
+    assert RETRY_RUNG == max(RUNGS)
 
 
 def _guard_body() -> str:
@@ -325,13 +342,26 @@ def test_a_gap_in_the_token_list_does_not_truncate_the_ladder(tmp_path: Path) ->
     assert run.attempts == ["a1", "a3", "a5", "a6"]
 
 
-def test_the_free_retry_does_not_truncate_the_ladder_below_it(tmp_path: Path) -> None:
-    """The free retry sits between the primary and the second tier and every
-    tier below now gates on ITS state, so a retry that fails must pass the
-    pending state through exactly as an unset tier does — otherwise adding a
-    free attempt silently cost the caller six credentials."""
+def test_the_free_retry_does_not_swallow_the_ladders_failure(tmp_path: Path) -> None:
+    """The retry is the ladder's last step, so the pending state passes THROUGH
+    it to the propagate gate. A retry that reported its own skip or failure as
+    an answer would turn an exhausted ladder green — the one outcome the
+    propagate step exists to make loud."""
     run = _simulate(tmp_path, configured={1, 3, 5, 6}, zero_billed=True)
-    assert run.attempts == ["a1", RETRY_ATTEMPT, "a3", "a5", "a6"]
+    assert run.attempts == ["a1", "a3", "a5", "a6"]
+    assert run.errored == "true"
+
+
+def test_a_setup_holding_only_the_last_rung_pays_for_no_earlier_tier(
+    tmp_path: Path,
+) -> None:
+    """The minimal setup: one token, in the last rung. Every earlier tier is
+    unset, and an unset tier must be SKIPPED rather than attempted — an
+    unconditional first rung spends a dead invocation plus a backoff before the
+    ladder reaches the only credential the caller actually has."""
+    run = _simulate(tmp_path, configured={max(RUNGS)})
+    assert run.attempts == [f"a{max(RUNGS)}"]
+    assert run.backoffs == [], "an unset tier must cost no wait either"
 
 
 def test_every_configured_rung_is_spent_before_the_ladder_gives_up(
@@ -387,7 +417,7 @@ def test_a_lone_dead_primary_still_fails(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     ("zero_billed", "expected"),
-    [(True, ["a1", RETRY_ATTEMPT]), (False, ["a1"])],
+    [(True, [f"a{RETRY_RUNG}", RETRY_ATTEMPT]), (False, [f"a{RETRY_RUNG}"])],
 )
 def test_only_a_zero_billed_failure_earns_a_free_same_credential_retry(
     tmp_path: Path, zero_billed: bool, expected: list[str]
@@ -403,7 +433,7 @@ def test_only_a_zero_billed_failure_earns_a_free_same_credential_retry(
     not zero_billed: the run reached inference and failed on the work, so a
     repeat on the same credential would spend real money to fail the same way.
     """
-    run = _simulate(tmp_path, configured={1}, zero_billed=zero_billed)
+    run = _simulate(tmp_path, configured={RETRY_RUNG}, zero_billed=zero_billed)
     assert run.attempts == expected
 
 
@@ -425,23 +455,24 @@ def test_a_non_errored_run_is_never_retried(tmp_path: Path, zero_billed: bool) -
 def test_the_outputs_report_the_free_retry_when_it_is_the_last_attempt(
     tmp_path: Path, retry_works: bool
 ) -> None:
-    """The newest-first `||` chain must place the retry ahead of the primary, or
+    """The newest-first `||` chain must place the retry ahead of the rung it
+    repeats, or
     the caller reads the log of a superseded attempt — a stale execution_file
     for check-claude-execution.sh to classify."""
-    run = _simulate(tmp_path, configured={1}, zero_billed=True, retry_works=retry_works)
-    assert run.attempts == ["a1", RETRY_ATTEMPT]
+    run = _simulate(
+        tmp_path, configured={RETRY_RUNG}, zero_billed=True, retry_works=retry_works
+    )
+    assert run.attempts == [f"a{RETRY_RUNG}", RETRY_ATTEMPT]
     assert run.errored == ("false" if retry_works else "true")
     assert run.execution_file == f"execution-{RETRY_ATTEMPT}.json"
 
 
-def test_a_successful_free_retry_ends_the_ladder(tmp_path: Path) -> None:
+def test_a_successful_free_retry_ends_the_ladder_green(tmp_path: Path) -> None:
     """The retry joins the cumulative state rather than sitting beside it: a
-    repeat that delivered must stop the ladder, or every configured fallback is
-    spent on a request that already succeeded — the exact waste the state chain
-    exists to prevent, and what a tier still gated on the PRE-retry state would
-    do."""
+    repeat that delivered must leave the ladder reporting success, or the
+    propagate gate fails a run that actually got its answer."""
     run = _simulate(tmp_path, configured=set(RUNGS), zero_billed=True, retry_works=True)
-    assert run.attempts == ["a1", RETRY_ATTEMPT]
+    assert run.attempts == [f"a{rung}" for rung in RUNGS] + [RETRY_ATTEMPT]
     assert run.errored == "false"
 
 
@@ -450,7 +481,7 @@ def test_the_free_retry_waits_out_the_blip_before_repeating(tmp_path: Path) -> N
     first attempt hit, so the rung would answer a blip by confirming it. The
     wait is the rung's whole mechanism, and here no credential backoff can
     supply it."""
-    run = _simulate(tmp_path, configured={1}, zero_billed=True)
+    run = _simulate(tmp_path, configured={RETRY_RUNG}, zero_billed=True)
     assert len(run.backoffs) == 1, "the free retry fired with no wait before it"
     assert run.backoffs[0] >= 5, "a sub-5s wait does not outlast a provider blip"
     assert run.backoffs[0] <= 60, f"a free retry should not idle {run.backoffs[0]}s"
@@ -505,7 +536,12 @@ def test_every_retry_rung_is_preceded_by_a_backoff_on_its_own_gate() -> None:
     """Choke-point uniformity: one unspaced rung is enough for a blip to take
     two credentials at once. A wait on a looser gate would idle a runner before
     an attempt that never happens; on a tighter one it would let a rung through
-    unspaced."""
+    unspaced.
+
+    A credential rung's backoff carries ONE extra clause its attempt does not:
+    the wait straddles a blip BETWEEN two attempts, so it is skipped until some
+    attempt has actually run. Without it a setup holding only the last rung
+    waits out every earlier tier's backoff before its single attempt."""
     steps = _steps()
     for index, step in enumerate(steps):
         rung = str(step.get("id", ""))
@@ -515,4 +551,11 @@ def test_every_retry_rung_is_preceded_by_a_backoff_on_its_own_gate() -> None:
         assert str(backoff.get("name", "")).startswith("Back off"), (
             f"rung {rung} retries with no preceding backoff"
         )
-        assert backoff["if"] == step["if"]
+        attempt_gate = " ".join(str(step["if"]).split())
+        backoff_gate = " ".join(str(backoff["if"]).split())
+        if backoff_gate == attempt_gate:
+            continue
+        state = attempt_gate.split(".")[1]
+        assert backoff_gate == (
+            f"{attempt_gate} && steps.{state}.outputs.any_attempt == 'true'"
+        ), f"rung {rung}'s backoff gate is not its attempt gate plus any_attempt"
