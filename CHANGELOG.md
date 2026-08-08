@@ -12,6 +12,21 @@ the prose from the release's commits.
 
 ## Unreleased
 
+### Added
+
+- The `decide` reusable workflow diffs the change range itself instead of calling
+  `dorny/paths-filter`, and gains the inputs that go with it: `paths-regex`,
+  `paths-regex-file` (an SSOT a local git hook can source too), `pytest-targets`
+  (watched paths derived from a test's own import lines), `trigger-keyword` /
+  `heldout-keyword`, `keyword-scope`, `skip-on-draft`,
+  `ignore-comment-only-changes`, and `memoize-anchor-jobs`. It now gates `push`
+  and `merge_group` events on their own ranges, re-anchors a stale webhook base
+  to the live base tip so a merge commit stops over-triggering every gate, and
+  fails loud on a gate configured with no trigger at all.
+- A memo shadow on the decide job: `decide-memo-base.py` names the newest commit
+  on the branch whose work job actually PASSED, and the gate logs what it would
+  decide diffing from there. Logged only — nothing acts on it yet.
+
 ### Fixed
 
 - Template-sync no longer introduces `auto-version.yaml` into a repo that does

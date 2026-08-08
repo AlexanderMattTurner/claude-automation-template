@@ -74,6 +74,36 @@ def commit_all(repo: Path, message: str = "fixture") -> str:
     return sha.stdout.strip()
 
 
+def commit_files(repo: Path, files: dict[str, str], message: str) -> str:
+    """Write `files` (repo-relative path -> content) into `repo`, stage everything
+    and commit; returns the new SHA. Parent dirs are created, so a case can add a
+    file in a directory the fixture repo does not have yet."""
+    for rel, content in files.items():
+        path = repo / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    return commit_all(repo, message)
+
+
+def git_out(repo: Path, *args: str) -> str:
+    """Run git in `repo` with the test identity env and return its stripped
+    stdout, raising on a non-zero exit."""
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        env=git_env(),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def run_capture(args: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
+    """`subprocess.run` with the capture_output/text/check defaults every test
+    uses. `kwargs` (env, cwd, input, ...) are forwarded verbatim."""
+    return subprocess.run(args, capture_output=True, text=True, check=False, **kwargs)
+
+
 _SCRIPT_DIRS = [
     REPO_ROOT / ".github" / "scripts",
     REPO_ROOT / ".claude" / "hooks",
