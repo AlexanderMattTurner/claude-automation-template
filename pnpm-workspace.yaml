@@ -1,0 +1,13 @@
+# Supply-chain guard: refuse any package version published less than
+# 3 days ago (4320 minutes), so a compromised release gets caught and
+# unpublished upstream before it can land here. Enforced both when
+# resolving versions and against existing pnpm-lock.yaml entries.
+# Must live here, not .npmrc — pnpm 11 silently ignores the .npmrc spelling.
+minimumReleaseAge: 4320
+
+# First-party packages are exempt: we control their publishing, so a fresh
+# release carries no third-party compromise risk and waiting 3 days to consume
+# our own bump buys nothing. tests/test_pnpm_supply_chain.py holds this list to
+# packages published from this repo's own GitHub owner.
+minimumReleaseAgeExclude:
+  - agent-control-plane-core
