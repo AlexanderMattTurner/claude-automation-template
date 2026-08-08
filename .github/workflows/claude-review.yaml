@@ -612,16 +612,16 @@ jobs:
           # (GITHUB_TOKEN) still posts the audit reply, keeping the
           # github-actions[bot] identity.
           #
-          # Org secret first, then the per-repo one, then the built-in. Both PAT
-          # spellings are load-bearing for different consumers: an org-owned repo
-          # sets TEMPLATE_SYNC_TOKEN_ORG once for every repo it owns, while a
-          # personal fork can only set a repo secret. Trying the org name first
-          # means a downstream repo needs no edit either way.
-          # Every candidate is an identity this repo's owner controls, so the
-          # fallback trades away capability (a resolve the Actions token may not
-          # perform), never which account acts.
-          # token-fallback-ok: designed graceful degradation, not an accident.
-          GH_RESOLVE_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          # The rungs the script picks the resolve credential from, in order.
+          # Passed as separate vars rather than an `||` chain so the choice is
+          # made against live API quota at run time: `||` picks the first
+          # CONFIGURED secret, which strands the step on a spent PAT while a
+          # rung below it still has quota. Every candidate is an identity this
+          # repo's owner controls, so the fallback trades away capability (a
+          # resolve the Actions token may not perform), never which account acts.
+          GH_TOKEN_ORG_PAT: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG }}
+          GH_TOKEN_REPO_PAT: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
+          GH_TOKEN_ACTIONS: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/resolve-addressed-threads.sh
 
       # State-based, and deliberately NOT gated on has_threads: the approval is a
@@ -649,7 +649,12 @@ jobs:
           # them can approve, so the PAT only ever upgrades this step from "a
           # human must approve" to "approved automatically".
           # Every candidate is an identity this repo's owner controls, so the
-          # fallback trades away capability, never which account acts.
-          # token-fallback-ok: designed graceful degradation, not an accident.
-          GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.TEMPLATE_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          # fallback trades away capability, never which account acts. Passed as
+          # separate rungs rather than an `||` chain so the script picks against
+          # live API quota: `||` picks the first CONFIGURED secret, so a spent
+          # PAT reddened this step instead of falling through to a rung that
+          # could still act.
+          GH_TOKEN_ORG_PAT: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG }}
+          GH_TOKEN_REPO_PAT: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
+          GH_TOKEN_ACTIONS: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/approve-if-reviewer-hold-clear.sh
