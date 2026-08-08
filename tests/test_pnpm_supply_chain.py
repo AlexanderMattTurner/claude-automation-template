@@ -14,6 +14,7 @@ Two ways this config dies silently, both covered here:
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tests._helpers import REPO_ROOT
@@ -32,17 +33,45 @@ def _workspace() -> dict:
     return yaml.safe_load(WORKSPACE.read_text())
 
 
-def _github_owner(repository_url: str) -> str:
-    """Owner segment of a github.com repository URL, lowercased.
+def _github_owner(repository: str) -> str:
+    """Owner of an npm `repository` value, lowercased.
 
-    npm `repository.url` values vary in prefix (`git+https://`, `git://`,
-    `ssh://git@`) but all carry `github.com/<owner>/<repo>`, so the owner is the
-    segment after the host rather than a fixed index.
+    Accepts the full-URL forms, whose prefixes vary (`git+https://`, `git://`,
+    `ssh://git@`) but which all carry `github.com/<owner>/<repo>`, and npm's
+    `github:<owner>/<repo>` and bare `<owner>/<repo>` shorthands. Anything else
+    — a non-GitHub host — has no owner to compare and fails loudly rather than
+    granting an unverifiable exemption.
     """
-    _, _, after_host = repository_url.partition("github.com")
-    owner = after_host.strip(":/").split("/")[0]
-    assert owner, f"no github.com owner in repository url {repository_url!r}"
+    _, on_github, after_host = repository.partition("github.com")
+    path = after_host if on_github else repository.removeprefix("github:")
+    assert "://" not in path, (
+        f"repository {repository!r} is not on github.com, so its owner cannot be "
+        "compared against this repo's."
+    )
+    owner = path.strip(":/").split("/")[0]
+    assert owner, f"no owner in repository value {repository!r}"
     return owner.lower()
+
+
+@pytest.mark.parametrize(
+    "repository",
+    [
+        "git+https://github.com/Owner/repo.git",
+        "https://github.com/Owner/repo",
+        "ssh://git@github.com/Owner/repo.git",
+        "git://github.com/Owner/repo.git",
+        "github:Owner/repo",
+        "Owner/repo",
+    ],
+)
+def test_github_owner_reads_every_npm_repository_form(repository: str) -> None:
+    assert _github_owner(repository) == "owner"
+
+
+def test_github_owner_rejects_a_non_github_host() -> None:
+    """Fail closed: an owner we can't compare must never pass as first-party."""
+    with pytest.raises(AssertionError, match="not on github.com"):
+        _github_owner("git+https://gitlab.com/Owner/repo.git")
 
 
 def test_minimum_release_age_is_set_where_pnpm_reads_it() -> None:
@@ -61,9 +90,12 @@ def test_no_inert_minimum_release_age_spelling() -> None:
             continue
         text = path.read_text().lower()
         # Comments legitimately name the inert spelling to warn about it; only a
-        # line that actually sets it is a problem.
+        # line that actually sets it is a problem. .npmrc takes both ini comment
+        # markers, so a commented-out setting is not an offender either.
         settings = [
-            line for line in text.splitlines() if not line.strip().startswith("#")
+            line
+            for line in text.splitlines()
+            if not line.strip().startswith(("#", ";"))
         ]
         for spelling in INERT_SPELLINGS:
             offenders = [line for line in settings if spelling in line]
