@@ -14,15 +14,16 @@ the prose from the release's commits.
 
 ### Added
 
-- A `Review gate` workflow that posts an `Automated review posted` commit status
-  on each PR head, so auto-merge can be made to wait for the automated reviewer.
-  The cheap checks finish in about ninety seconds while an LLM review takes
-  minutes, so a PR gated only on the cheap checks merges first and the reviewer's
-  `REQUEST_CHANGES` lands on a PR that already merged. The status clears once an
-  undismissed review of the PR exists, and dismissing the last one returns it to
-  `pending`. It ships **not required**: promote it once a live PR shows the
-  status landing on the head sha, because a required context that never reports
-  hangs every PR.
+- `Automated review posted`, a **required** check that makes auto-merge wait for
+  the automated reviewer. The cheap checks finish in about ninety seconds while
+  an LLM review takes minutes, so a PR gated only on the cheap checks merged
+  first and the reviewer's `REQUEST_CHANGES` landed on a PR that had already
+  merged. `review-gate.yaml` posts the verdict as a commit status on each PR
+  head: green once an undismissed review of the PR exists, `pending` before that,
+  and `pending` again if the last review is dismissed. The context name is
+  registered by a never-firing job in `review-gate-context.yaml`, because a job
+  sharing the name would report its own green check run under the same context
+  and satisfy the gate while the status still said `pending`.
 
 - PreToolUse skill gates: opening a PR, writing a test file, or writing a plan is
   denied until the session has invoked `pr-creation`, `writing-tests`, or

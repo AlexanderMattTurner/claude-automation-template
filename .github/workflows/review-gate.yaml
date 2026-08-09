@@ -30,10 +30,14 @@ jobs:
   # skipped run could displace a queued evaluation and then post nothing,
   # leaving the head with a stale status or none at all.
   review-posted:
-    # The job name is the required-check context sync-required-checks registers,
-    # and review-gate.sh posts its status under the same string. They must stay
-    # byte-identical.
-    name: Automated review posted # required-check: false  # promote once a live PR shows this status landing on the head sha; a required context that never reports hangs every PR
+    # The job name MUST NOT be the required-check context. This job's own check
+    # run lands on the PR head under its name, and the job succeeds whenever it
+    # managed to post a verdict — including a `pending` one. Sharing the name
+    # would put a green check run and a pending status under one required
+    # context, and the green would satisfy it: a merge gate that reports "waiting
+    # for a review" and lets the merge through anyway. The context is registered
+    # instead by the never-firing job in review-gate-context.yaml.
+    name: Evaluate the automated-review gate # required-check: false  # this job reports whether the EVALUATION ran; the gate itself is the status it posts
     runs-on: ubuntu-latest
     timeout-minutes: 5
     # Keyed per HEAD, and never cancelling a run in flight. Webhook delivery is
