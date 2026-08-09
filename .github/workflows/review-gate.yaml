@@ -67,4 +67,21 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: bash .github/scripts/review-gate.sh
+        # The absent-script arm is the BOOTSTRAP, and every repo adopting this
+        # file hits it exactly once: the checkout above reads the base branch, so
+        # on the pull request that INTRODUCES the gate the script is not there
+        # yet. Reading it off the PR head instead would execute PR-authored code
+        # under pull_request_target, which is the one thing this trigger must
+        # never do. So report `pending` — not green, which would be fail-open,
+        # and not a 127 red, which tells a reader to go diagnose an installation
+        # that is merely incomplete.
+        run: |
+          if [[ -f .github/scripts/review-gate.sh ]]; then
+            bash .github/scripts/review-gate.sh
+            exit 0
+          fi
+          gh api -X POST "repos/${GH_REPO}/statuses/${HEAD_SHA}" \
+            -f "state=pending" \
+            -f "context=Automated review posted" \
+            -f "description=Gate not yet on the base branch; it arms when this merges" \
+            -f "target_url=${RUN_URL}" >/dev/null
