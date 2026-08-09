@@ -12,6 +12,34 @@ the prose from the release's commits.
 
 ## Unreleased
 
+### Added
+
+- Three skills ported from the downstream `agent-glovebox` tree: `git-workflow`
+  (commit/push mechanics, who owns a merge conflict, auditing a bot's merge
+  delta), `babysit-prs` (watch sets, mergeability and merge-queue state,
+  re-arming auto-merge, which wake-ups deserve a reply), and `defect-to-guard`
+  (turning a defect class into a guard PROPOSAL, and the arithmetic it must
+  show). `CLAUDE.md` now points at them instead of carrying their rules inline.
+- `.claude/rules/code-style.md`, which loads with any source file and carries the
+  cross-language rules that used to sit in `CLAUDE.md` — plus asking the tool
+  that owns a format, deleting a reimplementation once its replacement lands,
+  "a change that makes a defect rarer is not a fix", the comment-block cap, and
+  the no-drift-guard rule.
+- A `Writing` section in `CLAUDE.md` governing every word a session produces, and
+  an `End-of-session handoff` section covering what a session could not fix.
+- The `decide` reusable workflow diffs the change range itself instead of calling
+  `dorny/paths-filter`, and gains the inputs that go with it: `paths-regex`,
+  `paths-regex-file` (an SSOT a local git hook can source too), `pytest-targets`
+  (watched paths derived from a test's own import lines), `trigger-keyword` /
+  `heldout-keyword`, `keyword-scope`, `skip-on-draft`,
+  `ignore-comment-only-changes`, and `memoize-anchor-jobs`. It now gates `push`
+  and `merge_group` events on their own ranges, re-anchors a stale webhook base
+  to the live base tip so a merge commit stops over-triggering every gate, and
+  fails loud on a gate configured with no trigger at all.
+- A memo shadow on the decide job: `decide-memo-base.py` names the newest commit
+  on the branch whose work job actually PASSED, and the gate logs what it would
+  decide diffing from there. Logged only — nothing acts on it yet.
+
 ### Fixed
 
 - Template-sync no longer introduces `auto-version.yaml` into a repo that does

@@ -37,7 +37,11 @@ repos:
       - id: shellcheck
         # Enable one optional check beyond the defaults: require [[ ]] over
         # [ ] in bash/ksh.
-        args: [-x, -P, .claude/hooks, -o, require-double-brackets]
+        # -P lists the directories a `source`/`.` line is resolved against, so a
+        # script that sources a sibling library is followed instead of reported
+        # SC1091 "not following".
+        args:
+          [-x, -P, ".claude/hooks:.github/scripts", -o, require-double-brackets]
 
   - repo: https://github.com/scop/pre-commit-shfmt
     rev: v3.12.0-2

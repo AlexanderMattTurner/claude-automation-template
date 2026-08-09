@@ -18,24 +18,21 @@ permissions:
 jobs:
   decide:
     permissions:
-      contents: read
-      pull-requests: read
+      contents: read # the reusable gate checks out the tree
+      pull-requests: read # its live draft re-read (decide_pr_is_draft_now)
+      actions: read # its memo shadow lists this workflow's past runs (needed in a private fork)
     uses: ./.github/workflows/decide-reusable.yaml
     with:
-      filters: |
-        run:
-          - '.claude/hooks/**'
-          - '.hooks/**'
-          - 'setup.sh'
-          - 'package.json'
-          - 'pnpm-lock.yaml'
-          - 'pyproject.toml'
-          - 'uv.lock'
-          - '.pre-commit-config.yaml'
-          - '.github/scripts/run-hook-lifecycle.sh'
-          - '.github/scripts/check-symlinks.sh'
-          - '.github/actions/setup-base-env/**'
-          - '.github/workflows/hook-lifecycle.yaml'
+      # POSIX ERE, read by `grep -E` — no PCRE escapes (\d, \w, (?:…)).
+      paths-regex: '^(\.claude/hooks/|\.hooks/|setup\.sh$|package\.json$|pnpm-lock\.yaml$|pyproject\.toml$|uv\.lock$|\.pre-commit-config\.yaml$|\.github/scripts/run-hook-lifecycle\.sh$|\.github/scripts/check-symlinks\.sh$|\.github/actions/setup-base-env/|\.github/workflows/hook-lifecycle\.yaml$)'
+      # The lifecycle run is a behavior test, so a comment-only touch of a watched
+      # file cannot change its outcome. Never set this on a lint/format/type gate,
+      # where a directive comment IS behavior.
+      ignore-comment-only-changes: true
+      # Anchor the memo shadow on the work job, never on the reporter: the reporter
+      # concludes success on a skip, so it would read an inherited green as a
+      # verified tree.
+      memoize-anchor-jobs: "^hook-lifecycle$"
 
   hook-lifecycle:
     needs: decide
