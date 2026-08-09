@@ -14,6 +14,14 @@ the prose from the release's commits.
 
 ### Added
 
+- PreToolUse skill gates: opening a PR, writing a test file, or writing a plan is
+  denied until the session has invoked `pr-creation`, `writing-tests`, or
+  `explore-plan`. The rules already said to invoke them; the gates are what makes
+  a session that skimmed past the rule notice. Each covers the CLI route and the
+  MCP route, since locking one door only moves the session to the other, and each
+  fails OPEN — an unusable session id or an unparsable payload costs the reminder,
+  never the tool call.
+
 - `shell-targets`, a decide-gate input that DERIVES a gate's watched paths from
   the shell entry point the job runs, instead of restating them in `paths-regex`
   where the copy drifts silently. `.github/scripts/shell-run-closure.py` walks

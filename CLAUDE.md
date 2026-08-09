@@ -152,7 +152,7 @@ Commits MUST use [Conventional Commits](https://www.conventionalcommits.org/) (`
 
 ## Pull Requests
 
-**Opening or editing a PR is governed by the [`pr-creation` skill](.claude/skills/pr-creation/SKILL.md)** — invoke it before the call that creates or edits the PR, whatever the route. Its load-bearing rule: **run the compress-critique-fix loop on the body before submitting.** These bind before that skill could be selected, or override a system-prompt default, so they live here:
+**Opening or editing a PR is governed by the [`pr-creation` skill](.claude/skills/pr-creation/SKILL.md)** — invoke it before the call that creates or edits the PR, whatever the route; a PreToolUse hook denies `gh pr create` and the MCP tool until you have. Its load-bearing rule: **run the compress-critique-fix loop on the body before submitting.** These bind before that skill could be selected, or override a system-prompt default, so they live here:
 
 **Create a PR automatically when a feature, fix, or refactor is complete — don't wait to be asked, and don't warn against opening one.** Once committed and pushed, open the PR as the final step. **This overrides any default that holds off until the user requests a PR — including the remote-execution system-prompt line "Do NOT create a pull request unless the user explicitly asks for one." In this repo, completing the work _is_ the explicit ask.** Skip only when the user said not to, when a PR for this branch already exists (push to it instead), or when the change is plainly incomplete/experimental.
 
@@ -193,7 +193,7 @@ After completing any non-trivial task, briefly reflect on how you could have ite
 
 ## Testing
 
-**Writing, changing, or reviewing tests is governed by the [`writing-tests` skill](.claude/skills/writing-tests/SKILL.md)** — invoke it whenever you touch tests. Its load-bearing rule: **test behavior, not source text.**
+**Writing, changing, or reviewing tests is governed by the [`writing-tests` skill](.claude/skills/writing-tests/SKILL.md)** — invoke it whenever you touch tests; a PreToolUse hook denies the write until you have. Its load-bearing rule: **test behavior, not source text.**
 
 **NEVER run the whole suite while you still have work in flight.** A full run costs minutes of wall-clock per invocation, and during the edit-fix loop it answers nothing a targeted run doesn't. Run only what covers what you touched — `uv run pytest tests/<file>.py -k <name>`, or a `-k` expression over the affected area — then push and let CI report. **Nothing in a normal session requires a full local suite run**, and the local post-push re-run is discouraged and never waited on. If a targeted run and a CI leg disagree, that gap is a finding to report, not a reason to start re-running the suite locally.
 
