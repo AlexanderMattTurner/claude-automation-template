@@ -7,9 +7,20 @@
 # and the reviewer's REQUEST_CHANGES arrives on a merged PR. Nothing is red; the
 # review simply was not part of the merge gate.
 #
-# The predicate is one line and stateless: a head is clear when at least one
-# review exists FOR THAT HEAD. It needs no memory of which reviews have been
-# seen, and it re-derives the same answer on every event.
+# The predicate is one line and stateless: a pull request is clear when at least
+# one review of it stands undismissed. It needs no memory of which reviews have
+# been seen, and it re-derives the same answer on every event.
+#
+# PR-SCOPED, NOT HEAD-SCOPED, and that is load-bearing. Requiring a review OF THE
+# CURRENT HEAD looks stricter and strands the pull request instead:
+# decide-pr-review-trigger.sh answers run=false for a plain `synchronize`, so
+# once the reviewer has approved, the next push produces a head nothing will ever
+# review, and a head-scoped gate would hold that pull request at `pending`
+# forever with no event able to clear it. Whether a later push still satisfies
+# the reviewer is a question the reviewer already owns: a non-approving verdict
+# makes every push re-run the cheap recheck, and the review-required ruleset
+# holds the merge meanwhile. This gate answers only the question nothing else
+# did — has the reviewer spoken about this pull request at all?
 #
 # A COMMIT STATUS, not this job's own check run. Under `pull_request_target` the
 # job's check run is reported against the BASE commit, so it never satisfies a
@@ -33,22 +44,29 @@ set -euo pipefail
 # never satisfies it.
 GATE_CONTEXT="Automated review posted"
 
-# Every review on the PR, paginated: a long-lived PR accumulates more than one
-# page, and the review that clears this head can sit on any of them.
-reviews="$(gh api --paginate "repos/${GH_REPO}/pulls/${PR}/reviews" \
-  --jq '.[] | [.commit_id, .state, (.user.login // "")] | @tsv')"
-
-# A review of THIS head, by anyone. The reviewer's own review clears it; so does
-# the approval the auto-approve job posts for a PR the reviewer skipped by title
-# or author — reading that outcome rather than re-deriving the skip predicate,
+# Every review that still stands, paginated: a long-lived PR accumulates more
+# than one page. A DISMISSED review is dropped here, which is what makes the
+# workflow's `dismissed` trigger do something — dismissing the only review
+# returns the PR to `pending`.
+#
+# The filter is per-element (`.[] | select(…)`), never a reducer: `gh api
+# --paginate --jq` applies the filter to EACH page, so a `first`/`max_by` would
+# silently run once per page and answer from the last one.
+#
+# Any actor's review counts. The reviewer's own clears it, and so does the
+# approval auto-approve-skipped posts for a PR the reviewer skips by title or
+# author — reading that OUTCOME rather than re-deriving the skip predicate,
 # which would be a second copy of decide-pr-review-trigger.sh's rules.
-if reviewer="$(awk -F'\t' -v sha="$HEAD_SHA" '$1 == sha {print $3; exit}' <<<"$reviews")" &&
-  [[ -n "$reviewer" ]]; then
+reviewers="$(gh api --paginate "repos/${GH_REPO}/pulls/${PR}/reviews" \
+  --jq '.[] | select(.state != "DISMISSED") | .user.login // ""')"
+reviewer="$(head -n 1 <<<"$reviewers")"
+
+if [[ -n "$reviewer" ]]; then
   state=success
   description="Reviewed by ${reviewer}"
 else
   state=pending
-  description="Waiting for the automated review of this commit"
+  description="Waiting for the automated review of this pull request"
 fi
 
 # `pending`, not `failure`, for the not-yet-reviewed case: the review is coming,

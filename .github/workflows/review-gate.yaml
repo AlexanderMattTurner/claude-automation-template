@@ -5,9 +5,10 @@ name: Review gate
 # review that has not been submitted yet, so a PR whose cheap checks go green in
 # ninety seconds merges before the reviewer has read it.
 #
-# One job posting one stateless predicate — has this head been reviewed? — as a
-# commit status on the head. `review-gate.sh` owns the predicate and explains why
-# it is a status and not this job's own check run.
+# One job posting one stateless predicate — does an undismissed review of this
+# pull request exist? — as a commit status on the head. `review-gate.sh` owns the
+# predicate, and explains both why it is a status rather than this job's own
+# check run and why it is scoped to the pull request rather than to the head.
 #
 # SECURITY — `pull_request_target` runs in the base repo's context. The explicit
 # default-branch `ref:` on the checkout is the enforcement point: no PR-authored
