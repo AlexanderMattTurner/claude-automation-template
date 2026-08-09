@@ -1,0 +1,69 @@
+name: Review gate
+
+# The merge gate for the automated reviewer, as a STATUS CHECK rather than a
+# review verdict. Auto-merge waits for required checks; it does not wait for a
+# review that has not been submitted yet, so a PR whose cheap checks go green in
+# ninety seconds merges before the reviewer has read it.
+#
+# One job posting one stateless predicate — has this head been reviewed? — as a
+# commit status on the head. `review-gate.sh` owns the predicate and explains why
+# it is a status and not this job's own check run.
+#
+# SECURITY — `pull_request_target` runs in the base repo's context. The explicit
+# default-branch `ref:` on the checkout is the enforcement point: no PR-authored
+# code is checked out or executed here. The job reads review state through the
+# API and posts a status.
+
+on: # zizmor: ignore[dangerous-triggers] — no PR code executes: an API-only script off a default-branch checkout; see the SECURITY header
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+  # The reviewer submitting (or dismissing) a review is what flips the predicate.
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions: {}
+
+jobs:
+  # No job-level `if:`. This job posts a required check, so every run that can
+  # occupy the concurrency slot must post a verdict itself — a conditionally
+  # skipped run could displace a queued evaluation and then post nothing,
+  # leaving the head with a stale status or none at all.
+  review-posted:
+    # The job name is the required-check context sync-required-checks registers,
+    # and review-gate.sh posts its status under the same string. They must stay
+    # byte-identical.
+    name: Automated review posted # required-check: false  # promote once a live PR shows this status landing on the head sha; a required context that never reports hangs every PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Keyed per HEAD, and never cancelling a run in flight. Webhook delivery is
+    # unordered, so a PR-only key would let a late event carrying a stale head
+    # displace the queued evaluation for the current one. `cancel-in-progress`
+    # stays false because GitHub cancels mid-step: a true here could kill a run
+    # between reading the reviews and posting the status, losing the verdict and
+    # leaving the head with a stale one.
+    concurrency:
+      group: review-gate-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+      cancel-in-progress: false
+    permissions:
+      contents: read # sparse-checkout the trusted gate script
+      pull-requests: read # read the PR's reviews
+      statuses: write # post the verdict on the head
+    steps:
+      - name: Checkout the trusted gate script (default branch)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Explicit default-branch ref — never the event's SHA; see the
+          # SECURITY header. This pin keeps PR-authored content out of this job.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts/review-gate.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Evaluate the gate and post the verdict on the head
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/review-gate.sh

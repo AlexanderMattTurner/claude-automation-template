@@ -14,6 +14,14 @@ the prose from the release's commits.
 
 ### Added
 
+- A `Review gate` workflow that posts an `Automated review posted` commit status
+  on each PR head, so auto-merge can be made to wait for the automated reviewer.
+  The cheap checks finish in about ninety seconds while an LLM review takes
+  minutes, so a PR gated only on the cheap checks merges first and the reviewer's
+  `REQUEST_CHANGES` lands on a PR that already merged. It ships **not required**:
+  promote it to a required check once a live PR shows the status landing on the
+  head sha, because a required context that never reports hangs every PR.
+
 - PreToolUse skill gates: opening a PR, writing a test file, or writing a plan is
   denied until the session has invoked `pr-creation`, `writing-tests`, or
   `explore-plan`. The rules already said to invoke them; the gates are what makes
