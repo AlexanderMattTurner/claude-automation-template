@@ -14,6 +14,13 @@ the prose from the release's commits.
 
 ### Added
 
+- `shell-targets`, a decide-gate input that DERIVES a gate's watched paths from
+  the shell entry point the job runs, instead of restating them in `paths-regex`
+  where the copy drifts silently. `.github/scripts/shell-run-closure.py` walks
+  every in-repo file the entry point can reach, following the paths it EXECUTES
+  as well as those it sources, and reaching a target written as
+  `"$root/path/to/x.sh"` through the token's path suffix. It over-approximates
+  on purpose, so it combines with `paths-regex` rather than replacing it.
 - Three skills ported from the downstream `agent-glovebox` tree: `git-workflow`
   (commit/push mechanics, who owns a merge conflict, auditing a bot's merge
   delta), `babysit-prs` (watch sets, mergeability and merge-queue state,
@@ -30,9 +37,9 @@ the prose from the release's commits.
 - The `decide` reusable workflow diffs the change range itself instead of calling
   `dorny/paths-filter`, and gains the inputs that go with it: `paths-regex`,
   `paths-regex-file` (an SSOT a local git hook can source too), `pytest-targets`
-  (watched paths derived from a test's own import lines), `trigger-keyword` /
-  `heldout-keyword`, `keyword-scope`, `skip-on-draft`,
-  `ignore-comment-only-changes`, and `memoize-anchor-jobs`. It now gates `push`
+  (watched paths derived from a test's own import lines), `trigger-keyword`,
+  `keyword-scope`, `skip-on-draft`, `ignore-comment-only-changes`,
+  `shell-targets`, and `memoize-anchor-jobs`. It now gates `push`
   and `merge_group` events on their own ranges, re-anchors a stale webhook base
   to the live base tip so a merge commit stops over-triggering every gate, and
   fails loud on a gate configured with no trigger at all.

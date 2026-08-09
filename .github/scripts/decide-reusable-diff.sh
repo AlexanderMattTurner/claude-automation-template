@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Decide whether a gate/track job runs: diff the PR for path matches and scan
-# commit titles for the trigger/heldout keywords; emit run/heldout outputs.
-# Env: BASE_SHA, HEAD_SHA, PATHS_REGEX, PYTEST_TARGETS, TRIGGER_KEYWORD, HELDOUT_KEYWORD,
+# commit titles for the trigger keyword; emit the run output.
+# Env: BASE_SHA, HEAD_SHA, PATHS_REGEX, PYTEST_TARGETS, SHELL_TARGETS, TRIGGER_KEYWORD,
 #      KEYWORD_SCOPE, IGNORE_COMMENT_ONLY, BASE_REF, GH_TOKEN,
 #      SKIP_ON_DRAFT, IS_DRAFT
 set -euo pipefail
@@ -19,8 +19,8 @@ BASE_SHA="${BASE_SHA:-}"
 HEAD_SHA="${HEAD_SHA:-}"
 PATHS_REGEX="${PATHS_REGEX:-}"
 PYTEST_TARGETS="${PYTEST_TARGETS:-}"
+SHELL_TARGETS="${SHELL_TARGETS:-}"
 TRIGGER_KEYWORD="${TRIGGER_KEYWORD:-}"
-HELDOUT_KEYWORD="${HELDOUT_KEYWORD:-}"
 # PATHS_REGEX_FILE names a repo shell snippet defining GATE_PATHS_REGEX — the
 # SSOT for a trigger regex that a local git hook (.hooks/pre-push) sources too,
 # so the workflow cannot carry a drifted inline copy. Resolved before anything
@@ -50,7 +50,6 @@ fi
 BASE_SHA="$(decide_diff_base "${BASE_SHA:-}")"
 if ! decide_range_usable "$BASE_SHA" "$HEAD_SHA"; then
   echo "run=true" >>"$GITHUB_OUTPUT"
-  echo "heldout=false" >>"$GITHUB_OUTPUT"
   exit 0
 fi
 # Past the early-exit this is a real PR diff. A gate reaching here with NO trigger
@@ -60,8 +59,8 @@ fi
 # PATHS_REGEX), never a valid "never run on PRs" request, so fail LOUD (a red
 # decide step) instead of a false green. Every real caller passes at least one
 # trigger, so this only fires on the mistake it is meant to catch.
-if [[ -z "$PATHS_REGEX" && -z "$PYTEST_TARGETS" && -z "$TRIGGER_KEYWORD" && -z "$HELDOUT_KEYWORD" ]]; then
-  echo "::error::decide-reusable-diff: no PATHS_REGEX, PYTEST_TARGETS, TRIGGER_KEYWORD, or HELDOUT_KEYWORD is set — a gate with no trigger can only skip. Check for a mistyped env key." >&2
+if [[ -z "$PATHS_REGEX" && -z "$PYTEST_TARGETS" && -z "$SHELL_TARGETS" && -z "$TRIGGER_KEYWORD" ]]; then
+  echo "::error::decide-reusable-diff: no PATHS_REGEX, PYTEST_TARGETS, SHELL_TARGETS, or TRIGGER_KEYWORD is set — a gate with no trigger can only skip. Check for a mistyped env key." >&2
   exit 1
 fi
 # This refusal is what defers a skip-on-draft caller's expensive jobs until the
@@ -73,7 +72,6 @@ fi
 if decide_draft_skip; then
   echo "draft PR — deferring until ready for review"
   echo "run=false" >>"$GITHUB_OUTPUT"
-  echo "heldout=false" >>"$GITHUB_OUTPUT"
   exit 0
 fi
 # Re-anchor to the LIVE base branch tip. The pull_request webhook's base.sha is a
@@ -118,19 +116,26 @@ if [[ "${KEYWORD_SCOPE:-range}" == head ]]; then
 else
   subjects="$(git log --format='%s' "$BASE_SHA..$HEAD_SHA")"
 fi
-# Derived watched paths: the files pytest executes when it collects the caller's
-# test targets, computed from their own import lines rather than restated here.
-# Failing RED on a bad target, never falling back to the regex alone: a silently
-# empty closure would drop exactly the paths this input exists to cover, which is
-# the false-green the caller opted in to prevent.
-PYTEST_CLOSURE=""
-if [[ -n "$PYTEST_TARGETS" ]]; then
-  read -ra pytest_targets <<<"$PYTEST_TARGETS"
-  if ! PYTEST_CLOSURE="$(python3 "$HERE/pytest-import-closure.py" "${pytest_targets[@]}")"; then
-    echo "::error::decide-reusable-diff: could not derive the pytest import closure for '$PYTEST_TARGETS'" >&2
+# DERIVED watched paths: the files the caller's own entry points reach, computed
+# from those files' text rather than restated in the regex. pytest-targets gives
+# the collection-time import closure of a test; shell-targets gives what a shell
+# entry point can run. Both fail RED on a bad target and never fall back to the
+# regex alone: a silently empty closure would drop exactly the paths the input
+# exists to cover, which is the false green the caller opted in to prevent.
+DERIVED_CLOSURE=""
+derive() {
+  local _script="$1" _targets="$2" _what="$3" _out
+  local -a _argv=()
+  [[ -n "$_targets" ]] || return 0
+  read -ra _argv <<<"$_targets"
+  if ! _out="$(python3 "$HERE/$_script" "${_argv[@]}")"; then
+    echo "::error::decide-reusable-diff: could not derive the $_what for '$_targets'" >&2
     exit 1
   fi
-fi
+  DERIVED_CLOSURE+="${_out}"$'\n'
+}
+derive pytest-import-closure.py "$PYTEST_TARGETS" "pytest import closure"
+derive shell-run-closure.py "$SHELL_TARGETS" "shell run closure"
 # paths_trigger CHANGED — the gate's verdict for one changed-file list, on stdout:
 #   true          a watched path changed, so the gate fires
 #   comment-only  a watched path changed, but the diff is comment/blank churn
@@ -150,9 +155,9 @@ paths_trigger() {
   if [[ -n "$PATHS_REGEX" ]]; then
     mapfile -t _matched < <(path_gate_matching_lines "$PATHS_REGEX" "$_changed")
   fi
-  if [[ -n "$PYTEST_TARGETS" ]]; then
+  if [[ -n "$DERIVED_CLOSURE" ]]; then
     mapfile -t -O "${#_matched[@]}" _matched < <(
-      grep -Fxf <(printf '%s\n' "$PYTEST_CLOSURE") <<<"$_changed" || true
+      grep -Fxf <(printf '%s\n' "$DERIVED_CLOSURE") <<<"$_changed" || true
     )
   fi
   ((${#_matched[@]} > 0)) || return 0
@@ -210,11 +215,4 @@ if [[ -n "$TRIGGER_KEYWORD" ]] && grep -qiF "$TRIGGER_KEYWORD" <<<"$subjects"; t
   run=true
   echo "trigger: $TRIGGER_KEYWORD in a commit title"
 fi
-heldout=false
-if [[ -n "$HELDOUT_KEYWORD" ]] && grep -qiF "$HELDOUT_KEYWORD" <<<"$subjects"; then
-  heldout=true
-  run=true
-  echo "trigger: $HELDOUT_KEYWORD — gate will include the frozen held-out split"
-fi
 echo "run=$run" >>"$GITHUB_OUTPUT"
-echo "heldout=$heldout" >>"$GITHUB_OUTPUT"

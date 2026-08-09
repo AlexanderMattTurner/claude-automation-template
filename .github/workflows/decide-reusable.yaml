@@ -22,6 +22,10 @@ on:
         type: string
         default: ""
         description: "Space-separated pytest files this gate's job runs. The decide job derives their collection-time import closure (.github/scripts/pytest-import-closure.py) and treats every member as a watched path, so a caller states its test dependencies once — in the test's own import lines — instead of retyping them into paths-regex, where the copy drifts silently. Combines with paths-regex (either one matching sets run=true); a target that does not exist fails the decide job red"
+      shell-targets:
+        type: string
+        default: ""
+        description: "Space-separated shell entry points this gate's job runs. The decide job derives every in-repo file they can reach (.github/scripts/shell-run-closure.py) and treats each as a watched path, so a caller states its script dependencies once — in the scripts' own text — instead of retyping them into paths-regex, where the copy drifts silently. The derivation over-approximates and cannot see a path built from variables, so it combines with paths-regex rather than replacing it; a target that is not tracked fails the decide job red"
       trigger-keyword:
         type: string
         default: ""
@@ -29,11 +33,7 @@ on:
       keyword-scope:
         type: string
         default: "range"
-        description: "Where to scan for the trigger/heldout keyword: 'range' (every commit in the PR, the default) or 'head' (only the head commit, so the keyword fires once for the commit it tags and not on later untagged pushes)"
-      heldout-keyword:
-        type: string
-        default: ""
-        description: "Keyword in any commit title (subject line) that sets heldout=true (implies run=true)"
+        description: "Where to scan for the trigger keyword: 'range' (every commit in the PR, the default) or 'head' (only the head commit, so the keyword fires once for the commit it tags and not on later untagged pushes)"
       skip-on-draft:
         type: boolean
         default: false
@@ -80,9 +80,6 @@ on:
       run:
         description: "Whether the gate/track job should run"
         value: ${{ jobs.decide.outputs.run }}
-      heldout:
-        description: "Whether the frozen held-out split was requested"
-        value: ${{ jobs.decide.outputs.heldout }}
 
 # EVERY CALLER'S `decide` JOB MUST GRANT THESE THREE. A called workflow may only
 # request permissions the calling job already holds, and a caller that grants
@@ -106,7 +103,6 @@ jobs:
     timeout-minutes: 10
     outputs:
       run: ${{ steps.check.outputs.run }}
-      heldout: ${{ steps.check.outputs.heldout }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -134,8 +130,8 @@ jobs:
           PATHS_REGEX: ${{ inputs.paths-regex }}
           PATHS_REGEX_FILE: ${{ inputs.paths-regex-file }}
           PYTEST_TARGETS: ${{ inputs.pytest-targets }}
+          SHELL_TARGETS: ${{ inputs.shell-targets }}
           TRIGGER_KEYWORD: ${{ inputs.trigger-keyword }}
-          HELDOUT_KEYWORD: ${{ inputs.heldout-keyword }}
           KEYWORD_SCOPE: ${{ inputs.keyword-scope }}
           IGNORE_COMMENT_ONLY: ${{ inputs.ignore-comment-only-changes }}
           SKIP_ON_DRAFT: ${{ inputs.skip-on-draft }}
