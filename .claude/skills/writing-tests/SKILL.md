@@ -32,6 +32,8 @@ and drive cases from that claim rather than the single input that first triggere
 the bug. "Comment promises more generality than the test exercises" is the
 cheapest reviewer tell for a hollow regression test.
 
+**A CI step's comment claiming a property owes the same test, and a green pipeline is not that test.** Build a fixture that violates the property — a lifecycle script that exits non-zero, a file outside the packed set — and assert the step still behaves. A claim like "`--ignore-scripts` keeps the install hermetic" can be false from the day it is written and stay green until an unrelated runner-image change exposes it.
+
 ## Never skip or weaken a test unless asked
 
 Including silently dropping an assertion while refactoring, and including

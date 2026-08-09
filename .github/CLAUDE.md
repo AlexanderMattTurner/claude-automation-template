@@ -7,6 +7,7 @@
 - **Pin every third-party action to a commit SHA** with a `# vX.Y` comment. A mutable tag lets a compromised maintainer replace the code you reviewed. Example: `uses: actions/checkout@9c091bb…9 # v7.0.0`.
 - Use `uv` (not `pip`) for Python tool installs in CI, and `uv python install <version>` instead of `actions/setup-python`'s tool cache when pinning a version — that removes the runner-image dependency entirely.
 - When `.pre-commit-config.yaml` pins `default_language_version`, the workflow must install that exact Python version. Runner images drop versions on their own schedule; keep the two in sync.
+- **`--ignore-scripts` does not stop a `file:` dependency's own `prepare`/`prepack`.** npm packs a local path dependency by running that package's lifecycle scripts anyway (npm 10.9), so a job that installs a checkout as `file:${PWD}` runs that checkout's `prepare` — here a package-manager call and a type build — and dies at the install step in any job that skipped the full dev install. Install a staged copy instead: `git archive HEAD` into a temp dir, delete `scripts.prepare` and `scripts.prepack` from its manifest, install from there. npm still does the packing, so the installed tree stays exactly what `files` publishes.
 
 ## Path filtering for required checks
 
