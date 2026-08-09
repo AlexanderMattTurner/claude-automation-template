@@ -89,9 +89,10 @@ permissions:
   # Re-read the live draft state (decide_pr_is_draft_now), which the payload's
   # draft flag only snapshots at dispatch.
   pull-requests: read
-  # List this workflow's past runs and their jobs (decide-memo-base.py). An
-  # explicit permissions block sets every unlisted scope to none, so without this
-  # the memo's `gh api` 403s and the shadow silently never anchors.
+  # List this workflow's past runs and their jobs (decide-memo-base.py). A public
+  # repository serves that read to a token without the scope, so this is what
+  # keeps the memo working in a PRIVATE fork of this template, where the same
+  # call answers 403 and the shadow then silently never anchors.
   actions: read
 
 jobs:
