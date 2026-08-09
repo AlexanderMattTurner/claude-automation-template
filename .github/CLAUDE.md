@@ -19,6 +19,8 @@ To skip expensive jobs on irrelevant PRs **without** hanging the check, gate at 
 3. Give each real job `needs: decide` and `if: needs.decide.outputs.run == 'true'`, so when nothing relevant changed the job is skipped (a passing required check) and its runner never boots.
 4. Add an `always()` reporter job (below) and register **its** name as the required check.
 
+**The caller's `decide` job must grant every permission the reusable workflow declares** — `contents: read`, `pull-requests: read`, `actions: read`. GitHub lets a called workflow request only what the calling job already holds, and a caller that grants fewer does not go red: the whole run ends in `startup_failure`, so the reporter never posts and the required check hangs at "Expected — Waiting" forever. That is the exact failure the job-level gate exists to prevent, arriving through the gate itself.
+
 The decide job diffs the pushed range (`before…sha`) on `push` and the batch range on `merge_group`, so post-merge runs are path-gated exactly as PR runs are. It returns `run=true` only where no diffable range exists (`workflow_dispatch`, `schedule`, a force-pushed or newly-created branch) — failing open, never silently skipping.
 
 **A `paths-regex` is POSIX ERE, because `grep -E` is what reads it — never PCRE.** `(?:`, `\d`, `\w`, `\s` and `(?=` do not exist in ERE. GNU grep does not reject them: it warns on stderr and then matches with a DIFFERENT pattern, so `\.claude/(?:hooks/|settings\.json$)` silently becomes `\.claude/(:hooks/|settings\.json$)`, `.claude/hooks/` stops matching, and the required check greens without running. Write `(a|b)`, `[0-9]`, `[[:alnum:]_]`, `[[:space:]]`.

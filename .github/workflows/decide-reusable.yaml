@@ -84,6 +84,11 @@ on:
         description: "Whether the frozen held-out split was requested"
         value: ${{ jobs.decide.outputs.heldout }}
 
+# EVERY CALLER'S `decide` JOB MUST GRANT THESE THREE. A called workflow may only
+# request permissions the calling job already holds, and a caller that grants
+# fewer does not go red — the whole run ends in `startup_failure`, so the
+# workflow's reporter never posts and its required check hangs at "Expected —
+# Waiting" forever, which is the exact failure this gate exists to prevent.
 permissions:
   contents: read
   # Re-read the live draft state (decide_pr_is_draft_now), which the payload's
