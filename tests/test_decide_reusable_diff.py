@@ -16,10 +16,13 @@ rather than only on a fast box.
 """
 
 import os
+import re
 import shutil
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+import yaml
 
 from tests._fake_gh import run_jobs, workflow_runs, write_gh_stub
 from tests._helpers import REPO_ROOT, git_out, init_test_repo, run_capture
@@ -556,9 +559,11 @@ def test_bad_pytest_target_fails_red(tmp_path: Path) -> None:
 
 
 SHELL_TARGET = ".github/scripts/run-hook-lifecycle.sh"
-# The lifecycle script EXECUTES this rather than sourcing it, and no gate regex
-# in the tree names it — so it is only watched because the closure derives it.
-SHELL_CLOSURE_MEMBER = ".hooks/lib-gate.sh"
+# The lifecycle runs this through `.hooks/pre-push`, which names it only as
+# `"$git_root/.github/scripts/check-symlinks.sh"` — so the closure reaches it
+# through the token's path SUFFIX. hook-lifecycle.yaml's own paths-regex no
+# longer names it either, making it genuinely closure-only coverage.
+SHELL_CLOSURE_MEMBER = ".github/scripts/check-symlinks.sh"
 
 
 def test_shell_targets_fire_on_a_script_the_regex_does_not_name(
@@ -566,7 +571,8 @@ def test_shell_targets_fire_on_a_script_the_regex_does_not_name(
 ) -> None:
     """A file the entry point reaches triggers the gate even though no alternative
     of the regex names it. Non-vacuity — the same diff with shell-targets unset
-    must NOT fire, which is the silent green this input removes."""
+    must NOT fire, which is the silent green this input removes. The member is
+    also reached only through a token suffix, so a whole-token match fails here."""
     diff = _flood(tmp_path / "diff.txt", SHELL_CLOSURE_MEMBER)
     skipped = _run(tmp_path, PATHS_REGEX="^docs/", FAKE_DIFF_FILE=str(diff))
     assert "run=false" in skipped, skipped
@@ -579,19 +585,19 @@ def test_shell_targets_fire_on_a_script_the_regex_does_not_name(
     assert "run=true" in fired, fired
 
 
-def test_shell_targets_reach_a_path_built_from_a_root_variable(
-    tmp_path: Path,
-) -> None:
-    """`.hooks/pre-push` names check-symlinks.sh only as `"$git_root/…"`, so the
-    closure finds it through the token's path SUFFIX. Without that the gate would
-    skip exactly when the script it runs changed."""
-    diff = _flood(tmp_path / "diff.txt", ".github/scripts/check-symlinks.sh")
-    output = _run(
-        tmp_path,
-        SHELL_TARGETS=SHELL_TARGET,
-        FAKE_DIFF_FILE=str(diff),
+def test_the_hook_lifecycle_gate_watches_its_closure_member_only_by_derivation() -> (
+    None
+):
+    """The comment above SHELL_CLOSURE_MEMBER claims hook-lifecycle's own regex
+    does not name that file, which is what makes the case above non-vacuous for
+    the REAL gate rather than only for the test's `^docs/`. Assert it, because a
+    later widening of that regex would quietly turn the claim false."""
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "hook-lifecycle.yaml").read_text()
     )
-    assert "run=true" in output, output
+    gate = workflow["jobs"]["decide"]["with"]
+    assert SHELL_TARGET in gate["shell-targets"].split()
+    assert not re.search(gate["paths-regex"], SHELL_CLOSURE_MEMBER)
 
 
 def test_shell_targets_do_not_fire_on_an_unrelated_file(tmp_path: Path) -> None:
