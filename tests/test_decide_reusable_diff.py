@@ -16,6 +16,7 @@ rather than only on a fast box.
 """
 
 import os
+import shutil
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -30,10 +31,20 @@ FLOOD_LINES = 50_000
 def _fakegit_out(tmp_path: Path) -> None:
     """A `git` stub that `exec cat`s the flood file for `log`/`diff` (so a
     SIGPIPE-killed cat makes the git process exit non-zero, exactly as real git
-    does), and emits nothing for an unset stream."""
+    does), and emits nothing for an unset stream.
+
+    `ls-files` reaches the REAL git by absolute path. The stub sits first on PATH,
+    so it answers for every process the script starts, and `shell-run-closure.py`
+    asks git which files the repo tracks — a question this fixture has no business
+    answering. Everything else keeps the catch-all `exit 0`, which is what lets
+    the fake `base`/`head` SHAs pass the script's own range checks.
+    """
+    real_git = shutil.which("git")
+    assert real_git, "the tests drive real git for everything the stub does not fake"
     git = tmp_path / "git"
     git.write_text(
         "#!/usr/bin/env bash\n"
+        f'case " $* " in *" ls-files "*) exec {real_git} "$@" ;; esac\n'
         'case "$1" in\n'
         '  log)  [[ -n "${FAKE_LOG_FILE:-}" ]] && exec cat "$FAKE_LOG_FILE" ;;\n'
         '  diff) [[ -n "${FAKE_DIFF_FILE:-}" ]] && exec cat "$FAKE_DIFF_FILE" ;;\n'
@@ -64,7 +75,6 @@ def _run_raw(tmp_path: Path, **env_overrides: str) -> subprocess.CompletedProces
         "HEAD_SHA": "head",
         "PATHS_REGEX": "",
         "TRIGGER_KEYWORD": "",
-        "HELDOUT_KEYWORD": "",
         "GITHUB_OUTPUT": str(out),
     }
     env.update(env_overrides)
@@ -82,13 +92,6 @@ def test_keyword_trigger_fires_when_match_precedes_a_large_log(tmp_path: Path) -
     log = _flood(tmp_path / "log.txt", "fix(hooks): rerun [full-lifecycle]")
     output = _run(tmp_path, TRIGGER_KEYWORD="[full-lifecycle]", FAKE_LOG_FILE=str(log))
     assert "run=true" in output, output
-
-
-def test_heldout_keyword_fires_when_match_precedes_a_large_log(tmp_path: Path) -> None:
-    log = _flood(tmp_path / "log.txt", "eval: refresh [heldout]")
-    output = _run(tmp_path, HELDOUT_KEYWORD="[heldout]", FAKE_LOG_FILE=str(log))
-    assert "run=true" in output, output
-    assert "heldout=true" in output, output
 
 
 def test_paths_trigger_fires_when_match_precedes_a_large_diff(tmp_path: Path) -> None:
@@ -141,12 +144,10 @@ def test_no_match_does_not_trigger(tmp_path: Path) -> None:
         tmp_path,
         PATHS_REGEX=r"^\.claude/hooks/",
         TRIGGER_KEYWORD="[full-lifecycle]",
-        HELDOUT_KEYWORD="[heldout]",
         FAKE_LOG_FILE=str(log),
         FAKE_DIFF_FILE=str(diff),
     )
     assert "run=false" in output, output
-    assert "heldout=false" in output, output
 
 
 def test_paths_regex_file_resolves_the_ssot_regex(tmp_path: Path) -> None:
@@ -211,7 +212,7 @@ def test_no_trigger_configured_on_real_diff_fails_loud(tmp_path: Path) -> None:
     assert res.returncode == 1, res.stdout + res.stderr
     assert "no PATHS_REGEX" in res.stderr, res.stderr
     assert (tmp_path / "gh_output").read_text(encoding="utf-8") == "", (
-        "must not emit a run/heldout verdict on misconfig"
+        "must not emit a run verdict on misconfig"
     )
 
 
@@ -234,7 +235,6 @@ def _run_realgit(
         "HEAD_SHA": "",
         "PATHS_REGEX": "",
         "TRIGGER_KEYWORD": "",
-        "HELDOUT_KEYWORD": "",
         "GITHUB_OUTPUT": str(out),
     }
     env.update(env_overrides)
@@ -553,6 +553,85 @@ def test_bad_pytest_target_fails_red(tmp_path: Path) -> None:
     )
     assert r.returncode != 0, r.stdout
     assert "import closure" in r.stderr
+
+
+SHELL_TARGET = ".github/scripts/run-hook-lifecycle.sh"
+# The lifecycle script EXECUTES this rather than sourcing it, and no gate regex
+# in the tree names it — so it is only watched because the closure derives it.
+SHELL_CLOSURE_MEMBER = ".hooks/lib-gate.sh"
+
+
+def test_shell_targets_fire_on_a_script_the_regex_does_not_name(
+    tmp_path: Path,
+) -> None:
+    """A file the entry point reaches triggers the gate even though no alternative
+    of the regex names it. Non-vacuity — the same diff with shell-targets unset
+    must NOT fire, which is the silent green this input removes."""
+    diff = _flood(tmp_path / "diff.txt", SHELL_CLOSURE_MEMBER)
+    skipped = _run(tmp_path, PATHS_REGEX="^docs/", FAKE_DIFF_FILE=str(diff))
+    assert "run=false" in skipped, skipped
+    fired = _run(
+        tmp_path,
+        PATHS_REGEX="^docs/",
+        SHELL_TARGETS=SHELL_TARGET,
+        FAKE_DIFF_FILE=str(diff),
+    )
+    assert "run=true" in fired, fired
+
+
+def test_shell_targets_reach_a_path_built_from_a_root_variable(
+    tmp_path: Path,
+) -> None:
+    """`.hooks/pre-push` names check-symlinks.sh only as `"$git_root/…"`, so the
+    closure finds it through the token's path SUFFIX. Without that the gate would
+    skip exactly when the script it runs changed."""
+    diff = _flood(tmp_path / "diff.txt", ".github/scripts/check-symlinks.sh")
+    output = _run(
+        tmp_path,
+        SHELL_TARGETS=SHELL_TARGET,
+        FAKE_DIFF_FILE=str(diff),
+    )
+    assert "run=true" in output, output
+
+
+def test_shell_targets_do_not_fire_on_an_unrelated_file(tmp_path: Path) -> None:
+    diff = _flood(tmp_path / "diff.txt", "docs/readme.md")
+    output = _run(tmp_path, SHELL_TARGETS=SHELL_TARGET, FAKE_DIFF_FILE=str(diff))
+    assert "run=false" in output, output
+
+
+def test_shell_targets_alone_satisfy_the_trigger_check(tmp_path: Path) -> None:
+    """A caller may derive ALL its paths, so shell-targets counts as a configured
+    trigger — without this the no-trigger guard would red every such gate."""
+    diff = _flood(tmp_path / "diff.txt", SHELL_CLOSURE_MEMBER)
+    output = _run(tmp_path, SHELL_TARGETS=SHELL_TARGET, FAKE_DIFF_FILE=str(diff))
+    assert "run=true" in output, output
+
+
+def test_untracked_shell_target_fails_red(tmp_path: Path) -> None:
+    """A closure that cannot be derived must red the decide job, never fall back
+    to the regex alone."""
+    diff = _flood(tmp_path / "diff.txt", SHELL_CLOSURE_MEMBER)
+    r = _run_raw(
+        tmp_path,
+        PATHS_REGEX="^docs/",
+        SHELL_TARGETS=".github/scripts/does-not-exist.sh",
+        FAKE_DIFF_FILE=str(diff),
+    )
+    assert r.returncode != 0, r.stdout
+    assert "shell run closure" in r.stderr
+
+
+def test_both_closures_contribute_together(tmp_path: Path) -> None:
+    """pytest-targets and shell-targets are a union: a member of either fires."""
+    diff = _flood(tmp_path / "diff.txt", CLOSURE_MEMBER)
+    output = _run(
+        tmp_path,
+        PYTEST_TARGETS=PYTEST_TARGET,
+        SHELL_TARGETS=SHELL_TARGET,
+        FAKE_DIFF_FILE=str(diff),
+    )
+    assert "run=true" in output, output
 
 
 def test_regex_and_pytest_targets_both_contribute(tmp_path: Path) -> None:
