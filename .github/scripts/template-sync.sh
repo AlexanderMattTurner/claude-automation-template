@@ -473,7 +473,11 @@ main() {
   fi
 
   if [[ -s "$CONFLICT_FILES" ]]; then
-    conflicts=$(tr '\n' ' ' <"$CONFLICT_FILES")
+    # paste, not `tr '\n' ' '`: the file ends in a newline, so tr leaves a
+    # TRAILING space. That space reaches .template-sync-conflicts below, where
+    # pre-commit's trailing-whitespace hook rewrites the file and fails the run —
+    # on every consumer that has a conflict.
+    conflicts=$(paste -sd' ' "$CONFLICT_FILES")
     {
       echo "has_conflicts=true"
       echo "conflict_files=$conflicts"
