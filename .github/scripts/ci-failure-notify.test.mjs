@@ -40,7 +40,9 @@ function fakeGithub({ createLabelError, existingIssues = [] } = {}) {
         listForRepo() {},
       },
     },
-    async paginate(_fn, _params) {
+    // Takes no parameters because it uses neither: the real paginate receives
+    // the lister and its params, and JS drops arguments a function ignores.
+    async paginate() {
       return existingIssues;
     },
   };

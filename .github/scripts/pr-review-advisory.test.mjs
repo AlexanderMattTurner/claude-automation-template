@@ -383,8 +383,11 @@ describe("fenceFile", () => {
   // load-bearing — without these, deleting a term leaves the suite green.
   it("rejects on each guard term independently", () => {
     assert.equal(fenceFile("a".repeat(600)), "*(unrenderable filename)*");
-    assert.equal(fenceFile("a".repeat(500) + "`"), "*(unrenderable filename)*");
-    assert.equal(fenceFile("a".repeat(500) + "é"), "*(unrenderable filename)*");
+    assert.equal(
+      fenceFile(`${"a".repeat(500)}\``),
+      "*(unrenderable filename)*",
+    );
+    assert.equal(fenceFile(`${"a".repeat(500)}é`), "*(unrenderable filename)*");
   });
   it("admits the longest allowed name and refuses one character more", () => {
     assert.equal(fenceFile("a".repeat(512)), `\`${"a".repeat(512)}\``);
