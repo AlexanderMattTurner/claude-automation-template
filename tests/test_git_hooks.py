@@ -183,3 +183,54 @@ def test_pre_push_noop_push_passes_without_tools(hook_repo: Path) -> None:
         hook_repo, "pre-push", "origin", "url", path=minimal_path(hook_repo)
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_pre_push_annotated_tag_on_a_pushed_commit_needs_no_tools(
+    hook_repo: Path,
+) -> None:
+    """Pushing an annotated tag whose commit the remote already has introduces
+    no commits, so the hook must skip it rather than demand pre-commit.
+
+    An annotated tag puts the TAG OBJECT's sha on the ref line, which never
+    equals a ref the remote already has. Without the peel to `^{commit}` the
+    range reads as non-empty, and the hook refuses the push for want of a tool
+    it has no work for — which is how two releases published to npm with no tag
+    behind them.
+    """
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=hook_repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    # The remote already carries this commit on its default branch, so the
+    # merge-base fallback resolves to HEAD and the range is empty.
+    for args in (
+        ["git", "update-ref", "refs/remotes/origin/main", head],
+        ["git", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"],
+        ["git", "tag", "-a", "v0", "-m", "release v0"],
+    ):
+        subprocess.run(args, cwd=hook_repo, env=git_env(), check=True)
+    tag_object = subprocess.run(
+        ["git", "rev-parse", "v0"],
+        cwd=hook_repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert tag_object != head, (
+        "the tag did not create a tag OBJECT, so this test would exercise the "
+        "lightweight-tag path and the peel would be a no-op"
+    )
+    stdin = f"refs/tags/v0 {tag_object} refs/tags/v0 {ZERO_SHA}\n"
+    result = run_hook(
+        hook_repo,
+        "pre-push",
+        "origin",
+        "url",
+        path=minimal_path(hook_repo),
+        stdin=stdin,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "REFUSING" not in result.stderr
