@@ -71,10 +71,12 @@ runs:
       env:
         PYTHON_VERSION: ${{ inputs.python-version }}
 
-    # `--frozen` is an error when there is no lockfile, so this needs uv.lock
-    # and not just pyproject.toml. A project with one and not the other still
-    # gets uv and Python, and resolves at `uv run` time.
+    # Needs BOTH files. pyproject.toml because the two steps above install uv
+    # itself only when it is present, so gating on uv.lock alone would run
+    # `uv sync` with no uv on PATH; uv.lock because `--frozen` is an error
+    # without a lockfile. A project with one and not the other still gets uv and
+    # Python, and resolves at `uv run` time.
     - name: Install Python Dependencies
-      if: inputs.setup-python == 'true' && hashFiles('uv.lock') != ''
+      if: inputs.setup-python == 'true' && hashFiles('pyproject.toml') != '' && hashFiles('uv.lock') != ''
       run: uv sync --frozen
       shell: bash
