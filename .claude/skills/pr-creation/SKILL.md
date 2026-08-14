@@ -133,7 +133,7 @@ Run the project’s test/lint/typecheck commands (see [pr-templates.md](pr-templ
 
 ### Step 5: Update PR Title and Description (after any post-creation changes)
 
-Push any commits made during the critique and validation steps, then update the PR to reflect the final state.
+Push any commits made during the critique and validation steps, then update the PR to reflect the final state. **Re-run the prior-art search over merged PRs touching your files first** — one that landed while yours was in review can already own your change, and the pre-branch search cannot see it.
 
 1. Push: `git push`
 
