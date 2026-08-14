@@ -112,7 +112,7 @@ Each pass:
    - `subagent_type`: “general-purpose”
    - `description`: “Critique code changes”
    - `prompt`: Include the full diff (`git diff $CLAUDE_CODE_BASE_REF...HEAD`) and the critique prompt from the resource file
-   - `model`: when the session model is not Opus, pass `"opus"`. Add one line to the prompt: a weaker or cheaper model wrote the diff, so scrutinize it harder than a routine pass.
+   - `model`: `"opus"` — this is an adversarial review, per `CLAUDE.md` → Delegation's tiering. When the session model that wrote the diff was not Opus, add one line to the prompt: a weaker or cheaper model wrote the diff, so scrutinize it harder than a routine pass.
 2. For each issue raised, assess validity, then take the easy wins first:
    - **Compress**—delete dead code, unused imports, commented-out blocks, WHAT-comments, backwards-compat shims, premature abstractions
    - **Readability**—tighter names, un-nest conditionals, combine related checks, guard-clause early returns
