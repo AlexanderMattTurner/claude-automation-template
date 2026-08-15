@@ -34,12 +34,21 @@ ESCAPE_SEQUENCE_STDERR = (
 )
 
 
-def _fake_bins(tmp_path: Path, *, files: int) -> None:
+def _fake_bins(tmp_path: Path, *, files: int, escape_byte: bool = False) -> None:
     """Put a fake `gh` and a fake `node` (the sanitizer stand-in: cats stdin) on
     PATH. The fake `gh` emits a `files`-file unified diff for `pr diff` and JSON
     for `pr view`, and refuses `pr diff` without --allow-escape-sequences —
     mirroring the real CLI's guard — so every test also asserts the script
-    keeps passing that flag."""
+    keeps passing that flag. `escape_byte` adds one hunk holding a literal ESC
+    byte, mirroring the payload `gh pr diff` would otherwise refuse to print.
+    """
+    escape = ""
+    if escape_byte:
+        escape = (
+            '  echo "diff --git a/escape.txt b/escape.txt"\n'
+            '  echo "@@ -0,0 +1,1 @@"\n'
+            '  printf "+escaped \x1b[31mred\x1b[0m line\\n"\n'
+        )
     gh = tmp_path / "gh"
     gh.write_text(
         "#!/usr/bin/env bash\n"
@@ -54,6 +63,7 @@ def _fake_bins(tmp_path: Path, *, files: int) -> None:
         '    echo "@@ -0,0 +1,1 @@"\n'
         '    echo "+added line $i"\n'
         "  done\n"
+        f"{escape}"
         'elif [[ "$2" == "view" ]]; then\n'
         '  printf \'%s\' \'{"title":"t","body":"b","author":{"login":"a"},"files":[]}\'\n'
         "fi\n",
@@ -66,9 +76,9 @@ def _fake_bins(tmp_path: Path, *, files: int) -> None:
 
 
 def _run(
-    tmp_path: Path, *, files: int, max_diff_lines: int
+    tmp_path: Path, *, files: int, max_diff_lines: int, escape_byte: bool = False
 ) -> tuple[subprocess.CompletedProcess, dict[str, str], Path]:
-    _fake_bins(tmp_path, files=files)
+    _fake_bins(tmp_path, files=files, escape_byte=escape_byte)
     out_file = tmp_path / "github_output"
     out_file.write_text("", encoding="utf-8")
     input_dir = tmp_path / "pr-input"
@@ -86,6 +96,11 @@ def _run(
             "PR": "123",
             "PR_INPUT_DIR": str(input_dir),
             "MAX_DIFF_LINES": str(max_diff_lines),
+            # Keeps a regressed (flag-dropped) run's retry ladder off the
+            # 2+4+8+16s backoff: a bare assertion failure beats a 30s-per-test
+            # wait for a run that is going to fail either way.
+            "RETRY_MAX": "1",
+            "RETRY_BASE_DELAY": "0",
         },
     )
     outputs = dict(
@@ -100,7 +115,9 @@ def test_normal_diff_is_sanitized(tmp_path: Path) -> None:
     proc, outputs, input_dir = _run(tmp_path, files=2, max_diff_lines=100)
     assert proc.returncode == 0, proc.stderr
     assert outputs["oversized"] == "false"
-    assert (input_dir / "diff.txt").is_file()
+    diff_body = (input_dir / "diff.txt").read_text(encoding="utf-8")
+    assert diff_body.count("diff --git ") == 2
+    assert "+added line 0" in diff_body and "+added line 1" in diff_body
     assert (input_dir / "meta.txt").is_file()
     assert not (input_dir / "oversized-notice.txt").exists()
     assert (tmp_path / "sanitizer_input").exists(), "the sanitizer must run"
@@ -113,6 +130,7 @@ def test_oversized_diff_skips_the_review(tmp_path: Path) -> None:
     assert outputs["diff_lines"] == str(6 * LINES_PER_FILE)
     assert (input_dir / "oversized-notice.txt").is_file()
     assert not (input_dir / "diff.txt").exists()
+    assert not (input_dir / "meta.txt").exists(), "the size skip must also skip meta"
 
 
 def test_a_diff_with_a_raw_escape_byte_still_reaches_the_sanitizer(
@@ -122,8 +140,11 @@ def test_a_diff_with_a_raw_escape_byte_still_reaches_the_sanitizer(
     unless --allow-escape-sequences is passed, so a PR carrying one (observed
     on agent-sanitizer#320) would die before the sanitizer ever ran. Safe to
     pass always: the bytes reach only the sanitizer, never a real terminal."""
-    proc, outputs, input_dir = _run(tmp_path, files=2, max_diff_lines=100)
+    proc, outputs, input_dir = _run(
+        tmp_path, files=2, max_diff_lines=100, escape_byte=True
+    )
     assert proc.returncode == 0, proc.stderr
     assert ESCAPE_SEQUENCE_STDERR not in proc.stderr
-    assert (input_dir / "diff.txt").is_file()
     assert outputs["oversized"] == "false"
+    sanitizer_saw = (tmp_path / "sanitizer_input").read_text(encoding="utf-8")
+    assert "\x1b[31m" in sanitizer_saw, "the raw byte must reach the sanitizer intact"
