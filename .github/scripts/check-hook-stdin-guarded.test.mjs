@@ -9,11 +9,10 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdtempSync } from "node:fs";
 
 import { findProblems, main } from "./check-hook-stdin-guarded.mjs";
 
