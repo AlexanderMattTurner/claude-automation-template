@@ -825,3 +825,41 @@ def test_an_empty_derived_closure_is_what_flips_that_verdict(tmp_path: Path) -> 
     diff = _flood(tmp_path / "diff.txt", CLOSURE_MEMBER)
     output = _run(tmp_path, PATHS_REGEX="^docs/", FAKE_DIFF_FILE=str(diff))
     assert "run=false" in output, output
+
+
+def test_the_reanchor_fetch_scopes_its_auth_header_to_github(tmp_path: Path) -> None:
+    """The token rides an http.extraheader on the live-base fetch. A BARE
+    `http.extraheader` attaches it to every host this git process contacts, so a
+    redirect or a submodule URL elsewhere would receive it — the header must name
+    github.com."""
+    repo = tmp_path / "r"
+    stale_base, _live, head = _merge_conflict_pr(repo)
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    log = tmp_path / "git-argv.log"
+    real_git = shutil.which("git")
+    assert real_git, "the fixture drives real git through the wrapper"
+    wrapper = bindir / "git"
+    wrapper.write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> {log}\nexec {real_git} "$@"\n',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+
+    _run_realgit_out(
+        repo,
+        PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}",
+        BASE_SHA=stale_base,
+        HEAD_SHA=head,
+        BASE_REF="main",
+        GH_TOKEN="x",
+        PATHS_REGEX=r"^\.claude/hooks/",
+    )
+    fetches = [
+        line
+        for line in log.read_text(encoding="utf-8").splitlines()
+        if " fetch " in f" {line} "
+    ]
+    assert fetches, "the re-anchor fetch must have run, or this pins nothing"
+    assert all("http.https://github.com/.extraheader=" in line for line in fetches)
+    assert not any(re.search(r"(?<![.\w])http\.extraheader=", line) for line in fetches)
