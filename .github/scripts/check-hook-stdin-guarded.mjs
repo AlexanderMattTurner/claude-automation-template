@@ -145,6 +145,8 @@ export function main(argv) {
 }
 
 // Run as a CLI, but stay importable for the test suite.
+// `process.exitCode` rather than `process.exit()`: stderr can be a pipe, whose
+// writes are asynchronous, and an immediate exit truncates the findings.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  process.exit(main(process.argv.slice(2)));
+  process.exitCode = main(process.argv.slice(2));
 }
