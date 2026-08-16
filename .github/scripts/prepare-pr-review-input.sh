@@ -47,7 +47,9 @@ trap 'rm -f "$raw_diff"' EXIT
 # retry_stdout via a command substitution: a transient blip re-fetches the whole
 # diff and only the succeeding attempt's bytes land in raw_diff. A plain `retry
 # … >"$raw_diff"` would leak a failing attempt's error body into the file.
-raw_diff_content="$(retry_stdout gh pr diff "$PR")"
+# --allow-escape-sequences is safe here: that byte reaches only the sanitizer
+# below, never a real terminal.
+raw_diff_content="$(retry_stdout gh pr diff "$PR" --allow-escape-sequences)"
 printf '%s\n' "$raw_diff_content" >"$raw_diff"
 
 diff_lines="$(wc -l <"$raw_diff" | tr -d '[:space:]')"
