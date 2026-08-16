@@ -188,8 +188,11 @@ repos:
         # A readStdinJson() inside a hook's isMain block must be in a try (or route
         # through runJudgeCli) — an unhandled stdin-parse rejection exits non-zero,
         # which is non-blocking, so the guardrail is silently lost (fail open).
+        # Real TS AST walk (typescript is a dev dep), so a `try` in a comment or a
+        # string cannot open a phantom try and a `"}"` literal cannot close a real
+        # one early; every isMain block in the file is inspected.
         name: readStdinJson() in a hook isMain block must be try-guarded
-        entry: python3 .github/scripts/check-hook-stdin-guarded.py
+        entry: node .github/scripts/check-hook-stdin-guarded.mjs
         language: system
         files: '^\.claude/hooks/.*\.mjs$'
         exclude: '\.test\.mjs$'

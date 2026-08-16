@@ -37,9 +37,9 @@ jobs:
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         if: hashFiles('.pre-commit-config.yaml') != ''
       # Node deps must be installed for the node-based `language: system` hooks:
-      # check-proto-pollution does `import ts from "typescript"`, which resolves
-      # from the repo's node_modules (ESM ignores NODE_PATH), so the module is
-      # absent until `pnpm install` runs.
+      # check-proto-pollution and check-hook-stdin-guarded both do
+      # `import ts from "typescript"`, which resolves from the repo's node_modules
+      # (ESM ignores NODE_PATH), so the module is absent until `pnpm install` runs.
       #
       # `node-version-file` is a hard error when the file is missing, so this
       # step needs .nvmrc too. Without one the runner's preinstalled Node serves
