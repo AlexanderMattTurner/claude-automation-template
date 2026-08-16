@@ -24,12 +24,13 @@ set -euo pipefail
 : "${GH_REPO:?GH_REPO required}"
 : "${PR:?PR number required}"
 : "${PR_INPUT_DIR:?PR_INPUT_DIR required}"
-REVIEWER_LOGIN="${REVIEWER_LOGIN:-github-actions[bot]}"
-# GraphQL returns an app bot's `login` WITHOUT the REST `[bot]` suffix
-# (`github-actions`, not `github-actions[bot]`); both queries below run through
-# `gh api graphql`, so match against the BARE login (and strip `[bot]` from each
-# node's login in the jq) — the same normalization the sibling reviewer scripts do.
-REVIEWER_LOGIN_BARE="${REVIEWER_LOGIN%'[bot]'}"
+# Both queries below run through `gh api graphql`, which spells an app bot's
+# login without the REST `[bot]` suffix; reviewer_login_init owns that
+# normalization for every reviewer script (lib/reviewer-login.bash).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/reviewer-login.bash disable=SC1091
+source "$SCRIPT_DIR/lib/reviewer-login.bash"
+reviewer_login_init
 
 mkdir -p "$PR_INPUT_DIR"
 owner="${GH_REPO%%/*}"
@@ -56,11 +57,11 @@ threads_query='query($owner: String!, $name: String!, $pr: Int!, $endCursor: Str
     }
   }
 }'
-reviewer_threads="$(REVIEWER_LOGIN_BARE="$REVIEWER_LOGIN_BARE" gh api graphql --paginate \
+reviewer_threads="$(gh api graphql --paginate \
   -f query="$threads_query" -f owner="$owner" -f name="$name" -F pr="$PR" \
-  --jq '[.data.repository.pullRequest.reviewThreads.nodes[]
-         | select((.comments.nodes[0].author.login // "" | sub("\\[bot\\]$"; "")) == env.REVIEWER_LOGIN_BARE)]
-        | length' | jq -s 'add // 0')"
+  --jq "[.data.repository.pullRequest.reviewThreads.nodes[]
+         | ${REVIEWER_MATCH_THREAD_ROOT}]
+        | length" | jq -s 'add // 0')"
 
 if [[ "${reviewer_threads:-0}" -ne 0 ]]; then
   no_hold "reviewer opened ${reviewer_threads} thread(s); the thread resolver owns this hold — not a body-only hold"
@@ -80,11 +81,11 @@ reviews_query='query($owner: String!, $name: String!, $pr: Int!, $endCursor: Str
     }
   }
 }'
-latest="$(REVIEWER_LOGIN_BARE="$REVIEWER_LOGIN_BARE" gh api graphql --paginate \
+latest="$(gh api graphql --paginate \
   -f query="$reviews_query" -f owner="$owner" -f name="$name" -F pr="$PR" \
-  --jq '.data.repository.pullRequest.reviews.nodes[]
-        | select((.author.login // "" | sub("\\[bot\\]$"; "")) == env.REVIEWER_LOGIN_BARE)
-        | {state, body, submittedAt}' |
+  --jq ".data.repository.pullRequest.reviews.nodes[]
+        | ${REVIEWER_MATCH_AUTHOR}
+        | {state, body, submittedAt}" |
   jq -rs 'if length == 0 then empty else (sort_by(.submittedAt) | last) end')"
 
 [[ -n "$latest" ]] || no_hold "reviewer never reviewed this PR; no body hold"
