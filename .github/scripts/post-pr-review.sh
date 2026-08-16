@@ -23,12 +23,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib-post-review-with-retry.sh"
 # can't masquerade as a clean pass. `if !` suspends set -e for the substitution so
 # we can react to the failure instead of dying on it.
 if ! status="$(node .github/scripts/post-pr-review.mjs)"; then
-	echo "::error::the reviewer wrote no valid review.json — it likely crashed; see the reader's diagnostics above" >&2
-	exit 1
+  echo "::error::the reviewer wrote no valid review.json — it likely crashed; see the reader's diagnostics above" >&2
+  exit 1
 fi
 if [[ "$status" != "PAYLOAD" ]]; then
-	echo "no structured review to post" >&2
-	exit 0
+  echo "no structured review to post" >&2
+  exit 0
 fi
 
 post_review_with_retry "$PR" "${PR_INPUT_DIR}/review-payload.json" "${PR_INPUT_DIR}/review-summary.txt"
