@@ -48,11 +48,10 @@ A GitHub template that makes [Claude Code](https://docs.anthropic.com/en/docs/cl
 
 ### Git Hooks (`.hooks/`)
 
-| Hook          | What it does                                                                                 |
-| ------------- | -------------------------------------------------------------------------------------------- |
-| `pre-commit`  | Runs lint-staged—auto-formats with Prettier, shfmt, and ruff depending on file type          |
-| `commit-msg`  | Validates [Conventional Commits](https://www.conventionalcommits.org/) format via commitlint |
-| `lint-skills` | Lint-staged helper—validates skill files have required frontmatter (`name`, `description`)   |
+| Hook         | What it does                                                                                 |
+| ------------ | -------------------------------------------------------------------------------------------- |
+| `pre-commit` | Runs lint-staged—auto-formats with Prettier, shfmt, and ruff depending on file type          |
+| `commit-msg` | Validates [Conventional Commits](https://www.conventionalcommits.org/) format via commitlint |
 
 ### Claude Session Hooks (`.claude/hooks/`)
 
@@ -251,7 +250,7 @@ Repository **settings and secrets are never copied** when you create a repo from
 │   ├── agents/             # Claude subagents (code-reviewer)
 │   └── settings.json       # Claude Code hooks + session env tuning
 ├── .mcp.json.example       # Starter team-shared MCP servers (copy to .mcp.json)
-├── .hooks/                 # Git hooks (pre-commit, commit-msg, lint-skills)
+├── .hooks/                 # Git hooks (pre-commit, commit-msg)
 ├── .github/
 │   ├── workflows/          # CI workflows
 │   └── dependabot.yml      # Dependabot configuration

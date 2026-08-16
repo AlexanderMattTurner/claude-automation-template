@@ -121,7 +121,7 @@ for (const [name, src] of Object.entries({
 
 test("a `try {` inside a COMMENT does not open a phantom try (false negative)", () => {
   const src = `if (isMain(import.meta.url)) {
-  // Historically this was written \`try {\` — see the design note.
+  // A design note that spells the words \`try {\` in prose.
   const input = await readStdinJson();
 }
 `;
@@ -148,7 +148,7 @@ test('a "}" string literal does not close the real try early (false positive)', 
   assert.deepEqual(lines(src), []);
 });
 
-// Only the FIRST isMain block was inspected before; a hook may carry several.
+// A hook may carry several entry-point guards; each one is scanned.
 test("inspects every isMain block in a file, not only the first", () => {
   const src = `if (isMain(import.meta.url)) {
   try {

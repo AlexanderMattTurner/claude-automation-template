@@ -47,7 +47,7 @@
       "prettier --write"
     ],
     ".claude/skills/*/SKILL.md": [
-      ".hooks/lint-skills.sh"
+      "python3 .github/scripts/lint-skills.py"
     ],
     "{*.sh,.hooks/*}": [
       "shfmt -i 2 -w"
