@@ -121,7 +121,9 @@ fi
 # the collection-time import closure of a test; shell-targets gives what a shell
 # entry point can run. Both fail RED on a bad target and never fall back to the
 # regex alone: a silently empty closure would drop exactly the paths the input
-# exists to cover, which is the false green the caller opted in to prevent.
+# exists to cover, which is the false green the caller opted in to prevent. A
+# derivation that exits 0 with NO paths is caught below instead, by
+# path_gate_matching_members' empty-list arm.
 DERIVED_CLOSURE=""
 derive() {
   local _script="$1" _targets="$2" _what="$3" _out
@@ -157,7 +159,7 @@ paths_trigger() {
   fi
   if [[ -n "$DERIVED_CLOSURE" ]]; then
     mapfile -t -O "${#_matched[@]}" _matched < <(
-      grep -Fxf <(printf '%s\n' "$DERIVED_CLOSURE") <<<"$_changed" || true
+      path_gate_matching_members "$DERIVED_CLOSURE" "$_changed"
     )
   fi
   ((${#_matched[@]} > 0)) || return 0

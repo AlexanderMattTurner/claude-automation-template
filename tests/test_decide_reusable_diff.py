@@ -789,3 +789,39 @@ def test_memo_shadow_judges_comment_only_churn_over_the_memo_range(
     )
     assert "run=true" in output, output
     assert "would_run=false acting_run=true" in result.stdout, result.stdout
+
+
+# --- an empty derivation, and the auth header the re-anchor fetch carries ----
+
+
+def _empty_closure_python(tmp_path: Path) -> None:
+    """A `python3` that exits 0 printing nothing, standing in for a closure script
+    whose derivation succeeded but named no file."""
+    stub = tmp_path / "python3"
+    stub.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    stub.chmod(0o755)
+
+
+def test_an_empty_derived_closure_fails_open(tmp_path: Path) -> None:
+    """A closure script that exits 0 naming NO path is a derivation that failed.
+    Reading it as "no watched file changed" skips the job the input exists to
+    trigger and greens its required check, so the gate must run instead."""
+    _empty_closure_python(tmp_path)
+    diff = _flood(tmp_path / "diff.txt", CLOSURE_MEMBER)
+    output = _run(
+        tmp_path,
+        PATHS_REGEX="^docs/",
+        PYTEST_TARGETS=PYTEST_TARGET,
+        FAKE_DIFF_FILE=str(diff),
+    )
+    assert "run=true" in output, output
+
+
+def test_an_empty_derived_closure_is_what_flips_that_verdict(tmp_path: Path) -> None:
+    """Non-vacuity for the case above: the SAME diff and regex with no targets
+    configured still yields run=false, so the fail-open comes from the empty
+    closure rather than from the diff matching something."""
+    _empty_closure_python(tmp_path)
+    diff = _flood(tmp_path / "diff.txt", CLOSURE_MEMBER)
+    output = _run(tmp_path, PATHS_REGEX="^docs/", FAKE_DIFF_FILE=str(diff))
+    assert "run=false" in output, output
