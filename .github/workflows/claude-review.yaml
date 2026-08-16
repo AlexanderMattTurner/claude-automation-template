@@ -71,6 +71,22 @@ jobs:
   #     fork PR touching CI, tests, or docs is exactly what a human wants a
   #     second read on. A PR whose title isn't a recognized skip-type is
   #     reviewed (fail toward reviewing).
+  #
+  # THE TITLE SKIP IS GATED ON A TRUSTED AUTHOR, and the same guard appears
+  # verbatim on auto-approve-skipped below. A PR title is written by the PR
+  # AUTHOR, so on its own it is an attacker-chosen string that decides whether
+  # this repo reviews the PR at all: an outside contributor titling a fork PR
+  # `chore: bump` skipped the review AND collected the auto-approval, clearing
+  # three merge levers with one string. The guard is the pair GitHub sets, not
+  # the author: `head.repo.full_name` (same-repo branch, so the author already
+  # has push access) or `author_association` in OWNER/MEMBER/COLLABORATOR.
+  #
+  # It must gate BOTH jobs or neither. Guarding only the approval leaves an
+  # untrusted `chore:` PR skipped here and approved by nobody — reviewed by
+  # nobody, with no event able to produce either outcome. Guarded on both, the
+  # skip set is simply EMPTY for an untrusted author: their PR always gets the
+  # real review, whatever its title.
+  #
   # This job `if:` carries the cheap payload-only skips (no runner boots for a
   # draft/bot/docs PR); the script then decides opened/ready (always, on Opus) vs
   # synchronize (the [opus-review] head-commit opt-in on Opus, or a Haiku
@@ -85,12 +101,20 @@ jobs:
       (
         github.event.pull_request.draft == false &&
         github.event.pull_request.user.type != 'Bot' &&
-        !startsWith(github.event.pull_request.title, 'chore:') &&
-        !startsWith(github.event.pull_request.title, 'chore(') &&
-        !startsWith(github.event.pull_request.title, 'style:') &&
-        !startsWith(github.event.pull_request.title, 'style(') &&
-        !startsWith(github.event.pull_request.title, 'release:') &&
-        !startsWith(github.event.pull_request.title, 'release(')
+        (
+          !(
+            github.event.pull_request.head.repo.full_name == github.repository ||
+            contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+          ) ||
+          (
+            !startsWith(github.event.pull_request.title, 'chore:') &&
+            !startsWith(github.event.pull_request.title, 'chore(') &&
+            !startsWith(github.event.pull_request.title, 'style:') &&
+            !startsWith(github.event.pull_request.title, 'style(') &&
+            !startsWith(github.event.pull_request.title, 'release:') &&
+            !startsWith(github.event.pull_request.title, 'release(')
+          )
+        )
       )
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -295,9 +319,18 @@ jobs:
   # on the ruleset NOT dismissing approvals on push (the same assumption the
   # reviewer makes by not re-reviewing every push).
   #
-  # Title/author come from the event payload (set by GitHub, unspoofable by the
-  # triggering actor). This posts a review only; it needs no checkout, runs no PR
-  # code, and holds pull-requests:write and nothing else.
+  # The author fields come from the event payload, which GitHub sets and the
+  # triggering actor cannot spoof: `user.type`, `author_association` and
+  # `head.repo.full_name` all mean what they say. THE TITLE DOES NOT — the PR
+  # author writes it and can rewrite it at will — so the title arm below is
+  # gated on the same trusted-author guard the `decide` job carries, and the two
+  # guards must stay identical (see decide's header for why guarding one alone
+  # strands the PR). The bot arm needs no such guard: `user.type == 'Bot'` is a
+  # payload fact, and `decide` skips bot PRs on exactly the same fact, so the two
+  # jobs agree on that class already.
+  #
+  # This posts a review only; it needs no checkout, runs no PR code, and holds
+  # pull-requests:write and nothing else.
   auto-approve-skipped:
     name: Auto-approve low-risk and bot PRs the reviewer skips
     if: >-
@@ -305,12 +338,20 @@ jobs:
       github.event.pull_request.draft == false &&
       (
         github.event.pull_request.user.type == 'Bot' ||
-        startsWith(github.event.pull_request.title, 'chore:') ||
-        startsWith(github.event.pull_request.title, 'chore(') ||
-        startsWith(github.event.pull_request.title, 'style:') ||
-        startsWith(github.event.pull_request.title, 'style(') ||
-        startsWith(github.event.pull_request.title, 'release:') ||
-        startsWith(github.event.pull_request.title, 'release(')
+        (
+          (
+            github.event.pull_request.head.repo.full_name == github.repository ||
+            contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+          ) &&
+          (
+            startsWith(github.event.pull_request.title, 'chore:') ||
+            startsWith(github.event.pull_request.title, 'chore(') ||
+            startsWith(github.event.pull_request.title, 'style:') ||
+            startsWith(github.event.pull_request.title, 'style(') ||
+            startsWith(github.event.pull_request.title, 'release:') ||
+            startsWith(github.event.pull_request.title, 'release(')
+          )
+        )
       )
     runs-on: ubuntu-latest
     timeout-minutes: 5
