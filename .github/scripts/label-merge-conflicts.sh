@@ -43,8 +43,9 @@ list_prs() {
     --json number,mergeable,labels --jq ".[] | $jq_row")"
   # A full page means more open PRs may exist past the limit; say so rather
   # than silently under-sweeping them.
-  [[ "$(wc -l <<<"$rows")" -lt "$SWEEP_LIMIT" ]] ||
+  if [[ "$(wc -l <<<"$rows")" -ge "$SWEEP_LIMIT" ]]; then
     echo "::warning::open-PR sweep hit its $SWEEP_LIMIT-PR limit; some PRs may not have been checked this run." >&2
+  fi
   printf '%s\n' "$rows"
 }
 
