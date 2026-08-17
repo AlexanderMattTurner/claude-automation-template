@@ -33,14 +33,20 @@
 # eval). A transient API failure yields run=false (no review, no red) rather than
 # a spurious re-review.
 #
-# Env: GH_TOKEN, ACTION, REPO, HEAD_SHA, PR, LABEL (LABEL set only on `labeled`).
+# Env: GH_TOKEN, ACTION, REPO, HEAD_SHA, PR, LABEL (LABEL set only on `labeled`);
+# REVIEWER_LOGIN optional.
 set -euo pipefail
 
 KEYWORD="[opus-review]"
 REVIEW_LABEL="needs-auto-review"
 # The reviewer posts with GITHUB_TOKEN, so its reviews are authored by this bot;
 # the latest review it left is the effective verdict that gates the PR.
-REVIEWER="github-actions[bot]"
+# reviewer_login_init owns that identity for every reviewer script, including the
+# REST/GraphQL `[bot]`-suffix mismatch (lib/reviewer-login.bash).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/reviewer-login.bash disable=SC1091
+source "$SCRIPT_DIR/lib/reviewer-login.bash"
+reviewer_login_init
 OPUS_MODEL="claude-opus-4-8"
 HAIKU_MODEL="claude-haiku-4-5"
 
@@ -106,9 +112,9 @@ fi
 # `--paginate` would run the filter per page and concatenate. A transient API
 # failure yields empty -> no re-review.
 state="$(gh api "repos/$REPO/pulls/${PR:-}/reviews" --paginate --slurp \
-  --jq "[.[][] | select(.user.login == \"$REVIEWER\")] | last | .state // empty" 2>/dev/null || true)"
+  --jq "[.[][] | ${REVIEWER_MATCH_USER}] | last | .state // empty" 2>/dev/null || true)"
 if [[ "$state" == "CHANGES_REQUESTED" || "$state" == "COMMENTED" ]]; then
-  emit true "outstanding $REVIEWER hold ($state) — re-checking on Haiku" "$HAIKU_MODEL"
+  emit true "outstanding $REVIEWER_LOGIN hold ($state) — re-checking on Haiku" "$HAIKU_MODEL"
 else
   emit false "no $KEYWORD opt-in and no outstanding reviewer hold"
 fi

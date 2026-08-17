@@ -15,13 +15,16 @@ set -euo pipefail
 
 : "${GH_REPO:?GH_REPO required}"
 : "${PR:?PR number required}"
-REVIEWER_LOGIN="${REVIEWER_LOGIN:-github-actions[bot]}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/reviewer-login.bash disable=SC1091
+source "$SCRIPT_DIR/lib/reviewer-login.bash"
+reviewer_login_init
 
 # The reviewer's most recent costed review. Paginated so a PR with >100 reviews
 # still finds the newest match: the per-page --jq emits each matching review as
 # NDJSON, the slurp picks the last (newest — the API returns reviews oldest-first).
-target="$(REVIEWER_LOGIN="$REVIEWER_LOGIN" gh api --paginate "repos/${GH_REPO}/pulls/${PR}/reviews" \
-  --jq '.[] | select(.user.login == env.REVIEWER_LOGIN and (.body | test("<!-- review-cost usd="))) | {id, body}' |
+target="$(gh api --paginate "repos/${GH_REPO}/pulls/${PR}/reviews" \
+  --jq ".[] | ${REVIEWER_MATCH_USER} | select(.body | test(\"<!-- review-cost usd=\")) | {id, body}" |
   jq -s 'last // empty')"
 
 if [[ -z "$target" ]]; then
