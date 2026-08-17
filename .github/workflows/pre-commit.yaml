@@ -42,10 +42,14 @@ jobs:
       # absent until `pnpm install` runs. The shared composite no-ops its Node
       # half when package.json is absent, and every other workflow already gets
       # its Node/pnpm setup this way — a hand-rolled copy here just drifts from
-      # their pins instead of sharing them.
+      # their pins instead of sharing them. node-version-file is a hard error
+      # when the file is missing, so it's passed only when .nvmrc exists;
+      # without one the composite's own default node-version serves pnpm fine.
       - name: Setup base environment
         if: hashFiles('.pre-commit-config.yaml') != ''
         uses: ./.github/actions/setup-base-env
+        with:
+          node-version-file: ${{ hashFiles('.nvmrc') != '' && '.nvmrc' || '' }}
       - name: Restore pre-commit cache
         if: hashFiles('.pre-commit-config.yaml') != ''
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
