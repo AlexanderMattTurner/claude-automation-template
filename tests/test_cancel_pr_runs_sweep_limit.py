@@ -1,6 +1,7 @@
-"""cancel-pr-runs.sh must say when a run sweep may have missed in-flight runs
-past its page limit, not silently leave them uncancelled — the same class of
-gap `label-merge-conflicts.sh`'s own sweep-limit warning covers.
+"""cancel-pr-runs.sh must say when a run sweep hits its page limit, since a
+single push that alone triggers more runs than the limit can leave some of
+HEAD_SHA's own in-flight runs uncancelled (`gh run list` returns newest-first,
+so a full page otherwise just means older, already-irrelevant SHAs got cut).
 
 Drives the real script as a subprocess against a fake `gh` that returns a fixed
 number of already-completed runs, so the script finds nothing to cancel and the
