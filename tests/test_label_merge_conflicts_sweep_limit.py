@@ -7,6 +7,7 @@ number of already-CONFLICTING, already-labeled PR rows, so the script takes no
 label-editing action and the only observable behavior is the warning itself.
 """
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -27,7 +28,12 @@ esac
 
 
 def run(
-    tmp_path: Path, *, row_count: int, sweep_limit: int
+    tmp_path: Path,
+    *,
+    row_count: int,
+    sweep_limit: int,
+    max_passes: int = 1,
+    mergeable: str = "CONFLICTING",
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -35,11 +41,21 @@ def run(
     stub.write_text(FAKE_GH)
     stub.chmod(0o755)
 
-    # Already CONFLICTING and already labeled, so the script takes no
-    # label-editing action — the warning is the only thing under test.
-    rows = tmp_path / "pr-rows.tsv"
+    # Already labeled, so a CONFLICTING row takes no label-editing action — the
+    # warning is the only thing under test. An UNKNOWN row exhausts every pass
+    # instead, to drive the multi-pass dedup case.
+    rows = tmp_path / "pr-rows.json"
     rows.write_text(
-        "".join(f"{n}\tCONFLICTING\ttrue\n" for n in range(1, row_count + 1))
+        json.dumps(
+            [
+                {
+                    "number": n,
+                    "mergeable": mergeable,
+                    "labels": [{"name": "merge-conflict"}],
+                }
+                for n in range(1, row_count + 1)
+            ]
+        )
     )
 
     call_log = tmp_path / "gh-calls.txt"
@@ -49,7 +65,8 @@ def run(
         "GH_TOKEN": "x",
         "REPO": "o/r",
         "SWEEP_LIMIT": str(sweep_limit),
-        "MAX_PASSES": "1",
+        "MAX_PASSES": str(max_passes),
+        "RETRY_DELAY_SECS": "0",
         "CALL_LOG": str(call_log),
         "PR_ROWS": str(rows),
     }
@@ -77,3 +94,19 @@ def test_a_partial_page_does_not_warn(tmp_path: Path) -> None:
 def test_an_empty_page_does_not_warn(tmp_path: Path) -> None:
     result = run(tmp_path, row_count=0, sweep_limit=3)
     assert "::warning::" not in result.stderr
+
+
+def test_an_empty_page_does_not_warn_even_at_a_limit_of_one(tmp_path: Path) -> None:
+    # A line-counting implementation renders zero PRs as one blank TSV line and
+    # miscounts it as a full page at SWEEP_LIMIT=1; jq's own array length does not.
+    result = run(tmp_path, row_count=0, sweep_limit=1)
+    assert "::warning::" not in result.stderr
+
+
+def test_a_capped_repeat_sweep_warns_only_once(tmp_path: Path) -> None:
+    # MAX_PASSES retries the same capped page while any PR is still UNKNOWN; the
+    # cap warning must not repeat once per pass.
+    result = run(
+        tmp_path, row_count=3, sweep_limit=3, max_passes=3, mergeable="UNKNOWN"
+    )
+    assert result.stderr.count("::warning::open-PR sweep") == 1
