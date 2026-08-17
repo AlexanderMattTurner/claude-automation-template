@@ -167,7 +167,7 @@ ALLOWED_CALLS = [
         "reading a test file",
         {"tool_name": "Read", "tool_input": {"file_path": "tests/test_thing.py"}},
     ),
-    # An update carries no title to read, so the gate only watches `create`.
+    # The gate watches `create` only: an issue that exists already passed it.
     (
         "an issue update naming a plan",
         {

@@ -36,15 +36,11 @@ jobs:
           python-version: "3.11"
       - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         if: hashFiles('.pre-commit-config.yaml') != ''
-      # Node deps must be installed for the node-based `language: system` hooks:
-      # check-proto-pollution does `import ts from "typescript"`, which resolves
-      # from the repo's node_modules (ESM ignores NODE_PATH), so the module is
-      # absent until `pnpm install` runs. The shared composite no-ops its Node
-      # half when package.json is absent, and every other workflow already gets
-      # its Node/pnpm setup this way — a hand-rolled copy here just drifts from
-      # their pins instead of sharing them. node-version-file is a hard error
-      # when the file is missing, so it's passed only when .nvmrc exists;
-      # without one the composite's own default node-version serves pnpm fine.
+      # check-proto-pollution does `import ts from "typescript"`, resolved from
+      # node_modules (ESM ignores NODE_PATH) — absent until `pnpm install` runs.
+      # The composite no-ops its Node half when package.json is absent.
+      # node-version-file errors if the file is missing, so .nvmrc is passed
+      # only when it exists.
       - name: Setup base environment
         if: hashFiles('.pre-commit-config.yaml') != ''
         uses: ./.github/actions/setup-base-env

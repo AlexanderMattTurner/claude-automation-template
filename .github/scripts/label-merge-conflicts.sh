@@ -27,8 +27,6 @@ export LABEL="merge-conflict"
 gh label create "$LABEL" --repo "$REPO" --color d93f0b --force \
   --description "This PR has merge conflicts with its base branch"
 
-# TSV rows: number, mergeable, whether LABEL is already applied. One PR when
-# PR_NUMBER is set (via `pr view`), else every open PR (via `pr list`).
 SWEEP_LIMIT="${SWEEP_LIMIT:-100}"
 # Set once the cap warning has fired, so a multi-pass retry (MAX_PASSES) that
 # keeps re-fetching the same capped page reports it once, not once per pass.
