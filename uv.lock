@@ -19,8 +19,8 @@ dev = [
 requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7,<10" },
     { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6,<7" },
-    { name = "tree-sitter", marker = "extra == 'dev'", specifier = ">=0.23,<1" },
-    { name = "tree-sitter-bash", marker = "extra == 'dev'", specifier = ">=0.23,<1" },
+    { name = "tree-sitter", marker = "extra == 'dev'", specifier = "==0.26.0" },
+    { name = "tree-sitter-bash", marker = "extra == 'dev'", specifier = "==0.25.1" },
 ]
 provides-extras = ["dev"]
 
