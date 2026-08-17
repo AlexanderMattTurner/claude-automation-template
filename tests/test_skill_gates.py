@@ -76,6 +76,24 @@ GATED_CALLS = [
         {"tool_name": "Write", "tool_input": {"file_path": "/tmp/claude/plan.md"}},
         "explore-plan",
     ),
+    (
+        "gh issue create naming a plan",
+        {
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": 'gh issue create --title "Repo migration plan" --body "..."'
+            },
+        },
+        "explore-plan",
+    ),
+    (
+        "the MCP issue_write create tool naming a plan",
+        {
+            "tool_name": "mcp__github__issue_write",
+            "tool_input": {"method": "create", "title": "Repo migration plan"},
+        },
+        "explore-plan",
+    ),
 ]
 
 
@@ -148,6 +166,21 @@ ALLOWED_CALLS = [
     (
         "reading a test file",
         {"tool_name": "Read", "tool_input": {"file_path": "tests/test_thing.py"}},
+    ),
+    # An update carries no title to read, so the gate only watches `create`.
+    (
+        "an issue update naming a plan",
+        {
+            "tool_name": "mcp__github__issue_write",
+            "tool_input": {"method": "update", "title": "Repo migration plan"},
+        },
+    ),
+    (
+        "an issue create whose title doesn't name a plan",
+        {
+            "tool_name": "mcp__github__issue_write",
+            "tool_input": {"method": "create", "title": "Track the migration"},
+        },
     ),
 ]
 
