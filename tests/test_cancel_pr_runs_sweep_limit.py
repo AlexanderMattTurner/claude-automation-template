@@ -17,6 +17,7 @@ from tests._helpers import REPO_ROOT
 SCRIPT = REPO_ROOT / ".github" / "scripts" / "cancel-pr-runs.sh"
 
 FAKE_GH = """#!/usr/bin/env bash
+echo "$*" >> "$CALL_LOG"
 case "$1 $2" in
   "run list") cat "$RUNS_JSON" ;;
   "run cancel") exit 0 ;;
@@ -46,6 +47,7 @@ def run(
         + "]"
     )
 
+    call_log = tmp_path / "gh-calls.txt"
     env = {
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -55,6 +57,7 @@ def run(
         "HEAD_SHA": "beefdead",
         "RUN_SWEEP_LIMIT": str(sweep_limit),
         "RUNS_JSON": str(runs),
+        "CALL_LOG": str(call_log),
     }
     return subprocess.run(
         ["bash", str(SCRIPT)],
@@ -70,6 +73,10 @@ def test_a_full_page_warns_the_sweep_may_have_missed_runs(tmp_path: Path) -> Non
     result = run(tmp_path, run_count=3, sweep_limit=3)
     assert "::warning::" in result.stdout
     assert "3 newest runs" in result.stdout
+    # Non-vacuous coverage of RUN_SWEEP_LIMIT actually reaching `gh`: a
+    # hardcoded --limit would still pass every other assertion here.
+    call_log = (tmp_path / "gh-calls.txt").read_text()
+    assert "--limit 3" in call_log
 
 
 def test_a_partial_page_does_not_warn(tmp_path: Path) -> None:

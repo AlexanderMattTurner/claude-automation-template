@@ -96,6 +96,10 @@ def test_a_full_page_warns_the_sweep_may_have_missed_prs(tmp_path: Path) -> None
     result = run(tmp_path, row_count=3, sweep_limit=3)
     assert "::warning::" in result.stderr
     assert "3-PR limit" in result.stderr
+    # Non-vacuous coverage of SWEEP_LIMIT actually reaching `gh`: a hardcoded
+    # --limit would still pass every other assertion here.
+    call_log = (tmp_path / "gh-calls.txt").read_text()
+    assert "--limit 3" in call_log
 
 
 def test_a_partial_page_does_not_warn(tmp_path: Path) -> None:
