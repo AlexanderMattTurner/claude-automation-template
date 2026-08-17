@@ -4,7 +4,7 @@
   "description": "Project with Claude Code automation",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/alexandermattturner/claude-automation-template.git"
+    "url": "git+https://github.com/AlexanderMattTurner/claude-automation-template.git"
   },
   "type": "module",
   "private": true,
