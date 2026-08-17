@@ -96,6 +96,13 @@ defense; widen the check.
   `write()` to get EPIPE (rc 141) intermittently — independent of pipe-buffer
   size. Add `cat >/dev/null` in the stub body so it consumes its input before
   exiting.
+- **A stub standing in for a CLI must reject the flag combinations the real tool rejects.** A stub that silently accepts every invocation certifies only the author's reading of the interface; the real tool's refusal of an invalid flag pair makes those calls red in production while the stub keeps them green.
+- **Model the load-bearing behavior of a stub, not just its interface.** A stub for a process that reads stdin, argv, or env in a way the code under test depends on must reproduce that behavior — omitting it lets the test pass against the stub and fail against the real process.
+
+## Coverage blind spots
+
+- **V8 block coverage cannot see an always-true `&&` chain.** Every operand of a conjunction counts as executed once the expression evaluates, so a compound guard that all tests leave true reports 100% coverage while no conjunct is ever driven false. Extract the conjunction into a named pure predicate that takes its inputs as parameters, then test each conjunct in isolation with a synthetic input that makes it false.
+- **Scope a lint's or coverage tool's "test code" exemption by filename convention** (`test_*.py`, `*_test.py`, `conftest.py`), not by a `tests/` directory prefix. A library module colocated under `tests/` for organisational reasons is production code and must stay in scope.
 
 ## Python test idioms
 
