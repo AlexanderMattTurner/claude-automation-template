@@ -16,7 +16,8 @@
 # PRs still UNKNOWN after MAX_PASSES are named in a workflow warning — never
 # silently skipped — and the next event or scheduled run retries them anyway.
 # Env: GH_TOKEN, REPO; PR_NUMBER scopes to one PR; MAX_PASSES (default 2) caps
-# the retry loop; RETRY_DELAY_SECS overrides the between-pass wait.
+# the retry loop; RETRY_DELAY_SECS overrides the between-pass wait; SWEEP_LIMIT
+# (default 100) caps how many open PRs one full-repo sweep lists.
 set -euo pipefail
 
 : "${GH_TOKEN:?}" "${REPO:?}"
@@ -28,15 +29,23 @@ gh label create "$LABEL" --repo "$REPO" --color d93f0b --force \
 
 # TSV rows: number, mergeable, whether LABEL is already applied. One PR when
 # PR_NUMBER is set (via `pr view`), else every open PR (via `pr list`).
+SWEEP_LIMIT="${SWEEP_LIMIT:-100}"
+
 list_prs() {
   local jq_row='[.number, .mergeable, any(.labels[]; .name == env.LABEL)] | @tsv'
   if [[ -n "${PR_NUMBER:-}" ]]; then
     gh pr view "$PR_NUMBER" --repo "$REPO" \
       --json number,mergeable,labels --jq "$jq_row"
-  else
-    gh pr list --repo "$REPO" --state open --limit 100 \
-      --json number,mergeable,labels --jq ".[] | $jq_row"
+    return
   fi
+  local rows
+  rows="$(gh pr list --repo "$REPO" --state open --limit "$SWEEP_LIMIT" \
+    --json number,mergeable,labels --jq ".[] | $jq_row")"
+  # A full page means more open PRs may exist past the limit; say so rather
+  # than silently under-sweeping them.
+  [[ "$(wc -l <<<"$rows")" -lt "$SWEEP_LIMIT" ]] ||
+    echo "::warning::open-PR sweep hit its $SWEEP_LIMIT-PR limit; some PRs may not have been checked this run." >&2
+  printf '%s\n' "$rows"
 }
 
 unknown=""

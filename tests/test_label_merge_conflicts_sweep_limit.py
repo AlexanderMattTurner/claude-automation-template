@@ -1,0 +1,79 @@
+"""label-merge-conflicts.sh must say when a full-repo sweep may have missed PRs
+past its page limit, not silently under-sweep them — the same "no silent caps"
+rule the script already follows for PRs still UNKNOWN after MAX_PASSES retries.
+
+Drives the real script as a subprocess against a fake `gh` that returns a fixed
+number of already-CONFLICTING, already-labeled PR rows, so the script takes no
+label-editing action and the only observable behavior is the warning itself.
+"""
+
+import os
+import subprocess
+from pathlib import Path
+
+from tests._helpers import REPO_ROOT
+
+SCRIPT = REPO_ROOT / ".github" / "scripts" / "label-merge-conflicts.sh"
+
+FAKE_GH = """#!/usr/bin/env bash
+echo "$*" >> "$CALL_LOG"
+case "$1 $2" in
+  "label create") exit 0 ;;
+  "pr list") cat "$PR_ROWS" ;;
+  "pr edit") exit 0 ;;
+  *) echo "fake gh: unhandled: $*" >&2; exit 1 ;;
+esac
+"""
+
+
+def run(
+    tmp_path: Path, *, row_count: int, sweep_limit: int
+) -> subprocess.CompletedProcess[str]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "gh"
+    stub.write_text(FAKE_GH)
+    stub.chmod(0o755)
+
+    # Already CONFLICTING and already labeled, so the script takes no
+    # label-editing action — the warning is the only thing under test.
+    rows = tmp_path / "pr-rows.tsv"
+    rows.write_text(
+        "".join(f"{n}\tCONFLICTING\ttrue\n" for n in range(1, row_count + 1))
+    )
+
+    call_log = tmp_path / "gh-calls.txt"
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "GH_TOKEN": "x",
+        "REPO": "o/r",
+        "SWEEP_LIMIT": str(sweep_limit),
+        "MAX_PASSES": "1",
+        "CALL_LOG": str(call_log),
+        "PR_ROWS": str(rows),
+    }
+    return subprocess.run(
+        ["bash", str(SCRIPT)],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=env,
+        cwd=REPO_ROOT,
+    )
+
+
+def test_a_full_page_warns_the_sweep_may_have_missed_prs(tmp_path: Path) -> None:
+    result = run(tmp_path, row_count=3, sweep_limit=3)
+    assert "::warning::" in result.stderr
+    assert "3-PR limit" in result.stderr
+
+
+def test_a_partial_page_does_not_warn(tmp_path: Path) -> None:
+    result = run(tmp_path, row_count=2, sweep_limit=3)
+    assert "::warning::" not in result.stderr
+
+
+def test_an_empty_page_does_not_warn(tmp_path: Path) -> None:
+    result = run(tmp_path, row_count=0, sweep_limit=3)
+    assert "::warning::" not in result.stderr

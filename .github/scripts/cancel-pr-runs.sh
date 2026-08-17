@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Cancel the queued/in-progress Actions runs still executing on a closed PR's
 # head SHA. Invoked by cancel-on-pr-close.yaml with REPO, HEAD_REF, HEAD_SHA,
-# GH_TOKEN in the environment. Reclaims runner slots a merge/close would
+# GH_TOKEN in the environment; RUN_SWEEP_LIMIT (default 100) caps how many runs
+# on that branch one call lists. Reclaims runner slots a merge/close would
 # otherwise leave held — GitHub cancels superseded runs only when a newer push
 # arrives, never on close.
 set -euo pipefail
@@ -16,8 +17,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib-ci-retry.sh"
 # cancelling nothing. Match on HEAD_SHA too: a reused branch name can carry runs
 # from an unrelated head we must not touch. retry_stdout in a command
 # substitution rides out a transient list-API blip on this idempotent GET.
-runs_json="$(retry_stdout gh run list --repo "$REPO" --branch "$HEAD_REF" --limit 100 \
+RUN_SWEEP_LIMIT="${RUN_SWEEP_LIMIT:-100}"
+runs_json="$(retry_stdout gh run list --repo "$REPO" --branch "$HEAD_REF" --limit "$RUN_SWEEP_LIMIT" \
   --json databaseId,status,headSha)"
+# A full page means more runs on this branch may exist past the limit; say so
+# rather than silently leaving them uncancelled.
+if [[ "$(jq 'length' <<<"$runs_json")" -eq "$RUN_SWEEP_LIMIT" ]]; then
+  echo "::warning::run sweep for ${HEAD_REF} hit its ${RUN_SWEEP_LIMIT}-run limit; some in-flight runs may not have been cancelled."
+fi
 
 ids=()
 while IFS= read -r id; do
