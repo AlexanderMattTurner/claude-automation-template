@@ -21,6 +21,7 @@ echo "$*" >> "$CALL_LOG"
 case "$1 $2" in
   "label create") exit 0 ;;
   "pr list") cat "$PR_ROWS" ;;
+  "pr view") cat "$PR_ROWS" ;;
   "pr edit") exit 0 ;;
   *) echo "fake gh: unhandled: $*" >&2; exit 1 ;;
 esac
@@ -34,6 +35,8 @@ def run(
     sweep_limit: int,
     max_passes: int = 1,
     mergeable: str = "CONFLICTING",
+    labeled: bool = True,
+    pr_number: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -41,9 +44,10 @@ def run(
     stub.write_text(FAKE_GH)
     stub.chmod(0o755)
 
-    # Already labeled, so a CONFLICTING row takes no label-editing action — the
-    # warning is the only thing under test. An UNKNOWN row exhausts every pass
-    # instead, to drive the multi-pass dedup case.
+    # Already labeled by default, so a CONFLICTING row takes no label-editing
+    # action and the warning is the only thing under test. An UNKNOWN row
+    # exhausts every pass instead, to drive the multi-pass dedup case; an
+    # unlabeled row drives the label-editing path itself.
     rows = tmp_path / "pr-rows.json"
     rows.write_text(
         json.dumps(
@@ -51,7 +55,7 @@ def run(
                 {
                     "number": n,
                     "mergeable": mergeable,
-                    "labels": [{"name": "merge-conflict"}],
+                    "labels": [{"name": "merge-conflict"}] if labeled else [],
                 }
                 for n in range(1, row_count + 1)
             ]
@@ -70,6 +74,8 @@ def run(
         "CALL_LOG": str(call_log),
         "PR_ROWS": str(rows),
     }
+    if pr_number is not None:
+        env["PR_NUMBER"] = pr_number
     return subprocess.run(
         ["bash", str(SCRIPT)],
         capture_output=True,
@@ -110,3 +116,20 @@ def test_a_capped_repeat_sweep_warns_only_once(tmp_path: Path) -> None:
         tmp_path, row_count=3, sweep_limit=3, max_passes=3, mergeable="UNKNOWN"
     )
     assert result.stderr.count("::warning::open-PR sweep") == 1
+    # Non-vacuous: prove the retry loop actually ran all 3 passes — otherwise
+    # this would pass just as well against a loop that never retried at all.
+    call_log = (tmp_path / "gh-calls.txt").read_text()
+    assert call_log.count("pr list") == 3
+
+
+def test_a_pr_number_scoped_run_labels_an_unlabeled_conflicting_pr(
+    tmp_path: Path,
+) -> None:
+    # PR_NUMBER routes fetch_page() through `gh pr view --jq '[.]'` instead of
+    # `gh pr list` — a different gh invocation whose wrapped-array JSON shape
+    # must still round-trip through list_prs() the same way. Unlabeled (unlike
+    # every other case here) so the label-editing action itself is observed.
+    result = run(tmp_path, row_count=1, sweep_limit=100, labeled=False, pr_number="1")
+    assert "::warning::" not in result.stderr
+    call_log = (tmp_path / "gh-calls.txt").read_text()
+    assert "pr edit 1 --repo o/r --add-label merge-conflict" in call_log

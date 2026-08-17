@@ -1,7 +1,7 @@
-"""cancel-pr-runs.sh must say when a run sweep hits its page limit, since a
-single push that alone triggers more runs than the limit can leave some of
-HEAD_SHA's own in-flight runs uncancelled (`gh run list` returns newest-first,
-so a full page otherwise just means older, already-irrelevant SHAs got cut).
+"""cancel-pr-runs.sh must say when a run sweep hits its page limit, since
+`gh run list` returns a branch's runs newest-first and a full page means an
+in-flight run on HEAD_SHA older than the newest RUN_SWEEP_LIMIT runs was never
+listed, and so never cancelled.
 
 Drives the real script as a subprocess against a fake `gh` that returns a fixed
 number of already-completed runs, so the script finds nothing to cancel and the
@@ -17,7 +17,6 @@ from tests._helpers import REPO_ROOT
 SCRIPT = REPO_ROOT / ".github" / "scripts" / "cancel-pr-runs.sh"
 
 FAKE_GH = """#!/usr/bin/env bash
-echo "$*" >> "$CALL_LOG"
 case "$1 $2" in
   "run list") cat "$RUNS_JSON" ;;
   "run cancel") exit 0 ;;
@@ -47,7 +46,6 @@ def run(
         + "]"
     )
 
-    call_log = tmp_path / "gh-calls.txt"
     env = {
         **os.environ,
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -56,7 +54,6 @@ def run(
         "HEAD_REF": "feature",
         "HEAD_SHA": "beefdead",
         "RUN_SWEEP_LIMIT": str(sweep_limit),
-        "CALL_LOG": str(call_log),
         "RUNS_JSON": str(runs),
     }
     return subprocess.run(
@@ -72,7 +69,7 @@ def run(
 def test_a_full_page_warns_the_sweep_may_have_missed_runs(tmp_path: Path) -> None:
     result = run(tmp_path, run_count=3, sweep_limit=3)
     assert "::warning::" in result.stdout
-    assert "3-run limit" in result.stdout
+    assert "3 newest runs" in result.stdout
 
 
 def test_a_partial_page_does_not_warn(tmp_path: Path) -> None:

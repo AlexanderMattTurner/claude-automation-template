@@ -20,13 +20,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib-ci-retry.sh"
 RUN_SWEEP_LIMIT="${RUN_SWEEP_LIMIT:-100}"
 runs_json="$(retry_stdout gh run list --repo "$REPO" --branch "$HEAD_REF" --limit "$RUN_SWEEP_LIMIT" \
   --json databaseId,status,headSha)"
-# gh run list returns a branch's runs newest-first, and HEAD_SHA is (barring a
-# reused branch name) the most recent push, so a full page ordinarily just means
-# older, already-irrelevant SHAs got truncated. The one real risk a full page
-# still signals: this push alone triggered more runs than the limit, in which
-# case some of HEAD_SHA's own runs are among the truncated ones.
+# gh run list returns a branch's runs newest-first, so a full page means only
+# the RUN_SWEEP_LIMIT newest runs were seen; any in-flight run on HEAD_SHA older
+# than those (own push exceeding the limit, or a later push to the same branch
+# racing the close event) was never listed and so never cancelled.
 if [[ "$(jq 'length' <<<"$runs_json")" -eq "$RUN_SWEEP_LIMIT" ]]; then
-  echo "::warning::run sweep for ${HEAD_REF} hit its ${RUN_SWEEP_LIMIT}-run limit; if this push alone triggered more than ${RUN_SWEEP_LIMIT} runs, some of HEAD_SHA's own in-flight runs may not have been cancelled."
+  echo "::warning::run sweep for ${HEAD_REF} listed only the ${RUN_SWEEP_LIMIT} newest runs on the branch; any in-flight run on ${HEAD_SHA:0:8} older than those was not cancelled."
 fi
 
 ids=()
