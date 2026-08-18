@@ -15,6 +15,7 @@
 # shellcheck source=.github/scripts/lib/shared-names.bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shared-names.bash"
 
+# shellcheck disable=SC2034  # read by the scripts that source this file, never here
 CONFLICT_MARKER_RE="$_CONFLICT_MARKER_RE"
 
 # protected_matches PATH… — the subset touching security-sensitive trees. Override with
