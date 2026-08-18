@@ -47,16 +47,6 @@ UNWRAPPED_OK = {
 _SCRIPT = re.compile(r"[\w.-]+\.(?:mjs|bash|sh)")
 
 
-def _hooks_in(text: str) -> list[str]:
-    """The hook basenames TEXT names, in the order they appear. A launcher is
-    not a hook, and neither is an opted-out advisory hook."""
-    return [
-        name
-        for name in _SCRIPT.findall(text)
-        if name not in LAUNCHERS and name not in UNWRAPPED_OK
-    ]
-
-
 def raw_gate_invocations(command: str) -> list[str]:
     """Hook basenames COMMAND names with no launcher naming them ahead of it
     in the same command string.
