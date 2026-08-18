@@ -95,10 +95,10 @@ def test_every_claude_run_call_site_inherits_the_gate() -> None:
 # runner a manifest full of conflict markers and kill the resolver before it
 # starts. It runs the same one script from the base-ref staging dir; the gate is
 # still not re-typed, only reached by a different path.
-GATE_DIRECT_CALLERS = {
-    ".github/workflows/auto-resolve-conflicts.yaml:"
-    "Fail loud if the Claude resolution errored",
-}
+# Empty here: the one direct caller left with the resolver, which is now its own
+# repository. An entry is a step that runs check-claude-execution.sh itself
+# rather than through the claude-run composite.
+GATE_DIRECT_CALLERS: set[str] = set()
 
 
 def test_no_call_site_rehand_rolls_the_gate() -> None:

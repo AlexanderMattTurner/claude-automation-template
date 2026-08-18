@@ -12,6 +12,14 @@
 # MAX_DIFF_LINES lines this skips the review, emitting oversized=true so the
 # caller posts a "please review manually" notice instead of spending the read.
 #
+# The guard has TWO sources, and it needs both. GitHub refuses to serve a diff
+# over its own 20000-line cap with HTTP 406, so the line count below never sees
+# the very PRs the guard was written for — the fetch fails first. That refusal IS
+# an oversized verdict, and it is deterministic, so retrying it only spends the
+# backoff ladder to learn the same answer and then reds the check the notice
+# exists to replace. The line count still covers a caller whose MAX_DIFF_LINES
+# sits below GitHub's cap.
+#
 # Requires: gh authenticated (GH_TOKEN/GH_REPO), node + `pnpm install` done
 # (agent-input-sanitizer on the module path). Emits to GITHUB_OUTPUT:
 #   oversized=true|false       — whether the review was skipped for size
@@ -39,28 +47,58 @@ emit_output() {
   fi
 }
 
+# GitHub's own diff-API cap, and the phrase its refusal carries. Recorded from a
+# real 406 on this repository: `could not find pull request diff: HTTP 406:
+# Sorry, the diff exceeded the maximum number of lines (20000) (https://…)`.
+API_DIFF_LINE_CAP=20000
+API_OVERSIZE_MARKER="the diff exceeded the maximum number of lines"
+
+# skip_as_oversized REASON LINES — the ONE place the size skip is decided, so
+# both sources of the verdict emit the same outputs and the same notice. REASON
+# completes "this PR's diff is …".
+skip_as_oversized() {
+  emit_output "oversized=true"
+  emit_output "diff_lines=$2"
+  printf '%s\n' \
+    "Automated Opus review skipped: this PR's diff is $1. A change this large should get a human review — please review it manually." \
+    >"${PR_INPUT_DIR}/oversized-notice.txt"
+  echo "diff is $1; skipping review" >&2
+  exit 0
+}
+
 # Materialize the raw diff OUTSIDE the agent-readable input dir (the review step
 # grants the agent read over PR_INPUT_DIR via --add-dir), so only the SANITIZED
 # diff.txt ever reaches the reviewer.
 raw_diff="$(mktemp)"
-trap 'rm -f "$raw_diff"' EXIT
-# retry_stdout via a command substitution: a transient blip re-fetches the whole
-# diff and only the succeeding attempt's bytes land in raw_diff. A plain `retry
-# … >"$raw_diff"` would leak a failing attempt's error body into the file.
+fetch_err="$(mktemp)"
+trap 'rm -f "$raw_diff" "$fetch_err"' EXIT
+
 # --allow-escape-sequences is safe here: that byte reaches only the sanitizer
 # below, never a real terminal.
-raw_diff_content="$(retry_stdout gh pr diff "$PR" --allow-escape-sequences)"
+fetch_diff() { gh pr diff "$PR" --allow-escape-sequences; }
+
+# One unretried attempt first, so the size refusal is classified before the
+# backoff ladder starts. Anything else is a blip and gets the full budget.
+# retry_stdout via a command substitution: only the succeeding attempt's bytes
+# land in raw_diff, where a plain `retry … >"$raw_diff"` would leak a failing
+# attempt's error body into the file.
+if raw_diff_content="$(fetch_diff 2>"$fetch_err")"; then
+  :
+elif grep -qF "$API_OVERSIZE_MARKER" "$fetch_err"; then
+  skip_as_oversized \
+    "over GitHub's own ${API_DIFF_LINE_CAP}-line diff API cap, so the API refused to serve it" \
+    "$API_DIFF_LINE_CAP"
+else
+  cat "$fetch_err" >&2
+  raw_diff_content="$(retry_stdout fetch_diff)"
+fi
 printf '%s\n' "$raw_diff_content" >"$raw_diff"
 
 diff_lines="$(wc -l <"$raw_diff" | tr -d '[:space:]')"
 if ((diff_lines > MAX_DIFF_LINES)); then
-  emit_output "oversized=true"
-  emit_output "diff_lines=$diff_lines"
-  printf '%s\n' \
-    "Automated Opus review skipped: this PR's diff is ${diff_lines} lines, over the ${MAX_DIFF_LINES}-line limit for automated review. A change this large should get a human review — please review it manually." \
-    >"${PR_INPUT_DIR}/oversized-notice.txt"
-  echo "diff ${diff_lines} lines exceeds MAX_DIFF_LINES=${MAX_DIFF_LINES}; skipping review" >&2
-  exit 0
+  skip_as_oversized \
+    "${diff_lines} lines, over the ${MAX_DIFF_LINES}-line limit for automated review" \
+    "$diff_lines"
 fi
 emit_output "oversized=false"
 
