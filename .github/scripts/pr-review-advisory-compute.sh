@@ -9,7 +9,11 @@
 # Env: BASE_SHA, HEAD_SHA, OUT_DIR.
 set -euo pipefail
 
-mkdir -p "$OUT_DIR"
+mkdir -p "$OUT_DIR" # bare-mkdir-ok: post-condition verified on the next line
+[[ -d "$OUT_DIR" ]] || {
+  echo "OUT_DIR ($OUT_DIR) does not exist after mkdir -p" >&2
+  exit 1
+}
 
 # `BASE...HEAD` diffs from the merge-base, so only the PR's own commits count.
 # -M resolves renames to their destination instead of a full add+delete;

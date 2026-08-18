@@ -25,7 +25,6 @@ contains some string.
 
 import re
 import subprocess
-import time
 from pathlib import Path
 from typing import Any
 
@@ -514,22 +513,35 @@ def test_no_backoff_is_spent_once_a_credential_works(tmp_path: Path) -> None:
     assert run.backoffs == []
 
 
-def test_the_backoff_step_really_sleeps_for_its_configured_seconds() -> None:
+def test_the_backoff_step_really_sleeps_for_its_configured_seconds(
+    tmp_path: Path,
+) -> None:
     """The `if:` simulation above reads the declared budget; this proves the
-    body the runner executes spends it, rather than merely carrying the
-    number."""
+    body the runner executes actually invokes `sleep` with that budget,
+    rather than merely carrying the number in an unreachable branch. A
+    recording `sleep` stub on PATH avoids spending real wall-clock time: it
+    logs its argument instead of sleeping, so a body that never calls
+    `sleep` (or calls it with the wrong value) leaves the wrong evidence
+    rather than merely finishing early on a fast or loaded runner."""
     step = next(s for s in _steps() if str(s.get("name", "")).startswith("Back off"))
-    started = time.monotonic()
+    log = tmp_path / "sleep.log"
+    stub_dir = tmp_path / "stub"
+    stub_dir.mkdir()
+    (stub_dir / "sleep").write_text(
+        f'#!/bin/sh\necho "$1" >>"{log}"\n', encoding="utf-8"
+    )
+    (stub_dir / "sleep").chmod(0o755)
     proc = subprocess.run(
         ["bash", "-c", step["run"]],
-        env={"PATH": "/usr/bin:/bin", "BACKOFF_SECONDS": "1"},
+        env={"PATH": f"{stub_dir}:/usr/bin:/bin", "BACKOFF_SECONDS": "1"},
         capture_output=True,
         text=True,
         check=False,
     )
-    elapsed = time.monotonic() - started
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert elapsed >= 1.0, f"backoff body returned after {elapsed:.2f}s"
+    assert log.read_text(encoding="utf-8").splitlines() == ["1"], (
+        "backoff body did not sleep for BACKOFF_SECONDS"
+    )
 
 
 def test_every_retry_rung_is_preceded_by_a_backoff_on_its_own_gate() -> None:

@@ -15,6 +15,26 @@ import sys
 from collections.abc import Callable
 
 
+def strip_comment(line: str) -> str:
+    """LINE with a trailing ``#...`` comment cut, honoring single/double quotes.
+
+    PROBLEM CLASS — "cut the shell comment off this line before matching code
+    on it". Naive: no escape handling, no heredoc awareness, one physical
+    line. A lint that needs more than that reads the bash grammar instead
+    (`.github/scripts/checks/_bash_ast.py`).
+    """
+    quote = None
+    for i, ch in enumerate(line):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "#":
+            return line[:i]
+    return line
+
+
 def run_line_checks(
     argv: list[str],
     find_violations: Callable[[str], list[int]],
