@@ -28,7 +28,18 @@ const ERRORED = join(HERE, "..", "claude-run-errored.sh");
 const GATE = join(HERE, "..", "checks/claude-execution.py");
 
 const ARG_SEP = "\n<<<ARG>>>\n";
-const slug = (p) => p.replace(/[^A-Za-z0-9]/g, "_");
+const slug = (p) => p.replace(/[^a-z0-9]/gi, "_");
+
+// A $GITHUB_OUTPUT file as an object. Split on the FIRST `=` only: a value may
+// hold more of them, and `s` lets one span lines. Shared by the two runners
+// below — a second copy would drift from whatever the step actually writes.
+const readOutputs = (text) =>
+  Object.fromEntries(
+    text
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => line.split(/=(?<value>.*)/s).slice(0, 2)),
+  );
 
 // A fake `claude` that records its full argv, brackets its run with timestamped
 // markers in a shared log (so a reader can reconstruct not just how many ran at
@@ -215,14 +226,10 @@ function run(
       ...env,
     },
   });
-  const outputs = Object.fromEntries(
-    (existsSync(join(fx.root, "gh-output"))
+  const outputs = readOutputs(
+    existsSync(join(fx.root, "gh-output"))
       ? readFileSync(join(fx.root, "gh-output"), "utf8")
-      : ""
-    )
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => l.split(/=(.*)/s).slice(0, 2)),
+      : "",
   );
   return { ...res, outputs };
 }
@@ -306,12 +313,7 @@ function consume(script, fx, executionFile) {
       CONTEXT: "Claude conflict resolution",
     },
   });
-  const outputs = Object.fromEntries(
-    readFileSync(out, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => l.split(/=(.*)/s).slice(0, 2)),
-  );
+  const outputs = readOutputs(readFileSync(out, "utf8"));
   return { status: res.status, stderr: res.stderr, outputs };
 }
 
@@ -352,10 +354,10 @@ test("two conflict blocks in one file are resolved by two separate shards", () =
 
   const prompts = invocations(fx).map((argv) => argv[argv.indexOf("-p") + 1]);
   assert.equal(prompts.length, 2, "one shard per block");
-  assert.deepEqual(prompts.map((p) => p.match(/block number (\d)/)[1]).sort(), [
-    "1",
-    "2",
-  ]);
+  assert.deepEqual(
+    prompts.map((p) => p.match(/block number (?<n>\d)/).groups.n).sort(),
+    ["1", "2"],
+  );
   for (const prompt of prompts) {
     assert.match(prompt, /The file has 2 conflict blocks/);
   }
@@ -1547,7 +1549,7 @@ test("a file whose markers do not parse falls back to a whole-file shard", () =>
   assert.match(side, /Write the COMPLETE resolved file/);
   // The scratch path it names must be outside the repository — the whole reason
   // the channel exists. `fx.work` is the tree; `fx.fanout` is not under it.
-  const named = side.match(/^\s+(\/\S+)$/m)[1];
+  const named = side.match(/^\s+(?<path>\/\S+)$/m).groups.path;
   assert.ok(named.startsWith(fx.fanout), named);
   assert.ok(!named.startsWith(fx.work), named);
   // The writable path keeps the ordinary in-place instructions.

@@ -41,6 +41,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PREPARE = join(HERE, "prepare.sh");
 const BUNDLE = join(HERE, "bundle.py");
 const LAND = join(HERE, "land.sh");
+
+// The calling repository's derived-file command, which the workflow passes
+// through as `pre-pass-command`. bundle.py runs it as written over the deferred
+// set, and again with `--verify` appended, so the two call lines below are this
+// one minus `pnpm`.
+const PRE_PASS = "pnpm resolve-generated";
+const PRE_PASS_CALL = "resolve-generated";
+const VERIFY_CALL = "resolve-generated --verify";
+
 const scratch = () => mkdtempSync(join(tmpdir(), "auto-resolve-race-"));
 const git = (cwd, ...args) =>
   execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" });
@@ -293,8 +302,8 @@ const lines = (f) => readFileSync(f, "utf8").split("\n").filter(Boolean);
 // locally, write $BUNDLE_DIR/merge.bundle. It pushes nothing, so origin cannot
 // move here — the race is entirely on the far side of this step.
 //
-// `pnpm` is the probe for "the deferred-regeneration work ran": bundle invokes
-// it only for DEFERRED_REGEN.
+// `pnpm` is the probe for the derived-file work: bundle runs the pre-pass over
+// the DEFERRED_REGEN set, and runs it again with `--verify` on every resolution.
 function runBundle(fixture, { env = {} } = {}) {
   const { work, bin, logs, bundleDir, conflictList } = fixture;
   for (const log of Object.values(logs)) writeFileSync(log, "");
@@ -304,6 +313,11 @@ function runBundle(fixture, { env = {} } = {}) {
     env: stepEnv(bin, {
       CONFLICT_LIST: conflictList,
       BUNDLE_DIR: bundleDir,
+      // How the calling repository re-derives its generated files, which the
+      // workflow passes through as `pre-pass-command`. Set on the bundle step
+      // alone: prepare.sh reads the same name, and setting it for the fixture's
+      // prepare run would put its calls in the same log these tests read.
+      AUTO_RESOLVE_PRE_PASS: PRE_PASS,
       ...env,
     }),
   });
@@ -541,7 +555,7 @@ test("R3: a head that moved to an already-resolved tip is caught before the push
   assert.equal(bundled.status, 0, `bundle failed: ${bundled.output}`);
   assert.deepEqual(
     bundled.pnpmCalls,
-    ["resolve-generated", "-s resolve-generated --verify"],
+    [PRE_PASS_CALL, VERIFY_CALL],
     "the deferred-regeneration work — and the content post-condition after it — runs in bundle, before the race window opens",
   );
   const bundledHead = localHead(fixture);
@@ -678,7 +692,7 @@ test("regression: the NON-race happy path still pushes and comments exactly as b
   assert.match(comments(res)[0], /Auto-resolved the merge conflict/);
   assert.deepEqual(
     bundled.pnpmCalls,
-    ["-s resolve-generated --verify"],
+    [VERIFY_CALL],
     "no deferred regeneration was requested, so only the unconditional generated-content post-condition ran",
   );
   assert.deepEqual(

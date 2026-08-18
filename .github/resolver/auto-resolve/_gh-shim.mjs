@@ -14,6 +14,9 @@
 export const recordGhCall = (log, prefix = "$*") =>
   `line="${prefix}"\n` +
   'for arg in "$@"; do\n' +
+  // The brace form below is bash parameter expansion in the shim's own source,
+  // not a JS interpolation someone forgot to write as a template literal.
+  // eslint-disable-next-line no-template-curly-in-string
   '  [[ "$arg" == body=@* ]] && line+=" $(cat "${arg#body=@}")"\n' +
   "done\n" +
   `printf '%s\\n' "\${line//$'\\n'/ }" >>"${log}"\n`;

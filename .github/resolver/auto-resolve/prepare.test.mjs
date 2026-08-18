@@ -185,12 +185,12 @@ test("prepare merges under diff3, so the conflict it leaves carries its merge ba
 });
 
 test("a conflict in a PROTECTED path is handed to the LLM AND named in the log", () => {
-  const work = fixtureConflictingOn("bin/glovebox");
+  const work = fixtureConflictingOn(".claude/settings.json");
   const { outputs, stdout, merging, ghCalls } = runPrepare(work);
   assert.equal(outputs.needs_llm, "true"); // resolved, not escalated away
   assert.equal(outputs.needs_commit, "true");
-  assert.equal(outputs.conflict_list, "bin/glovebox");
-  assert.ok(stdout.includes(protectedLog("bin/glovebox")));
+  assert.equal(outputs.conflict_list, ".claude/settings.json");
+  assert.ok(stdout.includes(protectedLog(".claude/settings.json")));
   assert.equal(merging, true); // merge KEPT for Claude + bundle, not aborted
   // Prepare never talks to GitHub — a run that resolves nothing says nothing,
   // so the flag rides land's pushed-resolution comment instead.
@@ -201,13 +201,13 @@ test("each protected prefix is reported and handed to the LLM, member by member"
   // Store the DIRECTORY prefixes (not full example paths) and build a probe file
   // under each at runtime, so this test's source carries no literal repo-relative
   // path that the referenced-paths guard (test_referenced_paths_exist.py) would
-  // extract and flag as a missing file. `setup.bash` is a real file, exercising
-  // the exact-match arm of the regex.
+  // extract and flag as a missing file. `.hooks/pre-commit` is a real file,
+  // exercising a bare top-level protected prefix with no subdirectory.
   const protectedPrefixes = [
     ".claude/hooks/",
-    "sandbox-policy/",
-    "bin/lib/",
-    "sbx-kit/image/",
+    ".claude/agents/",
+    ".claude/rules/",
+    ".claude/skills/",
     ".github/workflows/",
     ".github/scripts/",
     ".github/actions/",
@@ -215,7 +215,7 @@ test("each protected prefix is reported and handed to the LLM, member by member"
   ];
   const cases = [
     ...protectedPrefixes.map((p) => `${p}probe.txt`),
-    "setup.bash",
+    ".hooks/pre-commit",
   ];
   for (const path of cases) {
     const work = fixtureConflictingOn(path);
@@ -533,7 +533,7 @@ set -euo pipefail
 args=("$@")
 if [[ "\${args[0]:-}" == "-s" ]]; then args=("\${args[@]:1}"); fi
 if [[ "\${args[0]:-}" != "resolve-generated" ]]; then exit 0; fi
-if [[ -n "\$(git ls-files -u -- uv.lock)" && -z "\$(git ls-files -u -- pyproject.toml)" ]]; then
+if [[ -n "$(git ls-files -u -- uv.lock)" && -z "$(git ls-files -u -- pyproject.toml)" ]]; then
   printf 'relocked = true\\n' > uv.lock
   git add -- uv.lock
 fi
@@ -586,7 +586,7 @@ test("a lockfile whose manifest merged cleanly is RE-DERIVED here, never handed 
   const work = fixtureLockConflict({ manifestConflicts: false });
   const { outputs, merging, commented } = runPrepare(
     work,
-    {},
+    { AUTO_RESOLVE_PRE_PASS: "pnpm resolve-generated" },
     { pnpm: FAKE_PNPM, owned: OWNS_LOCK },
   );
   // The pre-pass re-derived uv.lock, so it drops out of the conflict set: a
@@ -990,7 +990,8 @@ const markerBlock = (ours, theirs) =>
     theirs,
     ">>>>>>> template",
     "shared tail",
-  ].join("\n") + "\n";
+    "", // the file's trailing newline, so git sees a complete last line
+  ].join("\n");
 
 // A repo where `main` and `feature` both edit `file` (so the merge conflicts
 // exactly there), while `extras` — committed on feature — and `atBase` — present
@@ -1069,7 +1070,7 @@ test("marker text already on the base branch is a fixture, not damage", () => {
   const fixture = markerBlock("ours", "theirs");
   const work = fixtureCarrying(
     "docs/thing.md",
-    { "tests/fixture-touched.txt": fixture + "branch appended a line\n" },
+    { "tests/fixture-touched.txt": `${fixture}branch appended a line\n` },
     {
       atBase: {
         "tests/fixture-untouched.txt": fixture,

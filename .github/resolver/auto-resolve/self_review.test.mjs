@@ -6,7 +6,6 @@ import {
   writeFileSync,
   readFileSync,
   existsSync,
-  copyFileSync,
   mkdirSync,
   chmodSync,
 } from "node:fs";

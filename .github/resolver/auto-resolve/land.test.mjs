@@ -213,7 +213,7 @@ function runLand(
       // later one "true". The file is the counter.
       `if [[ "$*" == *isInMergeQueue* ]]; then\n` +
       `  if [[ -n "\${MEMBERSHIP_FLIP_FILE:-}" ]]; then\n` +
-      `    if [[ -e "\$MEMBERSHIP_FLIP_FILE" ]]; then printf 'true\\n'; else : >"\$MEMBERSHIP_FLIP_FILE"; printf 'false\\n'; fi\n` +
+      `    if [[ -e "$MEMBERSHIP_FLIP_FILE" ]]; then printf 'true\\n'; else : >"$MEMBERSHIP_FLIP_FILE"; printf 'false\\n'; fi\n` +
       `    exit 0\n` +
       `  fi\n` +
       `  printf '%s\\n' "\${MERGE_QUEUE_ANSWER:-false}"\nfi\nexit 0\n`,
@@ -828,16 +828,16 @@ test("a workflow-scope push rejection labels the PR and stops", () => {
 test("a protected-path conflict is re-derived by land and flagged in the comment", () => {
   // Nothing tells land which paths were protected — it recomputes the set from
   // the merge it replayed, so the warning cannot be omitted by the resolve job.
-  const fx = originFixture("bin/probe.bash");
+  const fx = originFixture(".hooks/probe.bash");
   const { bundleDir, mergeSha } = resolveAndBundle(fx, (dir) =>
-    write(dir, { "bin/probe.bash": "resolved: feature + main\n" }),
+    write(dir, { ".hooks/probe.bash": "resolved: feature + main\n" }),
   );
   const { error, comments } = runLand(fx.root, fx.origin, bundleDir);
   assert.equal(error, null);
   assert.equal(originTip(fx.origin), mergeSha);
   assert.equal(comments.length, 1);
   assert.ok(comments[0].includes("protected path"));
-  assert.ok(comments[0].includes("bin/probe.bash"));
+  assert.ok(comments[0].includes(".hooks/probe.bash"));
 });
 
 test("a safe-path conflict carries no protected-path warning", () => {
@@ -1211,8 +1211,8 @@ test("a port that MOVES directories resolves into its new home", () => {
   );
 });
 
-// The port under a protected path. `bin/` matches the default protected set, so
-// an admitted port target there must still reach a human through the comment.
+// The port under a protected path. `.hooks/` matches the default protected set,
+// so an admitted port target there must still reach a human through the comment.
 function protectedPortFixture() {
   const root = scratch();
   const origin = join(root, "origin.git");
@@ -1221,7 +1221,7 @@ function protectedPortFixture() {
   git(root, "clone", "-q", origin, seed);
   identify(seed);
 
-  write(seed, { "bin/thing.sh": "echo old\n", "b.md": "b base\n" });
+  write(seed, { ".hooks/thing.sh": "echo old\n", "b.md": "b base\n" });
   git(seed, "add", "-A");
   git(seed, "commit", "-q", "-m", "base");
   git(seed, "branch", "-M", "main");
@@ -1229,13 +1229,13 @@ function protectedPortFixture() {
   git(origin, "symbolic-ref", "HEAD", "refs/heads/main");
 
   git(seed, "checkout", "-q", "-b", "feature");
-  write(seed, { "bin/thing.sh": "echo old\necho the feature's line\n" });
+  write(seed, { ".hooks/thing.sh": "echo old\necho the feature's line\n" });
   git(seed, "commit", "-q", "-am", "feature edits the shell script");
   git(seed, "push", "-q", "origin", "feature");
 
   git(seed, "checkout", "-q", "main");
-  git(seed, "rm", "-q", "bin/thing.sh");
-  write(seed, { "bin/thing.py": "print('ported to python')\n" });
+  git(seed, "rm", "-q", ".hooks/thing.sh");
+  write(seed, { ".hooks/thing.py": "print('ported to python')\n" });
   git(seed, "add", "-A");
   git(seed, "commit", "-q", "-m", "port the shell script to python");
   git(seed, "push", "-q", "origin", "main");
@@ -1361,9 +1361,9 @@ test("parity: a composed tree that diverges from the bundled one warns MISMATCH 
 test("a port target under a protected path is named in the comment", () => {
   const fx = protectedPortFixture();
   const { bundleDir, mergeSha } = resolveAndBundle(fx, (dir) => {
-    git(dir, "rm", "-q", "-f", "bin/thing.sh");
+    git(dir, "rm", "-q", "-f", ".hooks/thing.sh");
     write(dir, {
-      "bin/thing.py":
+      ".hooks/thing.py":
         "print('ported to python')\nprint(\"the feature's line\")\n",
     });
   });
@@ -1371,7 +1371,7 @@ test("a port target under a protected path is named in the comment", () => {
   assert.equal(error, null);
   assert.equal(originTip(fx.origin), mergeSha);
   assert.ok(comments[0].includes("protected path"));
-  assert.ok(comments[0].includes("bin/thing.py"));
+  assert.ok(comments[0].includes(".hooks/thing.py"));
 });
 
 // A resolution the pre-push reviewer never read is not a resolution judged bad:
