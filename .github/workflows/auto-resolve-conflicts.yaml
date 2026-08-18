@@ -1,9 +1,10 @@
 # THIS repository's entry point to the merge-conflict resolver: turn whichever
-# event fired into the set of eligible PRs, then hand each one to
-# auto-resolve-reusable.yaml. The resolution itself — the deterministic pre-pass,
-# the per-file model fan-out, the merge commit it pushes back, and the two-job
-# privilege split that makes all of it safe — lives in that workflow and is
-# documented in its own header. Nothing here holds a write credential.
+# event fired into the set of eligible PRs, then hand each one to the reusable
+# workflow in AlexanderMattTurner/agent-resolve-merge-conflicts. The resolution
+# itself — the deterministic pre-pass, the per-file model fan-out, the merge
+# commit it pushes back, and the two-job privilege split that makes all of it
+# safe — lives in that workflow and is documented in its own header. Nothing
+# here holds a write credential.
 #
 # It mutates the PR branch, so — like the pre-commit autofix — it is NOT a
 # required check.
@@ -78,8 +79,8 @@ permissions: {}
 # pins `ref` to the SHA its `uses:` line names, so the workflow and the scripts it
 # runs come from one commit.
 env:
-  RESOLVER_REPOSITORY: AlexanderMattTurner/claude-automation-template
-  RESOLVER_REF: main
+  RESOLVER_REPOSITORY: AlexanderMattTurner/agent-resolve-merge-conflicts
+  RESOLVER_REF: ecbe088b2d3fba81adc6bd77448a03a155dc30ca
 
 jobs:
   discover:
@@ -187,18 +188,17 @@ jobs:
     # concurrency all live in the reusable workflow — this file only says WHICH
     # pull requests to hand it and what this repository can do.
     #
-    # A local `./` reference resolves against this repository's own ref, which is
-    # correct here because the resolver lives here too. A CONSUMER repository
-    # names it as `AlexanderMattTurner/claude-automation-template/.github/workflows/
-    # auto-resolve-reusable.yaml@<sha>` and passes that same sha as `resolver-ref`,
-    # so the workflow and the scripts it runs come from one commit.
-    uses: ./.github/workflows/auto-resolve-reusable.yaml
+    # Pinned by SHA, never by tag: the resolver runs with this repository's
+    # secrets, so a moving ref would let its owner change what runs here. The
+    # same sha goes to `resolver-ref` below, so the workflow and the scripts it
+    # runs come from one commit.
+    uses: AlexanderMattTurner/agent-resolve-merge-conflicts/.github/workflows/auto-resolve.yaml@ecbe088b2d3fba81adc6bd77448a03a155dc30ca # pin-comment-ok: that repository has cut no release yet, so there is no version for this SHA to name
     with:
       pr: ${{ matrix.pr.number }}
       # The literals from this file's `env:` block, repeated because a reusable
       # workflow's `with:` cannot read `env`. Change both together.
-      resolver-repository: AlexanderMattTurner/claude-automation-template
-      resolver-ref: main
+      resolver-repository: AlexanderMattTurner/agent-resolve-merge-conflicts
+      resolver-ref: ecbe088b2d3fba81adc6bd77448a03a155dc30ca
       # This repository ships no scripts/lib_marked_region.py, and its regen rule
       # table (config/auto-resolve-regen-rules.json) ships EMPTY — so the
       # generated-region pre-pass and the deterministic pre-pass both stay off and

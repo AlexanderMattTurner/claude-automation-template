@@ -199,7 +199,7 @@ Changes arrive as a PR for you to review. The sync uses a 3-way merge that prese
 
 ### Auto-resolving merge conflicts
 
-`auto-resolve-conflicts.yaml` picks up any open PR that conflicts with its base branch, merges the base in, resolves the conflicted files with Claude, and pushes the merge back to the PR branch. It is on by default. Every part of it can be turned off with a repository variable — **Settings → Secrets and variables → Actions → Variables** — with no YAML edit and nothing to re-sync from the template.
+`auto-resolve-conflicts.yaml` picks up any open PR that conflicts with its base branch, merges the base in, resolves the conflicted files with Claude, and pushes the merge back to the PR branch. It is on by default. The resolver itself lives in [`agent-resolve-merge-conflicts`](https://github.com/AlexanderMattTurner/agent-resolve-merge-conflicts) and is called by SHA, so this repository ships the caller and none of the resolution machinery. Every part of it can be turned off with a repository variable — **Settings → Secrets and variables → Actions → Variables** — with no YAML edit and nothing to re-sync from the template.
 
 Two jobs, and the split is the security boundary. `resolve` checks out the PR's own head, runs the PR's own dependencies and the model, and holds **no push credential**; the only thing it produces is a git bundle containing one merge commit. `land` holds the push token, runs nothing that came from the PR, and treats that bundle as untrusted: it replays the same merge itself in a clean tree and pushes only if the bundled commit differs from its own replay exclusively in files git actually left conflicted. Content that appears in neither side of the merge cannot reach your branch, whatever the model did.
 

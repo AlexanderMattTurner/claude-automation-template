@@ -47,22 +47,6 @@ CASES = [
     ("precommit-range-base.sh", ["GITHUB_REPOSITORY", "GITHUB_BASE_REF", "GH_TOKEN"]),
 ]
 
-# The resolver is rooted outside .github/scripts: the reusable workflow clones it
-# from its own repository, so nothing copies it in beside the glue scripts above.
-RESOLVER = REPO_ROOT / ".github" / "resolver"
-
-RESOLVER_CASES = [
-    # auto-resolve: the resolving job bundles, the landing job pushes, and the
-    # self-review reads its prompts from the trusted base worktree
-    ("auto-resolve/bundle.py", ["HEAD_REF", "BASE_REF", "PR", "BUNDLE_DIR"]),
-    (
-        "auto-resolve/land.sh",
-        ["HEAD_REF", "BASE_REF", "PR", "GITHUB_TOKEN", "BUNDLE_DIR"],
-    ),
-    ("auto-resolve/self_review.py", ["BASE_WORKTREE"]),
-    ("claude-conflict-resolve.sh", ["CLAUDE_CODE_OAUTH_TOKEN"]),
-]
-
 
 def _assert_refuses_without_env(
     path: Path, script: str, required_vars: list[str], cwd: Path
@@ -95,12 +79,3 @@ def test_script_exits_when_required_var_missing(
     tmp_path: Path, script: str, required_vars: list[str]
 ) -> None:
     _assert_refuses_without_env(SCRIPTS / script, script, required_vars, tmp_path)
-
-
-@pytest.mark.parametrize(
-    "script, required_vars", RESOLVER_CASES, ids=[c[0] for c in RESOLVER_CASES]
-)
-def test_resolver_script_exits_when_required_var_missing(
-    tmp_path: Path, script: str, required_vars: list[str]
-) -> None:
-    _assert_refuses_without_env(RESOLVER / script, script, required_vars, tmp_path)

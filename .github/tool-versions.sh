@@ -17,7 +17,7 @@
 # it does not need: pre-commit arrives through pip, which verifies its own.
 PRE_COMMIT_VERSION=4.6.1
 
-# mergiraf backs the structural pre-pass in .github/resolver/auto-resolve/prepare.sh:
+# mergiraf backs the structural pre-pass in the resolver repository's auto-resolve/prepare.sh:
 # a syntax-aware merge that resolves the structural subset of a PR's conflicts so
 # only genuinely semantic conflicts reach the paid LLM pass.
 #

@@ -33,9 +33,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RESOLVER_DIR="$(cd "${SCRIPT_DIR}/../resolver" && pwd)"
-# shellcheck source=.github/resolver/auto-resolve/lib.sh
-source "${RESOLVER_DIR}/auto-resolve/lib.sh"
+# shellcheck source=.github/scripts/lib/merge-conflict.bash
+source "$(cd "${SCRIPT_DIR}/lib" && pwd)/merge-conflict.bash"
 
 : "${PR_NUMBER:?PR_NUMBER required}"
 out="${GITHUB_OUTPUT:?GITHUB_OUTPUT required}"
