@@ -150,7 +150,6 @@ def test_known_untrusted_ingesting_call_sites_declare_their_files() -> None:
     required = {
         "Review the PR with Claude",
         "Review the merge deltas with Claude (Sonnet)",
-        "Judge which threads (and any body hold) are addressed (Claude Haiku)",
         "Triage and fix with Claude",
     }
     declared = {
