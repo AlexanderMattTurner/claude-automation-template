@@ -72,10 +72,10 @@ GATE_CONTEXT="Automated review posted"
 #     reviewer's, so it credits nothing.
 #   * A body-less review is not a review. GitHub SYNTHESIZES a body-less
 #     COMMENTED review around a standalone review comment, and this repo posts
-#     those under the reviewer's own identity — resolve-addressed-threads.sh
-#     replies in-thread with addPullRequestReviewThreadReply on every
-#     auto-resolved thread. Without the body filter, that reply alone greens the
-#     gate for a pull request the reviewer is still holding. Every writer of a
+#     those under the reviewer's own identity whenever something replies
+#     in-thread with addPullRequestReviewThreadReply. Without the body filter,
+#     that reply alone greens the gate for a pull request the reviewer is still
+#     holding. Every writer of a
 #     REAL review here sends a non-empty body: post-pr-review.mjs falls back to
 #     "Automated review." when the model returns nothing, auto-approve-skipped-pr.sh
 #     and approve-if-reviewer-hold-clear.sh both hardcode theirs.

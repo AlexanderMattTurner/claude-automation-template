@@ -94,7 +94,7 @@ if grep -qiF "$KEYWORD" <<<"$subject"; then
   exit 0
 fi
 
-# synchronize, trigger 2: a cheap Haiku re-check on every push while the
+# synchronize, trigger 2: a re-check on every push while the
 # reviewer's latest verdict is a non-approving review it can supersede —
 # CHANGES_REQUESTED or COMMENTED. The latest review authored by the reviewer bot
 # is the effective verdict; both of these leave the PR at zero approvals under a

@@ -1,9 +1,7 @@
-// Shared cost accounting for the PR-review footnote — used by both the reviewer
-// (post-pr-review.mjs, which posts the original cost line) and the Haiku
-// thread-resolver (compute-haiku-cost-footer.mjs, which tallies each follow-up
-// run onto that same footnote). One source for reading a Claude run's cost,
+// Shared cost accounting for the PR-review footnote — used by post-pr-review.mjs,
+// which posts the cost line. One source for reading a Claude run's cost,
 // formatting dollars, and rendering the "how many PRs fit in a Max 20x weekly
-// allowance" line, so the two producers can never drift.
+// allowance" line.
 import { readFileSync } from "node:fs";
 
 // Pull `total_cost_usd` (and the model that ran) out of the Claude action's
@@ -37,7 +35,7 @@ export function readRunCost(executionFile) {
   return { cost, model };
 }
 
-// Sub-cent costs keep four decimals (a Haiku run is a fraction of a cent);
+// Sub-cent costs keep four decimals;
 // everything else two.
 export function formatDollars(cost) {
   return cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2);
