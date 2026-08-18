@@ -39,7 +39,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib-ci-retry.sh"
 
 MAX_DIFF_LINES="${MAX_DIFF_LINES:-20000}"
 
-mkdir -p "$PR_INPUT_DIR"
+mkdir -p "$PR_INPUT_DIR" # bare-mkdir-ok: post-condition verified on the next line
+[[ -d "$PR_INPUT_DIR" ]] || {
+  echo "PR_INPUT_DIR ($PR_INPUT_DIR) does not exist after mkdir -p" >&2
+  exit 1
+}
 
 emit_output() {
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then

@@ -83,11 +83,14 @@ _anthropic_post() {
   [[ "$_ANTHROPIC_CRED_REJECTED" == "true" ]] && return 1
   local code
   # pin-exempt: Anthropic API JSON response, parsed by jq — never executed/extracted; echo-fallback-ok: "000" is the case analysis's own transport-failure code — the `*)` arm below retries it on this rung, exactly as a 5xx
-  code=$(curl -s -o "$_ANTHROPIC_RESPONSE_FILE" -w "%{http_code}" \
-    --max-time 30 https://api.anthropic.com/v1/messages \
-    -H "Content-Type: application/json" \
-    "${AUTH_HEADERS[@]}" \
-    -d "$_ANTHROPIC_REQUEST_BODY" || echo "000")
+  code=$(
+    # curl-retry-ok: retry_cmd in retry.bash already retries the whole call, including a fresh -o write each attempt
+    curl -s -o "$_ANTHROPIC_RESPONSE_FILE" -w "%{http_code}" \
+      --max-time 30 https://api.anthropic.com/v1/messages \
+      -H "Content-Type: application/json" \
+      "${AUTH_HEADERS[@]}" \
+      -d "$_ANTHROPIC_REQUEST_BODY" || echo "000"
+  )
   [[ "$code" == "200" ]] && return 0
   _anthropic_report_failure "$code"
   _ANTHROPIC_HTTP_CODE="$code"

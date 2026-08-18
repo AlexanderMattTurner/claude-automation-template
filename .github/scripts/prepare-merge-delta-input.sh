@@ -22,7 +22,11 @@ set -euo pipefail
 : "${PR:?PR number required}"
 : "${PR_INPUT_DIR:?PR_INPUT_DIR required}"
 
-mkdir -p "$PR_INPUT_DIR"
+mkdir -p "$PR_INPUT_DIR" # bare-mkdir-ok: post-condition verified on the next line
+[[ -d "$PR_INPUT_DIR" ]] || {
+  echo "PR_INPUT_DIR ($PR_INPUT_DIR) does not exist after mkdir -p" >&2
+  exit 1
+}
 
 emit_output() {
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then

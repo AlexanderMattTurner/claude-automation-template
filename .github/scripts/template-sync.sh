@@ -255,7 +255,13 @@ main() {
       ancestor=$(dirname "$ancestor")
     done
 
-    [[ "$parent_dir" != "." ]] && mkdir -p "$parent_dir"
+    if [[ "$parent_dir" != "." ]]; then
+      mkdir -p "$parent_dir" # bare-mkdir-ok: post-condition verified on the next line
+      [[ -d "$parent_dir" ]] || {
+        echo "parent dir ($parent_dir) does not exist after mkdir -p" >&2
+        return 1
+      }
+    fi
 
     # Case 1: absent locally — a new template file, unless the adopter removed it.
     if [[ ! -f "$rel_path" ]]; then

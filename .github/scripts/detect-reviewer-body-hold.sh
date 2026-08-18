@@ -32,7 +32,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/reviewer-login.bash"
 reviewer_login_init
 
-mkdir -p "$PR_INPUT_DIR"
+mkdir -p "$PR_INPUT_DIR" # bare-mkdir-ok: post-condition verified on the next line
+[[ -d "$PR_INPUT_DIR" ]] || {
+  echo "PR_INPUT_DIR ($PR_INPUT_DIR) does not exist after mkdir -p" >&2
+  exit 1
+}
 owner="${GH_REPO%%/*}"
 name="${GH_REPO##*/}"
 

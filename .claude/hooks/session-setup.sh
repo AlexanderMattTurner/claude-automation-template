@@ -56,7 +56,7 @@ webi_install_if_missing() {
     # stable digest to pin; we harden with HTTPS-only (--proto =https), the
     # shebang check below, and a version-pinned $pkg instead.
     # pin-exempt: webi.sh bootstrap is generated per-request, no stable digest
-    if curl --proto '=https' -fsSL "https://webi.sh/$pkg" -o "$installer" 2>/dev/null; then
+    if curl --proto '=https' -fsSL --retry 3 --retry-delay 2 "https://webi.sh/$pkg" -o "$installer" 2>/dev/null; then
       first_line="$(head -n 1 "$installer")"
       if grep -q '^#!' <<<"$first_line"; then
         sh "$installer" >/dev/null 2>&1 || warn "Failed to install $cmd"
@@ -129,8 +129,8 @@ fi
 # isn't a project dependency. Install it (pinned to match .pre-commit-config.yaml
 # so local hooks format identically to CI). Skip for non-Python repos.
 # VERSION PINS: keep in sync with .pre-commit-config.yaml (ruff-pre-commit rev:
-# and zizmor additional_dependencies:). A contract test in tests/test_version_sync.py
-# enforces this.
+# and zizmor additional_dependencies:). The check-lockstep-pins pre-commit hook
+# enforces this pairwise.
 if { [[ -f "$PROJECT_DIR/pyproject.toml" ]] || [[ -f "$PROJECT_DIR/uv.lock" ]]; } && command -v uv &>/dev/null; then
   uv_install_if_missing ruff "ruff==0.14.5"
   uv_install_if_missing zizmor "zizmor==1.25.2"
@@ -146,7 +146,7 @@ git config core.hooksPath .hooks
 # Pre-fetch the base branch so diffs against $CLAUDE_CODE_BASE_REF work
 # immediately (e.g. when creating PRs). Failure is non-fatal.
 if [[ -n "${CLAUDE_CODE_BASE_REF:-}" ]]; then
-  git fetch origin "$CLAUDE_CODE_BASE_REF" --quiet 2>/dev/null ||
+  timeout 30 git fetch origin "$CLAUDE_CODE_BASE_REF" --quiet 2>/dev/null ||
     warn "Failed to fetch base branch $CLAUDE_CODE_BASE_REF"
 fi
 
