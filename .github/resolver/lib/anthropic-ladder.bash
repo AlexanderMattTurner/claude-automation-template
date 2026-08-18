@@ -19,13 +19,13 @@
 # CLAUDE_CODE_OAUTH_TOKEN — the maintainer's personal account — last.
 #
 # `.claude/dev-notes` § "Credential ladder for the Anthropic API
-# (`.github/scripts/lib/anthropic-ladder.bash`)" carries the rest.
+# (`.github/resolver/lib/anthropic-ladder.bash`)" carries the rest.
 
 # The rung list and its order live in oauth-ladder.bash, which the conflict resolver and
 # the pre-push self-review read too. A copy here is how a rung goes missing from one caller
 # and not the others. OAUTH_LADDER_LIB points this at the BASE branch's copy for
 # release-prep-bump-version.sh: that job holds a PAT, so it loads no file from the PR head.
-# shellcheck source=.github/scripts/lib/oauth-ladder.bash
+# shellcheck source=.github/resolver/lib/oauth-ladder.bash
 source "${OAUTH_LADDER_LIB:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/oauth-ladder.bash}"
 
 # anthropic_auth_headers CRED — the header set for ONE credential, into

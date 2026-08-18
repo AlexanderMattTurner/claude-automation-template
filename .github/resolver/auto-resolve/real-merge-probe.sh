@@ -19,11 +19,11 @@
 # resolver instead of the resolver.
 #
 # Run it wherever mergiraf is installed:
-#   bash .github/scripts/install-mergiraf.sh ~/.local/bin
-#   bash .github/scripts/auto-resolve/real-merge-probe.sh
+#   bash .github/resolver/install-mergiraf.sh ~/.local/bin
+#   bash .github/resolver/auto-resolve/real-merge-probe.sh
 set -euo pipefail
 
-# shellcheck source=.github/scripts/auto-resolve/lib.sh
+# shellcheck source=.github/resolver/auto-resolve/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 mergiraf_bin="${MERGIRAF_BIN:-mergiraf}"
@@ -33,7 +33,7 @@ mergiraf_bin="${MERGIRAF_BIN:-mergiraf}"
 # when it cannot look is the same failure one level up.
 command -v "$mergiraf_bin" >/dev/null || {
   echo "real-merge-probe: '${mergiraf_bin}' not found on PATH — install it with" >&2
-  echo "  bash .github/scripts/install-mergiraf.sh <dir-on-PATH>" >&2
+  echo "  bash .github/resolver/install-mergiraf.sh <dir-on-PATH>" >&2
   echo "  and re-run; this probe cannot verify the structural pre-pass without it." >&2
   exit 1
 }

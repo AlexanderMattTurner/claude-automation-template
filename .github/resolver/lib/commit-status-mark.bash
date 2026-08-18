@@ -22,7 +22,7 @@
 if [[ -z "${_COMMIT_STATUS_MARK_SOURCED:-}" ]]; then
   _COMMIT_STATUS_MARK_SOURCED=1
 
-  # shellcheck source=.github/scripts/lib/shared-names.bash
+  # shellcheck source=.github/resolver/lib/shared-names.bash
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shared-names.bash"
 
   # The one spelling of the release convention, read by the writer below, by the

@@ -21,9 +21,9 @@
 set -euo pipefail
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=.github/scripts/lib-ci-retry.sh
+# shellcheck source=.github/resolver/lib-ci-retry.sh
 source "$_SCRIPT_DIR/../lib-ci-retry.sh"
-# shellcheck source=.github/scripts/lib/pr-status-comment.bash
+# shellcheck source=.github/resolver/lib/pr-status-comment.bash
 source "$_SCRIPT_DIR/../lib/pr-status-comment.bash"
 
 : "${PR:?PR required}"

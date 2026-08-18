@@ -33,8 +33,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=.github/scripts/auto-resolve/lib.sh
-source "${SCRIPT_DIR}/auto-resolve/lib.sh"
+# shellcheck source=.github/resolver/auto-resolve/lib.sh
+source "$(cd "${SCRIPT_DIR}/../resolver" && pwd)/auto-resolve/lib.sh"
 
 : "${PR_NUMBER:?PR_NUMBER required}"
 

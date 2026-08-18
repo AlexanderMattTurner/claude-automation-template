@@ -15,7 +15,7 @@
 if [[ -z "${_PR_LABELS_SOURCED:-}" ]]; then
   _PR_LABELS_SOURCED=1
 
-  # shellcheck source=.github/scripts/lib/shared-names.bash
+  # shellcheck source=.github/resolver/lib/shared-names.bash
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shared-names.bash"
 
   # Owner: label-merge-conflicts.sh, which applies it to every open PR GitHub
@@ -74,7 +74,7 @@ if [[ -z "${_PR_LABELS_SOURCED:-}" ]]; then
   readonly PR_LABEL_REVIEW_GATE_RECHECK
 fi
 
-# shellcheck source=.github/scripts/lib-ci-retry.sh
+# shellcheck source=.github/resolver/lib-ci-retry.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib-ci-retry.sh"
 
 # apply_blocked_label PR-NUMBER LABEL TOOL-NAME — label the PR so the tool's own

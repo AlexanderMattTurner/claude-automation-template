@@ -3,10 +3,10 @@
 # so the sync PR arrives ready to read instead of carrying raw markers and a
 # request for someone else to clean up later.
 #
-# This is a DRIVER, not a second resolver. Tier 2 is auto-resolve/fanout.sh —
-# the same per-file bounded model runs the merge-conflict resolver uses. A sync
-# conflict is a marker-bearing file, which is exactly fanout's input, so nothing
-# here re-implements resolution.
+# This is a DRIVER, not a second resolver. Tier 2 is the resolver's own
+# auto-resolve/fanout.py — the same per-block bounded model runs the
+# merge-conflict resolver uses. A sync conflict is a marker-bearing file, which
+# is exactly fanout's input, so nothing here re-implements resolution.
 #
 # Two tiers, cheapest first:
 #   1. STRUCTURAL — mergiraf re-merges from the markers, syntax-aware. Free, and
@@ -33,8 +33,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=.github/scripts/auto-resolve/lib.sh
-source "${SCRIPT_DIR}/auto-resolve/lib.sh"
+RESOLVER_DIR="$(cd "${SCRIPT_DIR}/../resolver" && pwd)"
+# shellcheck source=.github/resolver/auto-resolve/lib.sh
+source "${RESOLVER_DIR}/auto-resolve/lib.sh"
 
 : "${PR_NUMBER:?PR_NUMBER required}"
 out="${GITHUB_OUTPUT:?GITHUB_OUTPUT required}"
@@ -89,7 +90,7 @@ if [[ ${#remaining[@]} -gt 0 ]]; then
     CONFLICT_LIST="${remaining[*]}" \
       MODIFY_DELETE_PATHS="" \
       PR_NUMBER="$PR_NUMBER" \
-      bash "${SCRIPT_DIR}/auto-resolve/fanout.sh" ||
+      python3 "${RESOLVER_DIR}/auto-resolve/fanout.py" ||
       echo "template-sync-resolve: the model tier exited non-zero; the marker sweep below decides." >&2
     by_model=("${remaining[@]}")
   fi

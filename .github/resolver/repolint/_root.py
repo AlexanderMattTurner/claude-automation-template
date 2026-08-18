@@ -8,7 +8,7 @@ directory yields nothing, the check passes, and no surface anywhere says its
 input was missing. Counting is the fault. Walking up to a marker cannot be off by
 one, and it raises instead of guessing when no repository sits above the caller.
 
-Every check under `.github/scripts/` derives its root through `repo_root()`, so
+Every check under `.github/resolver/` derives its root through `repo_root()`, so
 one definition covers each of them and every future one.
 """
 

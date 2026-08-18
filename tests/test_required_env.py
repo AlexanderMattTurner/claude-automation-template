@@ -45,29 +45,35 @@ CASES = [
     ("post-merge-delta-review.sh", ["PR", "GH_REPO", "PR_INPUT_DIR"]),
     ("remerge-diff-report.py", ["BASE_SHA", "HEAD_SHA"]),
     ("precommit-range-base.sh", ["GITHUB_REPOSITORY", "GITHUB_BASE_REF", "GH_TOKEN"]),
+]
+
+# The resolver is rooted outside .github/scripts: the reusable workflow clones it
+# from its own repository, so nothing copies it in beside the glue scripts above.
+RESOLVER = REPO_ROOT / ".github" / "resolver"
+
+RESOLVER_CASES = [
     # auto-resolve: the resolving job bundles, the landing job pushes, and the
     # self-review reads its prompts from the trusted base worktree
-    ("auto-resolve/bundle.sh", ["HEAD_REF", "BASE_REF", "PR", "BUNDLE_DIR"]),
+    ("auto-resolve/bundle.py", ["HEAD_REF", "BASE_REF", "PR", "BUNDLE_DIR"]),
     (
         "auto-resolve/land.sh",
         ["HEAD_REF", "BASE_REF", "PR", "GITHUB_TOKEN", "BUNDLE_DIR"],
     ),
-    ("auto-resolve/self-review.sh", ["BASE_WORKTREE"]),
+    ("auto-resolve/self_review.py", ["BASE_WORKTREE"]),
     ("claude-conflict-resolve.sh", ["CLAUDE_CODE_OAUTH_TOKEN"]),
 ]
 
 
-@pytest.mark.parametrize("script, required_vars", CASES, ids=[c[0] for c in CASES])
-def test_script_exits_when_required_var_missing(
-    tmp_path: Path, script: str, required_vars: list[str]
+def _assert_refuses_without_env(
+    path: Path, script: str, required_vars: list[str], cwd: Path
 ) -> None:
     # Run with all required vars scrubbed so the script's `${VAR:?…}` guard (or,
     # for a Python script, its bare `os.environ[...]` lookup) fires.
     interpreter = [sys.executable] if script.endswith(".py") else ["bash"]
     env = {"PATH": "/usr/bin:/bin"}
     result = subprocess.run(
-        [*interpreter, str(SCRIPTS / script)],
-        cwd=tmp_path,
+        [*interpreter, str(path)],
+        cwd=cwd,
         env=env,
         capture_output=True,
         text=True,
@@ -82,3 +88,19 @@ def test_script_exits_when_required_var_missing(
     assert any(var in err for var in required_vars), (
         f"{script} stderr should mention one of {required_vars}: {err}"
     )
+
+
+@pytest.mark.parametrize("script, required_vars", CASES, ids=[c[0] for c in CASES])
+def test_script_exits_when_required_var_missing(
+    tmp_path: Path, script: str, required_vars: list[str]
+) -> None:
+    _assert_refuses_without_env(SCRIPTS / script, script, required_vars, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "script, required_vars", RESOLVER_CASES, ids=[c[0] for c in RESOLVER_CASES]
+)
+def test_resolver_script_exits_when_required_var_missing(
+    tmp_path: Path, script: str, required_vars: list[str]
+) -> None:
+    _assert_refuses_without_env(RESOLVER / script, script, required_vars, tmp_path)

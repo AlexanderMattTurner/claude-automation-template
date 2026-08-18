@@ -96,67 +96,50 @@ HANDOFF_CONTEXT = _SHARED_NAMES["commit_status_marks"]["auto_resolve_handoff"]
 DECLINED_CONTEXT = _SHARED_NAMES["commit_status_marks"]["auto_resolve_declined"]
 
 # The code a re-run executes, so a commit to any of it retires every mark older than
-# it: a handoff verdict is about THIS program. Derived by gen_resolver_paths.py from
-# the resolve workflow's own entry points, because a hand-typed list drifts silently
-# in the direction that strands a pull request — the resolver is the only actor that
-# pushes a conflicted head, so a path the list omits holds that head for good. Add a
-# path no static read can reach (a `pnpm` alias, a prompt the model is pointed at)
-# straight to the tuple: regeneration seeds from it and never prunes. A fix elsewhere
-# retires nothing; land it with a touch here, or dispatch the workflow with
-# `catch-up=true`, which bypasses the mark entirely.
-# BEGIN GENERATED: RESOLVER_PATHS (.github/scripts/gen_resolver_paths.py) — regenerated; do not edit by hand
+# it: a handoff verdict is about THIS program. Read only when the resolver ships in
+# the repository it resolves — a caller cloning it from elsewhere asks that clone's
+# ref instead, in one call, and never reads this tuple. See _resolver_repo_ref.
+#
+# The whole resolver is ONE directory now, and the commits API takes a directory, so
+# the list no longer has to enumerate the entry points a resolve stages. What stays
+# beside it is the CALLER-side capability each resolve also runs — a change there
+# changes what a re-run does, and no read of the resolver directory would see it.
+# A fix outside both retires nothing; land it with a touch here, or dispatch the
+# workflow with `catch-up=true`, which bypasses the mark entirely.
 RESOLVER_PATHS = (
-    ".github/prompts/claude-merge-delta-fix.md",
-    ".github/prompts/claude-merge-delta-review.md",
-    ".github/scripts/_ci_retry.py",
-    ".github/scripts/_gh_rate_limit.py",
-    ".github/scripts/_gh_redirect.py",
-    ".github/scripts/_merge_delta_novelty.py",
-    ".github/scripts/_pr_queue.py",
-    ".github/scripts/_pr_sweep.py",
-    ".github/scripts/auto-resolve",
-    ".github/scripts/checks/claude-execution.py",
-    ".github/scripts/claude-conflict-resolve.sh",
-    ".github/scripts/claude-run-errored.sh",
-    ".github/scripts/install-claude-cli.sh",
-    ".github/scripts/install-mergiraf.sh",
-    ".github/scripts/lib-ci-retry.sh",
-    ".github/scripts/lib-marker-comment.sh",
-    ".github/scripts/lib/auto-resolve-attempt.bash",
-    ".github/scripts/lib/commit-status-mark.bash",
-    ".github/scripts/lib/generated-owned.bash",
-    ".github/scripts/lib/git-auth.bash",
-    ".github/scripts/lib/merge-delta-verdict.bash",
-    ".github/scripts/lib/oauth-ladder.bash",
-    ".github/scripts/lib/pr-labels.bash",
-    ".github/scripts/lib/pr-merge-queue.bash",
-    ".github/scripts/lib/pr-push.bash",
-    ".github/scripts/lib/pr-status-comment.bash",
-    ".github/scripts/lib/shared-names.bash",
-    ".github/scripts/lib/shared-names.json",
-    ".github/scripts/lib_claude_usage.py",
-    ".github/scripts/lib_credential_ladder.py",
-    ".github/scripts/pip-install-ci-tools.sh",
-    ".github/scripts/pr/body_region.py",
-    ".github/scripts/pyproject_dev_pin.py",
-    ".github/scripts/record-claude-usage.py",
-    ".github/scripts/redact-agent-logs.py",
-    ".github/scripts/remerge-diff-report.py",
-    ".github/scripts/repolint/__init__.py",
-    ".github/scripts/repolint/_root.py",
-    ".github/scripts/stage-agent-logs.sh",
-    ".github/scripts/uv-sync-retry.sh",
-    ".github/tool-versions.sh",
+    ".github/resolver",
+    ".github/workflows/auto-resolve-reusable.yaml",
     ".pre-commit-config.yaml",
-    "bin/lib/retry.bash",
     "config/merge-queue-mode.json",
-    "pyproject.toml",
-    "scripts/resolve-generated.mjs",
 )
-# END GENERATED: RESOLVER_PATHS
 
 # Not a branch name, so it cannot collide with one in the shared probe cache.
 _RESOLVER_CACHE_KEY = "//resolver"
+
+
+def _resolver_repo_ref(caller_repo: str) -> tuple[str, str] | None:
+    """The repository and ref the resolver is cloned from, or None when it ships
+    with the tree being merged.
+
+    The reusable workflow passes both. None on either being empty, and None when
+    the two repositories are the same one — there RESOLVER_PATHS is still the
+    sharper question, because a commit touching an unrelated file in the caller's
+    own repository must not retire a verdict about the resolver.
+    """
+    repo = os.environ.get("AUTO_RESOLVE_RESOLVER_REPO", "").strip()
+    ref = os.environ.get("AUTO_RESOLVE_RESOLVER_REF", "").strip()
+    if not repo or not ref or repo == caller_repo:
+        return None
+    return repo, ref
+
+
+def _resolver_change_source(caller_repo: str) -> str:
+    """What a person must move to retire a handoff mark, named the way this run
+    reads it — so the skip line points at the tree it actually probed."""
+    remote = _resolver_repo_ref(caller_repo)
+    if remote is not None:
+        return f"the ref {remote[0]}@{remote[1]} names"
+    return f"any of the {len(RESOLVER_PATHS)} paths in discover.py's RESOLVER_PATHS"
 
 # The `gh pr list --json` field set the scan reads. `commits` is deliberately
 # absent: it pulls each commit's `authors` connection, so GitHub's node estimate
@@ -778,7 +761,18 @@ class Probes:
         return self._base_moves[_RESOLVER_CACHE_KEY]
 
     def _newest_resolver_commit(self) -> float | None:
-        """The newest commit date across RESOLVER_PATHS, or None on a failed read."""
+        """The newest commit date across RESOLVER_PATHS, or None on a failed read.
+
+        A caller whose resolver lives in ANOTHER repository asks that repository
+        for its ref instead, in one call. RESOLVER_PATHS names paths in the tree
+        being merged, which is the right question only while the resolver ships
+        with it: read against a caller that carries none of them, every path
+        answers "no commits", the maximum is empty, and the handoff mark then
+        holds forever on every stranded PR.
+        """
+        remote = _resolver_repo_ref(self.config.repo)
+        if remote is not None:
+            return self._ref_committed_at(*remote)
         dates = []
         for path in RESOLVER_PATHS:
             try:
@@ -801,6 +795,31 @@ class Probes:
                 continue
             dates.append(date)
         return max(dates) if dates else None
+
+    def _ref_committed_at(self, repo: str, ref: str) -> float | None:
+        """When REF in REPO was committed, as an epoch, or None on a failed read.
+
+        The whole resolver arrives from one commit, so its ref's own date is when
+        its code last changed — no path list to keep in step with it. None on a
+        failure for the same reason the path scan returns None: an unreadable
+        answer is no evidence of a change, and retrying on one API outage buys a
+        paid resolve for every stranded PR in the scan at once.
+        """
+        try:
+            answer = self.gh.api_json(f"repos/{repo}/commits/{ref}")
+        except DiscoverError:
+            return None
+        meta = answer.get("commit") if isinstance(answer, dict) else None
+        committer = meta.get("committer") if isinstance(meta, dict) else None
+        date = committer.get("date") if isinstance(committer, dict) else None
+        if not date:
+            print(
+                f"::warning::{repo}@{ref} carries no commit date, so a change to "
+                "the resolver no longer retires a handoff mark.",
+                file=sys.stderr,
+            )
+            return None
+        return _iso_to_epoch(date)
 
     def _path_changed_at(self, path: str) -> float | None:
         """The newest commit date touching PATH on the default branch, or None when
@@ -1266,8 +1285,8 @@ def run(config: Config) -> None:
             f"Skipping PR(s) {_render(handed_off)} — a paid resolve reached a "
             "verdict on the current head and left the rest to a human. Neither "
             "the floor nor the TTL clears this: push to the branch, dispatch "
-            "auto-resolve-conflicts.yaml with catch-up=true, or change any of "
-            f"the {len(RESOLVER_PATHS)} paths in discover.py's RESOLVER_PATHS."
+            "auto-resolve-conflicts.yaml with catch-up=true, or move the "
+            f"resolver's own code — {_resolver_change_source(config.repo)}."
         )
 
     blocked = scan.conflicted(lambda pr: pr.is_blocked)

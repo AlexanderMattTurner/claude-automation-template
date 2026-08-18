@@ -10,7 +10,7 @@ process working directory would abort THAT tree's merge: the developer's staged
 resolution is discarded, HEAD stays put, and git prints nothing a session would
 read as damage. So `bind_repo` is required before the first call, `_argv` puts
 `-C <repo>` on every invocation, and an unbound call raises instead of guessing.
-`.github/scripts/checks/cwd-scoped-git.py` holds the same rule over every git
+`.github/resolver/checks/cwd-scoped-git.py` holds the same rule over every git
 argv this tree builds in Python.
 """
 

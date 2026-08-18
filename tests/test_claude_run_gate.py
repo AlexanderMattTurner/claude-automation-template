@@ -96,7 +96,7 @@ def test_every_claude_run_call_site_inherits_the_gate() -> None:
 # starts. It runs the same one script from the base-ref staging dir; the gate is
 # still not re-typed, only reached by a different path.
 GATE_DIRECT_CALLERS = {
-    ".github/workflows/auto-resolve-conflicts.yaml:"
+    ".github/workflows/auto-resolve-reusable.yaml:"
     "Fail loud if the Claude resolution errored",
 }
 

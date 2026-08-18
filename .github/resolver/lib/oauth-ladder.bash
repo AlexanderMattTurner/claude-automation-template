@@ -15,7 +15,7 @@
 # reads the credentials from its own environment and no token ever crosses a pipe
 # into a capture buffer a traceback could print.
 
-# shellcheck source=.github/scripts/lib/shared-names.bash
+# shellcheck source=.github/resolver/lib/shared-names.bash
 source "${SHARED_NAMES_LIB:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shared-names.bash}"
 
 # The ladder's variable names, in attempt order. Assigned from a command

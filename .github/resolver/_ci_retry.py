@@ -1,5 +1,5 @@
 """The one exponential-backoff retry loop for a CI command, ported from
-``.github/scripts/lib-ci-retry.sh``.
+``.github/resolver/lib-ci-retry.sh``.
 
 PROBLEM CLASS — a flaky CI command (a ``gh`` call against a 5xx-ing API, a
 network read) must be re-run with exponential backoff, under one spelling of the

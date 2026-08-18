@@ -20,7 +20,7 @@ field set is a parameter; the rest of the listing lives here once.
 
 Design rationale for the retry policy, the strict timestamp parse, the log buffering and
 the doubt-carrying return values: `.claude/dev-notes` § "Open-PR sweep scaffolding
-(`.github/scripts/_pr_sweep.py`)".
+(`.github/resolver/_pr_sweep.py`)".
 """
 
 import importlib.util

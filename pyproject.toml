@@ -9,7 +9,10 @@ requires-python = ">=3.10"
 # enforced env agree on what the parser accepts.
 dev = [
     "pytest>=7,<10",
-    "pyyaml>=6,<7",
+    # `==`, not a range: pip-install-ci-tools.sh reads this line as the pyyaml
+    # pin for the resolver's hook toolchain and refuses anything but an exact
+    # one, so a range here installs a version nothing in the tree recorded.
+    "pyyaml==6.0.3",
     "tree-sitter==0.26.0",
     "tree-sitter-bash==0.25.1",
 ]

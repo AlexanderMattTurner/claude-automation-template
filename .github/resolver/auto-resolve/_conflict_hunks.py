@@ -15,7 +15,7 @@ change however the model behaves.
 
 The markers are line-oriented, so this is a line state machine rather than a
 regex over the whole text. The pattern that opens and closes a region is the one
-in .github/scripts/lib/shared-names.json, which bundle.py and lib.sh also read.
+in .github/resolver/lib/shared-names.json, which bundle.py and lib.sh also read.
 """
 
 import json

@@ -7,7 +7,7 @@
 # conditions, the harness refusal list and the run behind each member, the
 # committed-marker scope rule, the silent revert is_modify_delete prevents, and
 # why a fragment id collision splits — lives in
-# `.claude/dev-notes` § "Auto-resolve shared shell library (`.github/scripts/auto-resolve/lib.sh`)".
+# `.claude/dev-notes` § "Auto-resolve shared shell library (`.github/resolver/auto-resolve/lib.sh`)".
 #
 # Three invariants bind every editor here:
 #   * CONFLICT_MARKER_RE is the ONE spelling both these shell steps and
@@ -18,7 +18,7 @@
 #   * structural_solve accepts only exit 0 AND non-empty output AND no
 #     `<<<<<<<`. mergiraf exits 0 printing nothing when it cannot solve, and
 #     PREPARE copies this output over the file, so empty is silent data loss.
-# shellcheck source=.github/scripts/lib/shared-names.bash
+# shellcheck source=.github/resolver/lib/shared-names.bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/shared-names.bash"
 
 # Marks an unresolved hunk; also matches `|||||||`, the diff3 base section.
@@ -29,8 +29,12 @@ CONFLICT_MARKER_RE="$(shared_name .auto_resolve.conflict_marker_re)"
 AUTO_RESOLVE_RESULT_REF="$(shared_name .auto_resolve.result_ref)"
 
 # protected_matches PATH… — subset touching security-sensitive trees. Override with AUTO_RESOLVE_PROTECTED_RE (an ERE).
+# The default names only the trees EVERY consumer has, because this resolver now
+# runs against repositories whose layouts it does not know. A caller with more to
+# protect passes the workflow's `protected-paths-regex` input; one that passes
+# nothing still gets its automation and agent config flagged.
 protected_matches() {
-  local protected="${AUTO_RESOLVE_PROTECTED_RE:-^(sandbox-policy/|\.claude/|bin/|sbx-kit/|\.github/|setup\.bash$)}" f
+  local protected="${AUTO_RESOLVE_PROTECTED_RE:-^(\.github/|\.claude/|\.hooks/)}" f
   for f in "$@"; do
     [[ "$f" =~ $protected ]] && printf '%s\n' "$f"
   done

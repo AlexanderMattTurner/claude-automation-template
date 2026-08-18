@@ -8,7 +8,7 @@ and writes it to $BUNDLE_DIR as a git bundle for the separate `land` job.
 It pushes nothing and holds no push credential: its commit is UNTRUSTED OUTPUT
 that auto-resolve/land.sh re-derives every property of from git. It fails LOUD
 rather than bundle a half-resolved tree. Why, and what each refusal below buys:
-`.claude/dev-notes` § "Auto-resolve bundle step (`.github/scripts/auto-resolve/bundle.py`)".
+`.claude/dev-notes` § "Auto-resolve bundle step (`.github/resolver/auto-resolve/bundle.py`)".
 
 Env:
   HEAD_REF, BASE_REF, PR, BUNDLE_DIR   required
@@ -26,6 +26,7 @@ import io
 import json
 import math
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -81,6 +82,13 @@ AUTO_RESOLVE_RESULT_REF = _SHARED_NAMES["auto_resolve"]["result_ref"]
 # The reviewer's CANNOT-VERIFY status, which is a different report from its
 # flagged-the-resolution status.
 _SELF_REVIEW_CANNOT_VERIFY = 2
+
+# How the CALLING repository re-derives its generated files, from the workflow's
+# `pre-pass-command` input, split the way a shell would. Empty is a caller that
+# has no generators — the honest default for a repository this resolver knows
+# nothing about, and never a guess at one, because a wrong command reports
+# "nothing to re-derive" for files that needed it.
+PRE_PASS = shlex.split(os.environ.get("AUTO_RESOLVE_PRE_PASS", ""))
 
 
 _OAUTH_LADDER_LIB = _SCRIPT_DIR.parent / "lib" / "oauth-ladder.bash"
@@ -407,7 +415,20 @@ class Bundle:
         abort, so a half-derived tree is never bundled."""
         if not self.deferred:
             return
-        rederive = subprocess.run(["pnpm", "resolve-generated"], check=False)
+        if not PRE_PASS:
+            # A path reached this list because prepare.sh recognised it as
+            # generated, so the caller HAS derived files and declared no command
+            # that re-derives them. Bundling would ship whatever the model wrote
+            # into a file no build produces.
+            named = " ".join(sorted(self.deferred))
+            fail(
+                f"generated file(s) '{named}' deferred with no pre-pass command",
+                f"the generated file(s) `{named}` need re-deriving after this "
+                "resolution, and the workflow was called with no "
+                "`pre-pass-command` to re-derive them with.",
+                resolver_fault=True,
+            )
+        rederive = subprocess.run(PRE_PASS, check=False)
         still_unmerged = [
             name for name in self.deferred if git_lines("ls-files", "-u", "--", name)
         ]
@@ -430,9 +451,15 @@ class Bundle:
         ones: a cleanly text-merged generated file can hold bytes no build produces.
 
         This verifies and never heals, because `land`'s confinement
-        replay would refuse a healed path as an edit outside the conflicted set."""
+        replay would refuse a healed path as an edit outside the conflicted set.
+
+        A caller that declared no pre-pass command has no generator to compare
+        against, so there is no post-condition to check: its generated files, if
+        any, are the ones prepare.sh already declined to defer."""
+        if not PRE_PASS:
+            return
         done = subprocess.run(
-            ["pnpm", "-s", "resolve-generated", "--verify"],
+            [*PRE_PASS, "--verify"],
             capture_output=True,
             text=True,
             check=False,

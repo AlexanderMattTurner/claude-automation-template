@@ -21,7 +21,7 @@ Standard library only: the resolve job checks `.github/scripts` out sparsely and
 the runner's own python3, before any project install.
 
 `.claude/dev-notes` § "Auto-resolve self-review: reviewing a merge before it is pushed
-(`.github/scripts/auto-resolve/self_review.py`)" carries the rest.
+(`.github/resolver/auto-resolve/self_review.py`)" carries the rest.
 """
 
 import argparse
@@ -285,8 +285,14 @@ class SelfReviewConfig:
         )
 
     def script(self, name: str) -> str:
-        """A helper script's path inside the TRUSTED base worktree."""
-        return str(self.base_worktree / ".github" / "scripts" / name)
+        """A helper script's path inside the TRUSTED resolver checkout.
+
+        Derived from this module's own location rather than from BASE_WORKTREE:
+        the helper is a sibling that ships with the resolver, so it is found
+        wherever the resolver was cloned. BASE_WORKTREE still names the tree the
+        review READS — a different repository once the resolver has its own.
+        """
+        return str(Path(__file__).resolve().parent.parent / name)
 
 
 def render_delta(cfg: SelfReviewConfig) -> bytes:

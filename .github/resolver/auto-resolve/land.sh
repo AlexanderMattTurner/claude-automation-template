@@ -8,23 +8,23 @@
 #
 # The artifact carries git objects and nothing else, since a manifest or protected-path claim would be an assertion by the untrusted job. This script instead replays the merge in a scratch worktree to derive the conflicted set independently, and reports that set rather than believing one.
 #
-# `.claude/dev-notes` § "Auto-resolve LAND: re-deriving what makes a resolution safe to push (`.github/scripts/auto-resolve/land.sh`)" carries the job-split threat model, the admitted-shape derivations, and the stand-down and race-retry reasoning.
+# `.claude/dev-notes` § "Auto-resolve LAND: re-deriving what makes a resolution safe to push (`.github/resolver/auto-resolve/land.sh`)" carries the job-split threat model, the admitted-shape derivations, and the stand-down and race-retry reasoning.
 set -euo pipefail
 
-# shellcheck source=.github/scripts/auto-resolve/lib.sh
+# shellcheck source=.github/resolver/auto-resolve/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=.github/scripts/lib-ci-retry.sh
+# shellcheck source=.github/resolver/lib-ci-retry.sh
 source "$_SCRIPT_DIR/../lib-ci-retry.sh"
-# shellcheck source=.github/scripts/lib/pr-labels.bash
+# shellcheck source=.github/resolver/lib/pr-labels.bash
 source "$_SCRIPT_DIR/../lib/pr-labels.bash"
-# shellcheck source=.github/scripts/lib/pr-push.bash
+# shellcheck source=.github/resolver/lib/pr-push.bash
 source "$_SCRIPT_DIR/../lib/pr-push.bash"
-# shellcheck source=.github/scripts/lib/pr-merge-queue.bash
+# shellcheck source=.github/resolver/lib/pr-merge-queue.bash
 source "$_SCRIPT_DIR/../lib/pr-merge-queue.bash"
-# shellcheck source=.github/scripts/lib/pr-status-comment.bash
+# shellcheck source=.github/resolver/lib/pr-status-comment.bash
 source "$_SCRIPT_DIR/../lib/pr-status-comment.bash"
-# shellcheck source=.github/scripts/lib/auto-resolve-attempt.bash
+# shellcheck source=.github/resolver/lib/auto-resolve-attempt.bash
 source "$_SCRIPT_DIR/../lib/auto-resolve-attempt.bash"
 
 # The description region this script owns. Invisible in the rendered body, and

@@ -11,9 +11,9 @@
 #   raise_human_review_finding <marker> <prose-file> — open ONE file-level finding thread stamped <marker>, unless an UNRESOLVED thread already carries it. Requires GH_REPO, PR, HEAD_SHA and an exported REVIEWER_LOGIN_BARE.
 #   settled_merge_delta_shas <owner> <name> <pr> — every merge sha a merge-delta finding thread was raised about, replied to by a non-reviewer, and resolved.
 #
-# `.claude/dev-notes` § "PR review threads (`.github/scripts/lib/review-threads.bash`)".
+# `.claude/dev-notes` § "PR review threads (`.github/resolver/lib/review-threads.bash`)".
 
-# shellcheck source=.github/scripts/lib-ci-retry.sh
+# shellcheck source=.github/resolver/lib-ci-retry.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib-ci-retry.sh"
 
 # `$endCursor` and `pageInfo` are what let `gh api graphql --paginate` walk: drop either and gh has no cursor to advance, so it returns page one forever and reports a truncated thread set as the whole one. That set feeds the review-findings merge gate, so an under-read greens a gate that should be red.

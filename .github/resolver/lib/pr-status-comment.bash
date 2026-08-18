@@ -25,7 +25,7 @@
 if [[ -z "${_PR_STATUS_COMMENT_SOURCED:-}" ]]; then
   _PR_STATUS_COMMENT_SOURCED=1
 
-  # shellcheck source=.github/scripts/lib-marker-comment.sh
+  # shellcheck source=.github/resolver/lib-marker-comment.sh
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib-marker-comment.sh"
 
   # First bytes of the body: lib-marker-comment.sh matches on `startswith`, so a comment

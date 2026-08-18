@@ -15,7 +15,7 @@
 if [[ -z "${_PR_SWEEP_SOURCED:-}" ]]; then
   _PR_SWEEP_SOURCED=1
 
-  # shellcheck source=.github/scripts/lib-ci-retry.sh
+  # shellcheck source=.github/resolver/lib-ci-retry.sh
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib-ci-retry.sh"
 
   # How many open PRs one listing page carries. High enough that this repo never

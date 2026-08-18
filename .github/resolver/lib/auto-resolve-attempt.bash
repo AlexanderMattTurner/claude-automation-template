@@ -25,9 +25,9 @@
 # resolved, so an unreleased mark would suppress every scan for a full TTL. The outer bound
 # is the commit-age window in discover.py: an untouched branch leaves the candidate set.
 
-# shellcheck source=.github/scripts/lib/commit-status-mark.bash
+# shellcheck source=.github/resolver/lib/commit-status-mark.bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/commit-status-mark.bash"
-# shellcheck source=.github/scripts/lib/shared-names.bash
+# shellcheck source=.github/resolver/lib/shared-names.bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/shared-names.bash"
 
 # This file is the WRITER half of the mark. The reader half — the freshness test

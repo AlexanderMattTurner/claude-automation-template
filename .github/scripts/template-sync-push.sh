@@ -9,8 +9,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=.github/scripts/auto-resolve/lib.sh
-source "${SCRIPT_DIR}/auto-resolve/lib.sh"
+RESOLVER_DIR="$(cd "${SCRIPT_DIR}/../resolver" && pwd)"
+# CONFLICT_MARKER_RE from one place; git_auth_header from another. The resolver's
+# lib.sh no longer carries the git helper — it moved to the shared bash library
+# when the resolver became a tree of its own.
+# shellcheck source=.github/resolver/auto-resolve/lib.sh
+source "${RESOLVER_DIR}/auto-resolve/lib.sh"
+# shellcheck source=.github/resolver/lib/git-auth.bash
+source "${RESOLVER_DIR}/lib/git-auth.bash"
 
 : "${GITHUB_TOKEN:?GITHUB_TOKEN required}"
 

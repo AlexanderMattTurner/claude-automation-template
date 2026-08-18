@@ -8,17 +8,17 @@
 #   pick_push_token WORKFLOW-DELTA — choose the push token into PUSH_TOKEN. WORKFLOW-DELTA is the caller's own list of .github/workflows/ paths this push would change, empty when it changes none.
 #   push_or_block HEAD-REF PR-NUMBER BLOCKED-LABEL TOOL-NAME — push HEAD to origin/HEAD-REF. 0 on success, $PUSH_BLOCKED (2) when the token lacks the `workflow` scope and the PR was labelled BLOCKED-LABEL, 1 otherwise.
 #   push_retrying_races … — push_or_block plus non-ff recovery. Adds $PUSH_RACE_CONFLICT (3) when reconciling with the branch's new tip conflicts.
-# `.claude/dev-notes` § "Bot push to a PR head branch (`.github/scripts/lib/pr-push.bash`)".
+# `.claude/dev-notes` § "Bot push to a PR head branch (`.github/resolver/lib/pr-push.bash`)".
 
-# shellcheck source=.github/scripts/lib-ci-retry.sh
+# shellcheck source=.github/resolver/lib-ci-retry.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib-ci-retry.sh"
-# shellcheck source=.github/scripts/lib/pr-labels.bash
+# shellcheck source=.github/resolver/lib/pr-labels.bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pr-labels.bash"
 # git_auth_header now lives in lib/git-auth.bash, which the non-pushing auth sites share.
 # Sourced here rather than moved out of this API: every push script reaches the helper through
 # this lib, and an unsourced helper is a 127 AFTER the work and BEFORE the push
 # (tests/test_template_sync_resolve.py is that regression).
-# shellcheck source=.github/scripts/lib/git-auth.bash
+# shellcheck source=.github/resolver/lib/git-auth.bash
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/git-auth.bash"
 
 # The identity every bot-authored commit carries.

@@ -2,7 +2,7 @@
 """Resolve a merge conflict BLOCK-BY-BLOCK with concurrent, individually bounded
 `claude` runs, then fold the per-shard execution logs into ONE aggregate log
 carrying claude-code-action's result shape (so claude-run-errored.sh and
-.github/scripts/checks/claude-execution.py read it unchanged).
+.github/resolver/checks/claude-execution.py read it unchanged).
 
 Why not one prompt over the whole conflict set: a serial run's wall clock is the
 SUM of per-file resolutions, and a concurrent push to the externally-writable PR
@@ -107,14 +107,19 @@ JsonObject = dict[str, Any]
 _RESOLVER_DIR = Path(__file__).resolve().parent
 
 # The resolver runs the strongest model available: a wrong merge resolution
-# is both the hardest defect to see in review and the cheapest to prevent.
-_GLOVEBOX_MODEL = "claude-opus-5"
-# The bots claude-code-action admits (`allowed_bots`, defaulted in
-# .github/actions/claude-code-with-fallback/action.yaml): the relay dispatch
-# carrying a push-discovered conflict into a workflow_dispatch, and the app a
-# Claude Code web session pushes as. Neither is a collaborator, so the probe
-# below 404s for both and would deny an actor the sibling gate admits.
-BOT_ACTORS = ("github-actions", "glovebox-posture-stock")
+# is both the hardest defect to see in review and the cheapest to prevent. A
+# caller names a different one through the workflow's `model` input.
+_MODEL = os.environ.get("AUTO_RESOLVE_MODEL", "").strip() or "claude-opus-5"
+
+# The bots this resolver admits: the relay dispatch that carries a
+# push-discovered conflict into a workflow_dispatch, and any app a caller adds
+# through the workflow's `bot-actors` input. Neither is a collaborator, so the
+# probe below 404s for both and would deny an actor the sibling gate admits.
+# The gate stays fail-closed and whitelist-only, so an input naming nothing
+# admits no bot rather than any.
+BOT_ACTORS = tuple(
+    os.environ.get("AUTO_RESOLVE_BOT_ACTORS", "github-actions").replace(",", " ").split()
+)
 
 # Per-side history a shard prompt carries. Bounded: the subjects are
 # attacker-influencable text and a long log would crowd out the conflict.
@@ -298,7 +303,7 @@ def conflict_history(file: str) -> str:
 def write_permission_settings(config_dir: Path) -> None:
     """The user settings a run's CLI loads, wiring the PreToolUse hook that
     lets a run write exactly its granted paths. See
-    .github/scripts/auto-resolve/shard-permission.mjs."""
+    .github/resolver/auto-resolve/shard-permission.mjs."""
     command = f"node {_RESOLVER_DIR}/shard-permission.mjs"
     document = {
         "hooks": {
@@ -541,7 +546,7 @@ class Fanout:
                         "-p",
                         prompt,
                         "--model",
-                        _GLOVEBOX_MODEL,
+                        _MODEL,
                         "--setting-sources",
                         "user",
                         "--permission-mode",

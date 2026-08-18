@@ -25,11 +25,11 @@
 # what each output means and how prepare and land split the protected-path report.
 set -euo pipefail
 
-# shellcheck source=.github/scripts/auto-resolve/lib.sh
+# shellcheck source=.github/resolver/auto-resolve/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 # git_auth_header. lib.sh does NOT pull it in, and land.sh reaches it through lib/pr-push.bash
 # — this half only fetches and merges, so it takes the auth helper without the push machinery.
-# shellcheck source=.github/scripts/lib/git-auth.bash
+# shellcheck source=.github/resolver/lib/git-auth.bash
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/git-auth.bash"
 
 : "${BASE_REF:?BASE_REF required}"
@@ -114,26 +114,37 @@ fi
 # Deterministic pre-pass: re-derive + stage every conflicted derived file
 # whose source merged cleanly. Non-fatal: FINALIZE re-runs and verifies it.
 
-# The resolver staged from the DEFAULT branch, outside the working tree — the copy
-# both the pre-pass fallback below and the --owned ownership query further down run.
-# Its trust and rule-table consequences are set out at that query.
-resolver_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-resolver_mjs="${AUTO_RESOLVE_RESOLVER_MJS:-${resolver_root}/scripts/resolve-generated.mjs}"
+# The CALLING repository's derived-file resolver, from the workflow's
+# `resolver-mjs` input, alongside the command that runs it from the caller's own
+# tree (`pre-pass-command`). Both empty is a caller with no generated files: it
+# has no derived-file machinery to run and no ownership table to consult, so
+# every conflict below is a hand-written one. Never a guessed default — a path
+# guessed wrong re-derives nothing and reports that as "nothing to re-derive".
+resolver_mjs="${AUTO_RESOLVE_RESOLVER_MJS:-}"
+pre_pass="${AUTO_RESOLVE_PRE_PASS:-}"
 
-prepass_rc=0
-pnpm resolve-generated || prepass_rc=$?
-if [[ "$prepass_rc" -ne 0 ]]; then
-  # PROBLEM CLASS — a tool that rewrites a conflicted tree is itself a file in that
-  # tree, so a merge whose conflict set holds scripts/resolve-generated.mjs (or a
-  # module it imports, or the package.json pnpm resolves it through) leaves the line
-  # above unable to parse it and re-deriving NOTHING. Retry with the default-branch
-  # copy staged below; --root aims it here, and FINALIZE's --verify bounds the gap.
-  echo "::warning::resolve-generated pre-pass exited ${prepass_rc} running the PR's own copy; retrying with the staged default-branch copy in case the resolver itself is conflicted."
+if [[ -n "$pre_pass" || -n "$resolver_mjs" ]]; then
   prepass_rc=0
-  node "$resolver_mjs" --root="$PWD" || prepass_rc=$?
-fi
-if [[ "$prepass_rc" -ne 0 ]]; then
-  echo "::warning::resolve-generated pre-pass exited ${prepass_rc} (a generator crashed, the resolver would not load, or an output still carries markers); continuing — FINALIZE re-runs it and verifies generated content byte-for-byte."
+  if [[ -n "$pre_pass" ]]; then
+    # Word-split on purpose: the input is a command line, not one argument.
+    # shellcheck disable=SC2086
+    $pre_pass || prepass_rc=$?
+  else
+    prepass_rc=1 # nothing to run from the PR's tree; go straight to the staged copy
+  fi
+  if [[ "$prepass_rc" -ne 0 && -n "$resolver_mjs" ]]; then
+    # PROBLEM CLASS — a tool that rewrites a conflicted tree is itself a file in that
+    # tree, so a merge whose conflict set holds the caller's resolver (or a module it
+    # imports, or the package.json pnpm resolves it through) leaves the line above
+    # unable to parse it and re-deriving NOTHING. Retry with the copy from the
+    # trusted base; --root aims it here, and FINALIZE's --verify bounds the gap.
+    echo "::warning::the derived-file pre-pass exited ${prepass_rc} running the PR's own copy; retrying with the trusted-base copy in case the resolver itself is conflicted."
+    prepass_rc=0
+    node "$resolver_mjs" --root="$PWD" || prepass_rc=$?
+  fi
+  if [[ "$prepass_rc" -ne 0 ]]; then
+    echo "::warning::the derived-file pre-pass exited ${prepass_rc} (a generator crashed, the resolver would not load, or an output still carries markers); continuing — FINALIZE re-runs it and verifies generated content byte-for-byte."
+  fi
 fi
 
 # Second deterministic pre-pass: a changelog fragment id both sides guessed
@@ -181,18 +192,24 @@ if [[ ${#conflicts[@]} -eq 0 && ${#marker_damaged[@]} -eq 0 ]]; then
   exit 0
 fi
 
-# Rule-owned paths, asked of the BASE-STAGED resolver under `node` (`pnpm`
+# Rule-owned paths, asked of the TRUSTED-BASE resolver under `node` (`pnpm`
 # parses package.json, which mid-merge can carry markers; `--owned` parses no
 # manifest). Fail CLOSED: an oracle answering "nothing is owned" when broken
 # misroutes exactly the paths it exists to route.
-# shellcheck source=.github/scripts/lib/generated-owned.bash
+#
+# A caller that declared no resolver has no rule table, so there is nothing to
+# ask and nothing to fail closed on — the empty answer is the true one there,
+# and gb_is_generated_owned below says "not owned" for every path.
+# shellcheck source=.github/resolver/lib/generated-owned.bash
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/generated-owned.bash"
-gb_load_generated_owned "$resolver_mjs" --owned || {
-  echo "auto-resolve/prepare: 'node ${resolver_mjs} --owned' failed." >&2
-  echo "Without an ownership answer, a re-derivable lockfile reads as unmergeable and goes to a human." >&2
-  echo "This step refuses to partition instead." >&2
-  exit 1
-}
+if [[ -n "$resolver_mjs" ]]; then
+  gb_load_generated_owned "$resolver_mjs" --owned || {
+    echo "auto-resolve/prepare: 'node ${resolver_mjs} --owned' failed." >&2
+    echo "Without an ownership answer, a re-derivable lockfile reads as unmergeable and goes to a human." >&2
+    echo "This step refuses to partition instead." >&2
+    exit 1
+  }
+fi
 
 # Partition. An owned conflict's source ALSO conflicted — bundle re-derives
 # it after the LLM resolves the source. A binary conflict, or a `-merge` file
