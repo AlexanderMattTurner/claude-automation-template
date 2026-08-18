@@ -91,7 +91,15 @@ def splice(doc: str, *, begin: str, end: str, block: str, label: str) -> str:
     at all — that ordering is load-bearing rather than tidy: splicing on a
     reversed pair does not yield an empty region, it re-emits the span between
     the two markers and silently duplicates that text into the file.
+
+    A marker that appears twice is refused rather than spliced into: the first
+    pair would take the new block and the second would keep the old one, so the
+    file would carry two answers and the generator would report success.
     """
+    for marker, which in ((begin, "begin"), (end, "end")):
+        seen = doc.count(marker)
+        if seen > 1:
+            raise ValueError(f"{label}: {which} marker appears {seen} times: {marker}")
     start = doc.find(begin)
     if start == -1:
         raise ValueError(f"{label}: begin marker not found: {begin}")
