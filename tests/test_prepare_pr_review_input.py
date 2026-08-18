@@ -6,13 +6,18 @@ Contract:
   * At or under MAX_DIFF_LINES: oversized=false, diff.txt/meta.txt written.
   * Over MAX_DIFF_LINES: oversized=true, oversized-notice.txt written, and
     diff.txt/meta.txt are NOT written (the review is skipped for size).
+  * A diff GitHub itself refuses to serve (HTTP 406 over its own 20000-line cap)
+    reaches the SAME skip, without spending the retry ladder on a deterministic
+    refusal. The line-count guard cannot see that case: the fetch fails first.
   * `gh pr diff` is always called with --allow-escape-sequences, since a diff
     holding a raw terminal escape byte would otherwise refuse to print and the
     sanitizer would never run (observed on agent-sanitizer#320).
 
 The tests drive the REAL script with a fake `gh` (emits an N-file unified diff /
 PR metadata) and a fake `node` (stands in for the sanitizer, passing stdin
-through) on PATH.
+through) on PATH. The fake `gh` produces FAULTS the real CLI cannot be made to
+produce here — a flag refusal, a 406 — and never stands in for its ordinary work
+beyond the diff bytes.
 """
 
 import subprocess
@@ -33,14 +38,30 @@ ESCAPE_SEQUENCE_STDERR = (
     "to output it anyway"
 )
 
+# Recorded verbatim from a real 406 on this repository (PR #476, whose diff ran
+# to ~29k lines). Re-capture with `gh pr diff <a PR over 20000 diff lines>`.
+API_TOO_LARGE_STDERR = (
+    "could not find pull request diff: HTTP 406: Sorry, the diff exceeded the "
+    "maximum number of lines (20000) "
+    "(https://api.github.com/repos/AlexanderMattTurner/claude-automation-template/pulls/476)"
+)
 
-def _fake_bins(tmp_path: Path, *, files: int, escape_byte: bool = False) -> None:
+
+def _fake_bins(
+    tmp_path: Path,
+    *,
+    files: int,
+    escape_byte: bool = False,
+    diff_too_large: bool = False,
+) -> None:
     """Put a fake `gh` and a fake `node` (the sanitizer stand-in: cats stdin) on
     PATH. The fake `gh` emits a `files`-file unified diff for `pr diff` and JSON
     for `pr view`, and refuses `pr diff` without --allow-escape-sequences —
     mirroring the real CLI's guard — so every test also asserts the script
     keeps passing that flag. `escape_byte` adds one hunk holding a literal ESC
     byte, mirroring the payload `gh pr diff` would otherwise refuse to print.
+    `diff_too_large` makes `pr diff` fail the way the API does above its own cap,
+    and counts the attempts so a test can assert the refusal was not retried.
     """
     escape = ""
     if escape_byte:
@@ -49,6 +70,13 @@ def _fake_bins(tmp_path: Path, *, files: int, escape_byte: bool = False) -> None
             '  echo "@@ -0,0 +1,1 @@"\n'
             '  printf "+escaped \x1b[31mred\x1b[0m line\\n"\n'
         )
+    too_large = ""
+    if diff_too_large:
+        too_large = (
+            '  echo "diff" >>"$GH_DIFF_ATTEMPTS"\n'
+            f'  echo "{API_TOO_LARGE_STDERR}" >&2\n'
+            "  exit 1\n"
+        )
     gh = tmp_path / "gh"
     gh.write_text(
         "#!/usr/bin/env bash\n"
@@ -56,6 +84,7 @@ def _fake_bins(tmp_path: Path, *, files: int, escape_byte: bool = False) -> None
         "  allowed=false\n"
         '  for arg in "$@"; do [[ "$arg" == "--allow-escape-sequences" ]] && allowed=true; done\n'
         f'  if [[ "$allowed" != true ]]; then echo "{ESCAPE_SEQUENCE_STDERR}" >&2; exit 1; fi\n'
+        f"{too_large}"
         f"  for ((i = 0; i < {files}; i++)); do\n"
         '    echo "diff --git a/f$i.py b/f$i.py"\n'
         '    echo "--- a/f$i.py"\n'
@@ -76,9 +105,16 @@ def _fake_bins(tmp_path: Path, *, files: int, escape_byte: bool = False) -> None
 
 
 def _run(
-    tmp_path: Path, *, files: int, max_diff_lines: int, escape_byte: bool = False
+    tmp_path: Path,
+    *,
+    files: int,
+    max_diff_lines: int,
+    escape_byte: bool = False,
+    diff_too_large: bool = False,
 ) -> tuple[subprocess.CompletedProcess, dict[str, str], Path]:
-    _fake_bins(tmp_path, files=files, escape_byte=escape_byte)
+    _fake_bins(
+        tmp_path, files=files, escape_byte=escape_byte, diff_too_large=diff_too_large
+    )
     out_file = tmp_path / "github_output"
     out_file.write_text("", encoding="utf-8")
     input_dir = tmp_path / "pr-input"
@@ -95,6 +131,7 @@ def _run(
             "GH_REPO": "owner/repo",
             "PR": "123",
             "PR_INPUT_DIR": str(input_dir),
+            "GH_DIFF_ATTEMPTS": str(tmp_path / "gh_diff_attempts"),
             "MAX_DIFF_LINES": str(max_diff_lines),
             # Keeps a regressed (flag-dropped) run's retry ladder off the
             # 2+4+8+16s backoff: a bare assertion failure beats a 30s-per-test
@@ -131,6 +168,35 @@ def test_oversized_diff_skips_the_review(tmp_path: Path) -> None:
     assert (input_dir / "oversized-notice.txt").is_file()
     assert not (input_dir / "diff.txt").exists()
     assert not (input_dir / "meta.txt").exists(), "the size skip must also skip meta"
+
+
+def test_a_diff_github_refuses_to_serve_takes_the_same_skip(tmp_path: Path) -> None:
+    """The line-count guard cannot reach the largest PRs: GitHub answers 406
+    before any byte arrives, so without this the graceful notice is dead code and
+    the check reds instead. RED if the refusal stops routing to the size skip."""
+    proc, outputs, input_dir = _run(
+        tmp_path, files=2, max_diff_lines=100, diff_too_large=True
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert outputs["oversized"] == "true"
+    assert outputs["diff_lines"] == "20000"
+    assert (input_dir / "oversized-notice.txt").is_file()
+    assert not (input_dir / "diff.txt").exists()
+    assert not (input_dir / "meta.txt").exists()
+
+
+def test_the_refusal_is_not_retried(tmp_path: Path) -> None:
+    """A 406 over the API's own cap is deterministic, so a second fetch buys the
+    same answer and the backoff before it. Asserted as a COUNT rather than as
+    elapsed time, which a loaded runner makes meaningless."""
+    _, _, _ = _run(
+        tmp_path,
+        files=2,
+        max_diff_lines=100,
+        diff_too_large=True,
+    )
+    attempts = (tmp_path / "gh_diff_attempts").read_text(encoding="utf-8").splitlines()
+    assert len(attempts) == 1, f"the size refusal was fetched {len(attempts)} times"
 
 
 def test_a_diff_with_a_raw_escape_byte_still_reaches_the_sanitizer(
