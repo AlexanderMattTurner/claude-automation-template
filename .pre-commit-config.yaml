@@ -182,6 +182,22 @@ repos:
         language: system
         files: ^tests/.*\.py$
 
+      - id: check-pipefail-sigpipe
+        # Under `set -o pipefail` a consumer that stops reading mid-stream
+        # (`head -N`, `grep -q`, `sed '5q'`) SIGPIPEs its still-writing producer,
+        # so the pipeline exits 141 and `set -e` aborts the script — on exactly
+        # the large inputs the cap exists for. Timing-dependent: it hides on a
+        # fast machine and bites on a slow CI runner.
+        name: no early-exiting pipe consumer under `set -o pipefail`
+        entry: python .github/scripts/check-pipefail-sigpipe.py
+        # language: python (not system) so the bash AST parser this lint needs
+        # is installed by pre-commit itself, on any machine and in CI — `python`
+        # resolves to that env's interpreter.
+        language: python
+        additional_dependencies:
+          ["tree-sitter==0.26.0", "tree-sitter-bash==0.25.1"]
+        files: '(\.(sh|bash)$|^\.hooks/[^/]+$)'
+
       - id: check-hook-timeouts
         # Every PreToolUse hook entry must declare an explicit timeout — a reaped
         # PreToolUse hook is NON-blocking, so the guarded tool runs unchecked.

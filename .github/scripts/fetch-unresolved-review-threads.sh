@@ -18,22 +18,22 @@
 # Env: GH_TOKEN, GH_REPO (owner/name), PR, PR_INPUT_DIR; REVIEWER_LOGIN optional.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=.github/scripts/lib-ci-retry.sh
-source "$(dirname "${BASH_SOURCE[0]}")/lib-ci-retry.sh"
+source "$SCRIPT_DIR/lib-ci-retry.sh"
+# shellcheck source=lib/reviewer-login.bash disable=SC1091
+source "$SCRIPT_DIR/lib/reviewer-login.bash"
 
 : "${GH_REPO:?GH_REPO required}"
 : "${PR:?PR number required}"
 : "${PR_INPUT_DIR:?PR_INPUT_DIR required}"
-REVIEWER_LOGIN="${REVIEWER_LOGIN:-github-actions[bot]}"
-# GraphQL returns an app bot's `login` WITHOUT the REST `[bot]` suffix
-# (`github-actions`, not `github-actions[bot]`), and the thread query below runs
-# through `gh api graphql`; compare against the BARE login so the reviewer's own
-# threads are actually matched. Comparing the REST-shaped `github-actions[bot]`
-# matched zero threads, so has_threads was always false and the Haiku resolver
-# never ran.
-# Exported so the gh child inside retry_stdout's subshell sees it — the --jq
-# filter below reads env.REVIEWER_LOGIN_BARE.
-export REVIEWER_LOGIN_BARE="${REVIEWER_LOGIN%'[bot]'}"
+# The thread query below runs through `gh api graphql`, which spells an app bot's
+# login WITHOUT the REST `[bot]` suffix. Comparing the REST-shaped
+# `github-actions[bot]` matched zero threads, so has_threads was always false and
+# the Haiku resolver never ran; reviewer_login_init owns that normalization now
+# for every reviewer script, and EXPORTS the bare login so the gh child inside
+# retry_stdout's subshell sees the env.REVIEWER_LOGIN_BARE the --jq filter reads.
+reviewer_login_init
 
 mkdir -p "$PR_INPUT_DIR"
 owner="${GH_REPO%%/*}"
@@ -70,10 +70,10 @@ GRAPHQL
 ndjson="${PR_INPUT_DIR}/threads.ndjson"
 threads_ndjson="$(retry_stdout gh api graphql --paginate \
   -f query="$QUERY" -f owner="$owner" -f name="$name" -F pr="$PR" \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+  --jq ".data.repository.pullRequest.reviewThreads.nodes[]
         | select(.isResolved == false)
-        | select((.comments.nodes[0].author.login // "" | sub("\\[bot\\]$"; "")) == env.REVIEWER_LOGIN_BARE)
-        | {id, path, line, body: .comments.nodes[0].body}')"
+        | ${REVIEWER_MATCH_THREAD_ROOT}
+        | {id, path, line, body: .comments.nodes[0].body}")"
 printf '%s\n' "$threads_ndjson" >"$ndjson"
 
 # Slurp the NDJSON into an array and stamp a 1-based index onto each thread.

@@ -48,31 +48,36 @@ A GitHub template that makes [Claude Code](https://docs.anthropic.com/en/docs/cl
 
 ### Git Hooks (`.hooks/`)
 
-| Hook         | What it does                                                                                 |
-| ------------ | -------------------------------------------------------------------------------------------- |
-| `pre-commit` | Runs lint-staged—auto-formats with Prettier, shfmt, and ruff depending on file type          |
-| `commit-msg` | Validates [Conventional Commits](https://www.conventionalcommits.org/) format via commitlint |
+| Hook          | What it does                                                                                                                                 |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pre-commit`  | Runs lint-staged—auto-formats with Prettier, shfmt, and ruff depending on file type                                                          |
+| `commit-msg`  | Validates [Conventional Commits](https://www.conventionalcommits.org/) format via commitlint                                                 |
+| `lint-skills` | Lint-staged helper—validates skill files have required frontmatter (`name`, `description`)                                                   |
+| `pre-push`    | Reruns the pre-commit suite scoped to the pushed commit range, plus the portable-symlink check, before a plain `git push` reaches the remote |
 
 ### Claude Session Hooks (`.claude/hooks/`)
 
 These run inside Claude Code sessions (local CLI or cloud), not in CI.
 
-| Hook           | What it does                                                                                                              |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `SessionStart` | Installs tools (shfmt, shellcheck), configures git, installs dependencies                                                 |
-| `PreToolUse`   | Runs build/lint/typecheck/tests before `git push` or `gh pr create`                                                       |
-| `PostToolUse`  | Nudges once per turn (with the counts) when work runs serially instead of using parallel sub-agents or batched tool calls |
+| Hook               | What it does                                                                                                                                                                       |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SessionStart`     | Installs tools (shfmt, shellcheck), configures git, installs dependencies                                                                                                          |
+| `PreToolUse`       | Runs build/lint/typecheck/tests before `git push` or `gh pr create`                                                                                                                |
+| `PostToolUse`      | Nudges once per turn (with the counts) when work runs serially instead of using parallel sub-agents or batched tool calls                                                          |
+| `UserPromptSubmit` | Drops non-actionable PR webhook turns (a CI event on a SHA a newer push already superseded, or an opted-out bot notification) before the model runs; fails open on any uncertainty |
 
 ### Claude Skills (`.claude/skills/`)
 
-| Skill                  | What it does                                                                             |
-| ---------------------- | ---------------------------------------------------------------------------------------- |
-| `pr-creation`          | Self-critique workflow before PR submission, then watches CI and fixes failures          |
-| `update-pr`            | Updates an existing PR with new changes and optionally revises the description           |
-| `conventional-commits` | Guides Claude through properly formatted commits with secret detection                   |
-| `markdown-block`       | Outputs content in a fenced code block so users can copy raw markdown                    |
-| `peer-review`          | Runs the read-only `code-reviewer` agent on the diff, then triages and fixes             |
-| `explore-plan`         | Enforces the Explore → Plan → Critique → Review → Verify discipline for non-trivial work |
+| Skill                  | What it does                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| `pr-creation`          | Self-critique workflow before PR submission, then watches CI and fixes failures                  |
+| `update-pr`            | Updates an existing PR with new changes and optionally revises the description                   |
+| `conventional-commits` | Guides Claude through properly formatted commits with secret detection                           |
+| `markdown-block`       | Outputs content in a fenced code block so users can copy raw markdown                            |
+| `peer-review`          | Runs the read-only `code-reviewer` agent on the diff, then triages and fixes                     |
+| `explore-plan`         | Enforces the Explore → Plan → Critique → Review → Verify discipline for non-trivial work         |
+| `ci-triage`            | Diagnoses a red or cancelled check from its log instead of assuming flake/pre-existing/unrelated |
+| `writing-tests`        | Governs writing, changing, or reviewing tests—test behavior, not source text                     |
 
 ### Claude Subagents (`.claude/agents/`)
 
@@ -250,7 +255,7 @@ Repository **settings and secrets are never copied** when you create a repo from
 │   ├── agents/             # Claude subagents (code-reviewer)
 │   └── settings.json       # Claude Code hooks + session env tuning
 ├── .mcp.json.example       # Starter team-shared MCP servers (copy to .mcp.json)
-├── .hooks/                 # Git hooks (pre-commit, commit-msg)
+├── .hooks/                 # Git hooks (pre-commit, commit-msg, lint-skills, pre-push, lib-gate.sh)
 ├── .github/
 │   ├── workflows/          # CI workflows
 │   └── dependabot.yml      # Dependabot configuration

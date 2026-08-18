@@ -8,8 +8,10 @@
 # review simply was not part of the merge gate.
 #
 # The predicate is one line and stateless: a pull request is clear when at least
-# one review of it stands undismissed. It needs no memory of which reviews have
-# been seen, and it re-derives the same answer on every event.
+# one undismissed review of it was written BY THE REVIEWER and carries a body.
+# It needs no memory of which reviews have been seen, and it re-derives the same
+# answer on every event. Both halves of "by the reviewer, with a body" are load-
+# bearing — see the filter below.
 #
 # PR-SCOPED, NOT HEAD-SCOPED, and that is load-bearing. Requiring a review OF THE
 # CURRENT HEAD looks stricter and strands the pull request instead:
@@ -30,13 +32,19 @@
 # Can't-verify is RED, never green: an API failure propagates through `set -e`,
 # because a gate that fails open lets a PR merge past a review nobody read.
 #
-# Env: GH_TOKEN, GH_REPO (owner/name), PR, HEAD_SHA, RUN_URL.
+# Env: GH_TOKEN, GH_REPO (owner/name), PR, HEAD_SHA, RUN_URL; REVIEWER_LOGIN
+# optional.
 set -euo pipefail
 
 : "${GH_REPO:?GH_REPO required}"
 : "${PR:?PR number required}"
 : "${HEAD_SHA:?HEAD_SHA required}"
 : "${GH_TOKEN:?GH_TOKEN required}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/reviewer-login.bash disable=SC1091
+source "$SCRIPT_DIR/lib/reviewer-login.bash"
+reviewer_login_init
 
 # MUST stay byte-identical to the `name:` of the job in review-gate.yaml: that
 # job name is what sync-required-checks registers as the ruleset's required
@@ -53,12 +61,31 @@ GATE_CONTEXT="Automated review posted"
 # --paginate --jq` applies the filter to EACH page, so a `first`/`max_by` would
 # silently run once per page and answer from the last one.
 #
-# Any actor's review counts. The reviewer's own clears it, and so does the
-# approval auto-approve-skipped posts for a PR the reviewer skips by title or
-# author — reading that OUTCOME rather than re-deriving the skip predicate,
-# which would be a second copy of decide-pr-review-trigger.sh's rules.
+# ONLY THE REVIEWER'S OWN reviews count, and only ones carrying a body. The
+# gate's whole claim is "an automated review of this pull request exists", so
+# every actor it credits has to be one that actually reviews:
+#
+#   * Any actor at all is a self-clearing gate. The PR author can open their own
+#     pull request, submit a COMMENT review on it with one word, and the required
+#     "Automated review posted" context goes green with no reviewer having run.
+#     The reviewer identity filter closes that: the author's review is not the
+#     reviewer's, so it credits nothing.
+#   * A body-less review is not a review. GitHub SYNTHESIZES a body-less
+#     COMMENTED review around a standalone review comment, and this repo posts
+#     those under the reviewer's own identity — resolve-addressed-threads.sh
+#     replies in-thread with addPullRequestReviewThreadReply on every
+#     auto-resolved thread. Without the body filter, that reply alone greens the
+#     gate for a pull request the reviewer is still holding. Every writer of a
+#     REAL review here sends a non-empty body: post-pr-review.mjs falls back to
+#     "Automated review." when the model returns nothing, auto-approve-skipped-pr.sh
+#     and approve-if-reviewer-hold-clear.sh both hardcode theirs.
+#
+# The approval that auto-approve-skipped posts for a PR the reviewer skips by
+# title or author still clears the gate: it is posted with GITHUB_TOKEN, so it
+# carries the reviewer identity. Reading that OUTCOME beats re-deriving the skip
+# predicate, which would be a second copy of decide-pr-review-trigger.sh's rules.
 reviewers="$(gh api --paginate "repos/${GH_REPO}/pulls/${PR}/reviews" \
-  --jq '.[] | select(.state != "DISMISSED") | .user.login // ""')"
+  --jq ".[] | select(.state != \"DISMISSED\") | ${REVIEWER_MATCH_USER} | select((.body // \"\") != \"\") | .user.login // \"\"")"
 reviewer="$(head -n 1 <<<"$reviewers")"
 
 if [[ -n "$reviewer" ]]; then

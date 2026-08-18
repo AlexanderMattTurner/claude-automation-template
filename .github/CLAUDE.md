@@ -83,10 +83,17 @@ Two things make this more than a formality. **The notify step must be REACHABLE 
 - Trigger on `pull_request` directly, not `workflow_run` — with `workflow_run` the triggered job runs against the base branch (not the PR head), the log context must be fetched as an artifact, and the mismatch makes failures hard to diagnose.
 - Gate on a non-bot actor (`github.event.pull_request.user.type != 'Bot'`) from day one. `claude-code-action` rejects bot-authored PRs, so the workflow burns CI minutes and accomplishes nothing.
 - Don't ship a static "recoverable" allowlist (lint/format/docstring). It either duplicates pre-commit or needs human judgment about why a rule fires here; let the action decide whether a failure has a tractable mechanical fix.
+- A two-stage "label it / act on it" automation needs matching eligibility predicates. When the labeler's filter is broader than the actor's, the label silently promises an action the actor refuses; keep both predicates identical, or have the labeler apply the actor's exclusions.
+- An in-source annotation (a comment, a label, a tag) that two separate tools read has two meanings that diverge at the one file where the questions differ. Before adding a second reader for an existing marker, enumerate files where the two readings disagree; use two markers if any exist.
+- **A workflow that cancels in-flight runs on PR close must filter by `createdAt < closed_at` and exclude its own `run_id`, not by head SHA alone.** GitHub dispatches `closed`-event runs on the same SHA as the PR, so a SHA-only canceller kills the close-handler jobs it is supposed to spare. For a job with a durable side effect (filing an issue, pushing a row), prefer a reconciler keyed on a content hash with a `schedule:` leg over a one-shot `closed` trigger; a lost run then converges on the next cycle.
+- An automated repair loop that records each attempt in a ledger must distinguish "the run never started" from "the run reached a verdict." An infrastructure failure silently consumes the retry budget unless it writes a distinct outcome class. Key the retry decision on a class the code emits, not a substring of the free-text reason — a text match is a channel by which the supervised process can request its own retry.
 
 ## Lint ratchets
 
 - **When a lint cap is disabled because of existing violations, replace it with a grandfathered ratchet, not silence.** Baseline the current violators, cap new ones, and fail stale entries so the list only shrinks. The flat cap fails at adoption (existing violators block unrelated work), but no cap is the worst outcome. The RuboCop-todo / pylint-todo shape works for any linter metric: file size, complexity, suppression counts.
+- **Dogfood a new lint against the real tree before committing it.** If it fires on existing legitimate code, narrow the class or scope; adding an allow-list is the wrong move — a noisy guard gets disabled at adoption.
+- **An allowlist entry is only as valid as the reference it points at.** A merge that rewrites the pointed-at path or symbol orphans the entry without a conflict marker; include the allowlist in any guard that checks for referenced-but-missing paths.
+- **Guards that aggregate over the full post-merge tree fire only after the PR lands**, so a workflow or CI-script PR can silently break them. Run the affected guards locally before landing such a PR — they are easy to miss because they are not obviously related to the change.
 
 ## Every guard needs a watched surface
 
