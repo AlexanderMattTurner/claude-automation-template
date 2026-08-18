@@ -11,10 +11,6 @@ import re
 import sys
 from pathlib import Path
 
-# install-hook-tools.sh installs pyyaml into this interpreter from the trusted
-# base ref's pin, and asserts the import, before this step runs.
-import yaml
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _refusal import fail  # noqa: E402,I001  # pylint: disable=wrong-import-position
 
@@ -97,6 +93,13 @@ def hooks_needing_the_project_env(config: Path = PRECOMMIT_CONFIG) -> list[str]:
     # so there is nothing to refuse — this is an empty set, not a bypassed one.
     if not config.is_file():
         return []
+    # Imported HERE, not at module scope: a calling repository with no pre-commit
+    # config never reaches this line, and a top-level import would make PyYAML a
+    # hard requirement of every `bundle.py` run in every caller. On the path that
+    # does reach it, install-hook-tools.sh has already installed pyyaml into this
+    # interpreter from the trusted base ref's pin and asserted the import.
+    import yaml  # pylint: disable=import-outside-toplevel
+
     doc = yaml.safe_load(config.read_text(encoding="utf-8"))
     return sorted(
         hook["id"]

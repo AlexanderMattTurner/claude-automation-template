@@ -1727,3 +1727,46 @@ test("a symlinked sidecar resolution is refused, not followed into the repo", ()
   assert.notEqual(error, null);
   assert.equal(existsSync(bundle), false);
 });
+
+test("a caller whose interpreter has no PyYAML still bundles when it ships no pre-commit config", () => {
+  // `_hook_gate` parses `.pre-commit-config.yaml` with PyYAML, which the
+  // resolve job's install-hook-tools.sh puts on the interpreter. Nothing
+  // guarantees it anywhere else — not in a caller repository that runs no
+  // pre-commit, and not in the job that runs this suite, where a module-scope
+  // `import yaml` red every test in this file with `ModuleNotFoundError`
+  // instead of the behavior each one drives. The import belongs behind the
+  // config-exists guard, and this is what holds it there.
+  const { work } = midMerge();
+  const hide = mkdtempSync(join(tmpdir(), "auto-resolve-noyaml-"));
+  writeFileSync(
+    join(hide, "sitecustomize.py"),
+    `import sys
+
+
+class _BlockYaml:
+    def find_spec(self, name, path=None, target=None):
+        if name == "yaml" or name.startswith("yaml."):
+            raise ModuleNotFoundError("No module named 'yaml'")
+        return None
+
+
+sys.meta_path.insert(0, _BlockYaml())
+`,
+  );
+  // The blocker is real: an interpreter carrying it cannot import yaml, so a
+  // run that passes below passed without one rather than around this fixture.
+  assert.notEqual(
+    spawnSync("python3", ["-c", "import yaml"], {
+      env: { ...process.env, PYTHONPATH: hide },
+    }).status,
+    0,
+  );
+
+  writeFileSync(join(work, "a.md"), "resolved: feature + main\n");
+  const { error, bundle } = runBundle(work, "a.md", {
+    env: { PYTHONPATH: hide },
+  });
+
+  assert.equal(error, null);
+  assert.ok(existsSync(bundle));
+});
