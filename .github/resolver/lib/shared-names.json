@@ -1,0 +1,37 @@
+{
+  "pr_labels": {
+    "merge_conflict": "merge-conflict",
+    "auto_resolve_blocked": "auto-resolve-blocked",
+    "template_sync": "template-sync",
+    "claude_owned": "claude-owned",
+    "approved": "approved",
+    "requeue_exhausted": "requeue-exhausted",
+    "force_queue": "force-queue",
+    "review_gate_recheck": "review-gate-recheck",
+    "run_full_tests": "run-full-tests",
+    "security_scan": "security-scan"
+  },
+  "commit_status_marks": {
+    "auto_resolve_attempt": "auto-resolve/attempted",
+    "auto_resolve_handoff": "auto-resolve/handed-off",
+    "auto_resolve_declined": "auto-resolve/declined",
+    "wedge_repair": "auto-merge/unwedged",
+    "released_suffix": "-released"
+  },
+  "auto_resolve": {
+    "conflict_marker_re": "^(<{7}|\\|{7}|={7}|>{7})([ \\t]|$)",
+    "result_ref": "refs/auto-resolve/result"
+  },
+  "session_branch_prefix": "claude/",
+  "oauth_ladder_vars": [
+    "FAR_ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_4",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_5",
+    "CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_6",
+    "CLAUDE_CODE_OAUTH_TOKEN"
+  ],
+  "oauth_ladder_metered_vars": ["FAR_ANTHROPIC_API_KEY"]
+}
