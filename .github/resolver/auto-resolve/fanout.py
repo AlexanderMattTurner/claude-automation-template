@@ -118,7 +118,9 @@ _MODEL = os.environ.get("AUTO_RESOLVE_MODEL", "").strip() or "claude-opus-5"
 # The gate stays fail-closed and whitelist-only, so an input naming nothing
 # admits no bot rather than any.
 BOT_ACTORS = tuple(
-    os.environ.get("AUTO_RESOLVE_BOT_ACTORS", "github-actions").replace(",", " ").split()
+    os.environ.get("AUTO_RESOLVE_BOT_ACTORS", "github-actions")
+    .replace(",", " ")
+    .split()
 )
 
 # Per-side history a shard prompt carries. Bounded: the subjects are

@@ -93,6 +93,7 @@ def _marked_regions_reader():
 
     return marked_regions
 
+
 # Only a Python generator runs here. The `.mjs` ones reach their outputs through
 # `pnpm resolve-generated`, which prepare.sh already ran, so a region naming one
 # is a region that pass declined — repeating it would resolve nothing.

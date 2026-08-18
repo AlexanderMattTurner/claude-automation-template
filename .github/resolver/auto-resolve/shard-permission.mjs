@@ -34,7 +34,7 @@
  */
 import { resolve } from "node:path";
 
-import { isMain } from "../../../scripts/lib-cli-args.mjs";
+import { isMain } from "../lib/cli-args.mjs";
 
 /** Tools that write a path; each carries it as `file_path`. */
 const WRITE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);

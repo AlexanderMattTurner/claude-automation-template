@@ -15,8 +15,9 @@ read of them cannot produce a finding anyone can act on:
   - one made ENTIRELY of the parents' own edits (`hunk_traced_to_the_parents`);
   - one the HEAD has already undone, whole-file (`_superseded_paths`) or hunk
     by hunk (`hunk_undone_at_head`);
-  - a GENERATOR-OWNED output (the rule table in scripts/resolve-generated.mjs),
-    whose bytes a required check re-derives from source on the PR head.
+  - a GENERATOR-OWNED output (the caller's rule table, named by
+    AUTO_RESOLVE_RESOLVER_MJS), whose bytes a required check re-derives from
+    source on the PR head.
 Lockfiles are NOT in that set.
 
 A rendered section also carries git's own conflict notices for paths the
@@ -49,7 +50,6 @@ from pathlib import Path
 from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from repolint._root import repo_root  # noqa: E402,I001  # pylint: disable=wrong-import-position
 
 # pylint: disable=wrong-import-position  # must follow the sys.path insert above
 from _merge_delta_novelty import (  # noqa: E402
@@ -160,16 +160,28 @@ def _provenance(p1: str, p2: str, files: list[str]) -> str:
 
 @cache
 def _generated_paths() -> frozenset[str]:
-    """What a required check re-derives from source, from the rule table that
-    owns it (`scripts/resolve-generated.mjs --owned --rederived-only`). That
-    re-derivation is the whole reason a delta to one of these may be annotated
-    away instead of read, so a rule that does not claim it stays in the review.
-    A trailing-slash line is a rule's owned DIRECTORY, dropped here. Resolved
-    relative to THIS FILE, not the toplevel, since the reviewer runs this
-    against an untrusted PR head.
+    """What a required check re-derives from source, from the CALLING repository's
+    rule table (`--owned --rederived-only`). That re-derivation is the whole reason
+    a delta to one of these may be annotated away instead of read, so a rule that
+    does not claim it stays in the review. A trailing-slash line is a rule's owned
+    DIRECTORY, dropped here.
+
+    AUTO_RESOLVE_RESOLVER_MJS names that table as an ABSOLUTE path inside the
+    trusted base checkout. This reviewer runs with the untrusted PR head as its
+    cwd, and the table decides which deltas it stops reading, so a relative path
+    would let the pull request declare its own evil merge generator-owned. This
+    file ships with the resolver and no longer sits in the tree under review, so
+    there is no in-tree path left to derive it from either.
+
+    Unset is a caller that declares no rule table, and the empty set it returns
+    keeps every generated delta IN the review. Never a guessed default: a guess
+    that misses prints an empty ownership answer, which is the same output a
+    correct empty answer gives.
     """
-    rules = repo_root(Path(__file__)) / "scripts" / "resolve-generated.mjs"
-    owned = _capture("node", str(rules), "--owned", "--rederived-only").split()
+    rules = os.environ.get("AUTO_RESOLVE_RESOLVER_MJS", "").strip()
+    if not rules:
+        return frozenset()
+    owned = _capture("node", rules, "--owned", "--rederived-only").split()
     return frozenset(path for path in owned if not path.endswith("/"))
 
 
@@ -442,8 +454,8 @@ def _whole_file_annotations(
         elif path in generated:
             out += [
                 f"**Generator-owned:** `{safe}` — a build output "
-                "(`scripts/resolve-generated.mjs` owns its derivation). A required "
-                "check re-derives its bytes from source on this head and compares "
+                "(this repository's derived-file resolver owns its derivation). A "
+                "required check re-derives its bytes from source on this head and compares "
                 "them — the pre-commit regeneration hooks, or a freshness test — so "
                 "a line-by-line provenance read of them says nothing; review its "
                 "SOURCE instead.",

@@ -1,23 +1,10 @@
-# Auto-resolve a PR's merge conflicts with its base branch: an OPTIONAL
-# deterministic generated-file pre-pass (`pnpm resolve-generated`, only when the
-# repo defines that script) plus an LLM pass over the remaining SOURCE conflicts,
-# one bounded model call per conflicted file, pushed back as a normal merge
-# commit. Generated files whose sources also conflicted are excluded from the LLM
-# prompt and regenerated once the sources are resolved; a conflict with no textual
-# resolution (a `-merge`-attributed lockfile, a binary) fails the run with a PR
-# comment BEFORE any LLM cost. Safety rails: same-repo PRs only (a fork's token is
-# read-only and its author is untrusted), non-bot / non-draft authors, conflicts
-# in protected paths (this repo's Claude config and CI machinery) are still
-# resolved by the LLM but flagged for human review in the pushed-resolution
-# comment, and the resolved head is re-validated by CI + human review before it
-# can merge. The workflow comments on a PR only when it actually pushes something
-# (or fails mid-resolution) — a run that ends up doing nothing says nothing. The
-# merge commit is pushed with the workflow-capable TEMPLATE_SYNC_TOKEN (the only
-# token GitHub allows to update workflow files, and a PAT so the push retriggers
-# the PR's checks); if that secret is absent the PR is labeled
-# `auto-resolve-blocked` and skipped until a human provisions the token and
-# removes the label — otherwise every base push would re-run a paid resolve into
-# the same rejection.
+# THIS repository's entry point to the merge-conflict resolver: turn whichever
+# event fired into the set of eligible PRs, then hand each one to
+# auto-resolve-reusable.yaml. The resolution itself — the deterministic pre-pass,
+# the per-file model fan-out, the merge commit it pushes back, and the two-job
+# privilege split that makes all of it safe — lives in that workflow and is
+# documented in its own header. Nothing here holds a write credential.
+#
 # It mutates the PR branch, so — like the pre-commit autofix — it is NOT a
 # required check.
 #
@@ -27,65 +14,20 @@
 # alone, AUTO_RESOLVE_SELF_REVIEW_DISABLED=true for the pre-push review. README's
 # "Auto-resolving merge conflicts" section is the user-facing copy of this list.
 #
-# ── Trust model ───────────────────────────────────────────────────────────────
+# WHY FOUR TRIGGERS. A base branch that moves underneath a PR conflicts it while
+# emitting no `pull_request` event, and it does not re-fire `labeled` for a PR
+# that already carries the merge-conflict label — so the push-to-main scan is the
+# only trigger that reaches a conflict introduced from underneath the branch. The
+# schedule covers the born-conflicted PR: one cut from an older main conflicts the
+# instant it opens, and GitHub suppresses the `opened` event when a GITHUB_TOKEN
+# or app actor created it, so nothing else picks that PR up until the next push.
 #
-# TWO JOBS, and the split IS the security boundary. `resolve` checks out the PULL
-# REQUEST'S OWN HEAD and runs things out of it — the `setup-base-env` local
-# composite (a `uses: ./…` path resolves against the workspace, i.e. against the
-# PR's copy), `pnpm resolve-generated` (the PR's own node code), and the model
-# itself. `land` holds the push credential and runs none of that.
-#
-# The separation is load-bearing rather than tidy, because a single job leaks
-# through every step-to-step channel the runner provides. Anything executing in
-# `resolve` can append to $GITHUB_ENV — BASH_ENV=/tmp/x.sh makes the next `run:`
-# step source attacker shell before its first line — or to $GITHUB_PATH, or plant
-# a `git`/`gh` in a directory an earlier step published. So the unit of exposure
-# is the JOB, not the step: staging the resolver scripts from the base ref stops
-# a PR from rewriting the resolver's LOGIC, but it was never a boundary around
-# the resolver's CREDENTIALS. No such channel crosses a job boundary.
-#
-# One artifact crosses — a git bundle of the merge commit, and nothing else.
-# `land` treats it as UNTRUSTED: it replays the same merge itself in a tree the
-# model never touched and requires the bundled commit to differ from that replay
-# only in paths git's own merge left conflicted, with no markers, before it
-# pushes. It transmits no manifest for `land` to believe, because every claim it
-# could make is one `land` would have to re-derive anyway.
-#
-# Kept a SEPARATE file from the pull_request_target reviewers on purpose: this
-# workflow checks out the PR HEAD (the resolve job) to merge into it, whereas the
-# reviewers run under pull_request_target with base-only checkouts. Co-locating a
-# head checkout with pull_request_target trips CodeQL's untrusted-checkout query,
-# which is file-scoped and cannot see the per-job event gating — and it would
-# blind that query to the secrets-bearing reviewer jobs. Splitting keeps the
-# reviewers under full CodeQL coverage and this head-checkout resolver on its own
-# unprivileged triggers.
-#
-# A conflict is created either by the PR branch moving (a pull_request event) or
-# by the base branch moving underneath the PR (a push to main). The latter emits
-# NO pull_request event, and does not re-fire the `labeled` event for a PR that
-# already carries the merge-conflict label, so a push scan — re-checking every
-# open PR the same way the merge-conflict labeler does — is the only trigger that
-# reaches a conflict introduced from underneath the branch. The `discover` job
-# turns whichever event fired into the set of eligible PRs; `resolve` fans out
-# over them and `land` pushes what it produced.
-#
-# claude-code-action rejects `push` (and `schedule`) events outright
-# ("Unsupported event type"), so such a run never resolves directly: when its
-# scan finds conflicting PRs, the `relay` job re-fires this workflow as a
-# workflow_dispatch (which the action does support) and THAT run re-discovers and
-# resolves. GITHUB_TOKEN's recursion guard exempts workflow_dispatch, so the relay
-# dispatch does start a run; the dispatched run can't relay again (relay fires
-# only on push/schedule), so no loop.
-#
-# The scheduled scan closes the born-conflicted gap: a PR whose branch was cut
-# from an older main conflicts the instant it opens, but the `opened` event may
-# never drive a resolve — most sharply when the PR is opened via the API/app
-# token, since GitHub suppresses workflow triggers for events a GITHUB_TOKEN /
-# app actor generates (its own recursion guard). Such a PR then waits for the
-# next push-to-main scan, which is arbitrarily far off. The schedule re-scans
-# every open PR on a fixed cadence and relays exactly like the push scan, so a
-# conflicting PR is picked up within the interval no matter which events reached
-# (or skipped) it.
+# Neither push nor schedule can resolve directly — claude-code-action rejects both
+# ("Unsupported event type") — so the `relay` job re-fires this workflow as a
+# workflow_dispatch, which it accepts. GITHUB_TOKEN's recursion guard exempts
+# workflow_dispatch, so the relay does start a run, and relay fires only on
+# push/schedule, so the dispatched run cannot relay again.
+# ci-map: PR automation & review bots | Discovers this repository's conflicting PRs and hands each to the reusable resolver workflow
 name: Auto-resolve merge conflicts
 
 on:
@@ -189,10 +131,14 @@ jobs:
           # than scanning a tree that no longer carries it.
           AUTO_RESOLVE_RESOLVER_REPO: ${{ env.RESOLVER_REPOSITORY }}
           AUTO_RESOLVE_RESOLVER_REF: ${{ env.RESOLVER_REF }}
+          # Read as a name rather than expanded into the `run:` body below. A
+          # step's own `env:` outranks the job environment, so a write to
+          # $GITHUB_ENV cannot repoint which tree this step executes.
+          RESOLVER_DIR: ${{ steps.resolver.outputs.dir }}
         # No bootstrap guard: the script comes from the resolver clone above, so an
         # absent one is a bad RESOLVER_REF and fails loud instead of quietly
         # reporting an empty set.
-        run: python3 "${{ steps.resolver.outputs.dir }}/auto-resolve/discover.py"
+        run: python3 "${RESOLVER_DIR}/auto-resolve/discover.py"
 
   relay:
     name: Relay push/schedule scan as workflow_dispatch
@@ -255,5 +201,17 @@ jobs:
       # the fail-closed default: an agent transcript carries whatever the merge
       # exposed it to, so a repository with no redactor uploads nothing.
       protected-paths-regex: "^(\\.github/|\\.claude/|\\.hooks/)"
-    secrets: inherit
-
+    # Named rather than `secrets: inherit`, so this call passes only what the
+    # resolver declares and a consumer repository can copy the block verbatim.
+    # An unset secret arrives empty, which drops that ladder rung.
+    secrets:
+      FAR_ANTHROPIC_API_KEY: ${{ secrets.FAR_ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN_FALLBACK: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK }}
+      CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_2 }}
+      CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_3 }}
+      CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_4: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_4 }}
+      CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_5: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_5 }}
+      CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_6: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_6 }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      AUTOFIX_TOKEN_ORG: ${{ secrets.AUTOFIX_TOKEN_ORG }}
+      TEMPLATE_SYNC_TOKEN_ORG: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG }}

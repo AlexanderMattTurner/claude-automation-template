@@ -141,6 +141,7 @@ def _resolver_change_source(caller_repo: str) -> str:
         return f"the ref {remote[0]}@{remote[1]} names"
     return f"any of the {len(RESOLVER_PATHS)} paths in discover.py's RESOLVER_PATHS"
 
+
 # The `gh pr list --json` field set the scan reads. `commits` is deliberately
 # absent: it pulls each commit's `authors` connection, so GitHub's node estimate
 # for the listing is PRs x commits x authors — 200 x 250 x 100 blows past the
