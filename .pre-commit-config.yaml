@@ -162,9 +162,16 @@ repos:
         files: ^(\.claude/|\.hooks/|\.github/workflows/)
 
       - id: lint-skills
+        # Frontmatter is parsed with yaml.safe_load, not scanned: the shell
+        # predecessor read the description's extent with a `sed` range that ran
+        # into the NEXT key, so a `version: 1.2.3` line supplied the periods its
+        # sentence check wanted and a one-word description passed.
+        # `language: python` (not system) because the hook needs PyYAML, which
+        # the pre-commit workflow's bare python3.11 does not carry.
         name: lint Claude SKILL.md files
-        entry: bash .hooks/lint-skills.sh
-        language: system
+        entry: python .github/scripts/lint-skills.py
+        language: python
+        additional_dependencies: ["pyyaml>=6,<7"]
         files: ^\.claude/skills/.*\.md$
 
       # Depth-based parent-walking silently breaks when a test file moves;
@@ -204,8 +211,11 @@ repos:
         # A readStdinJson() inside a hook's isMain block must be in a try (or route
         # through runJudgeCli) — an unhandled stdin-parse rejection exits non-zero,
         # which is non-blocking, so the guardrail is silently lost (fail open).
+        # Real TS AST walk (typescript is a dev dep), so a `try` in a comment or a
+        # string cannot open a phantom try and a `"}"` literal cannot close a real
+        # one early; every isMain block in the file is inspected.
         name: readStdinJson() in a hook isMain block must be try-guarded
-        entry: python3 .github/scripts/check-hook-stdin-guarded.py
+        entry: node .github/scripts/check-hook-stdin-guarded.mjs
         language: system
         files: '^\.claude/hooks/.*\.mjs$'
         exclude: '\.test\.mjs$'
