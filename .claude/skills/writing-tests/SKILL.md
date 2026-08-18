@@ -91,18 +91,8 @@ defense; widen the check.
 
 ## Stubs
 
-- **A stub replacing a pipe-consuming command must drain stdin.** Under
-  `set -o pipefail`, a stub that exits without reading causes the writer's
-  `write()` to get EPIPE (rc 141) intermittently — independent of pipe-buffer
-  size. Add `cat >/dev/null` in the stub body so it consumes its input before
-  exiting.
-- **A stub standing in for a CLI must reject the flag combinations the real tool rejects.** A stub that silently accepts every invocation certifies only the author's reading of the interface; the real tool's refusal of an invalid flag pair makes those calls red in production while the stub keeps them green.
-- **Model the load-bearing behavior of a stub, not just its interface.** A stub for a process that reads stdin, argv, or env in a way the code under test depends on must reproduce that behavior — omitting it lets the test pass against the stub and fail against the real process.
-
-## Coverage blind spots
-
-- **V8 block coverage cannot see an always-true `&&` chain.** Every operand of a conjunction counts as executed once the expression evaluates, so a compound guard that all tests leave true reports 100% coverage while no conjunct is ever driven false. Extract the conjunction into a named pure predicate that takes its inputs as parameters, then test each conjunct in isolation with a synthetic input that makes it false.
-- **Scope a lint's or coverage tool's "test code" exemption by filename convention** (`test_*.py`, `*_test.py`, `conftest.py`), not by a `tests/` directory prefix. A library module colocated under `tests/` for organisational reasons is production code and must stay in scope.
+- **Don't write a stub. Drive the real thing.** A stub encodes your reading of a dependency; the real dependency encodes its own — and the two drift the moment the real tool changes a flag, an exit code, or an error format. The stub then silently greens invocations the real tool would reject. Use the real binary against a fixture directory, a recorded interaction, or a container image pinned in CI. **A stub is licensed only when the real thing genuinely cannot run in the test** (a paid API, hardware, a wall-clock boundary you cannot fake) — and the stub definition site says which of those applies. "Faster to write" is not a reason.
+- **When a stub is licensed, it must reject what the real tool rejects and consume what it consumes.** A stub that accepts every flag pair certifies only your reading of the interface; one that exits without draining stdin under `set -o pipefail` causes the writer's `write()` to get EPIPE (rc 141) intermittently, independent of pipe-buffer size. Reproduce the argv/stdin/env behavior the caller depends on, and add `cat >/dev/null` in the body when it stands in for a pipe consumer.
 
 ## Python test idioms
 
