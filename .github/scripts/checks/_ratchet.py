@@ -21,6 +21,7 @@ nothing. The scan root itself comes from `.github/scripts/_repo_root.py`.
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -50,21 +51,57 @@ class BaselineError(Exception):
     """The baseline file is missing, unreadable, or not a well-formed ratchet policy."""
 
 
+def _ignored_paths(root: Path) -> set[str]:
+    """The repo-relative paths `.gitignore` excludes, as git itself reports them.
+    A sub-agent worktree under `.claude/worktrees/` is ignored and holds a whole
+    second copy of this tree, so a walk that reads it charges one repo's
+    violations to another — and only ever in a working tree, never in CI's clean
+    checkout. Empty when ROOT is not a git repository, which is what a test's
+    scratch tree is."""
+    proc = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-files",
+            "-z",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "--directory",
+        ],
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return set()
+    return {p.rstrip("/") for p in proc.stdout.decode().split("\0") if p}
+
+
 def tracked_like_files(root: Path) -> list[str]:
-    """Repo-relative paths under ROOT, skipping VCS/dependency/cache dirs —
-    the `find`-driven stand-in for `git ls-files` a ratcheted check walks
-    instead of shelling out to git."""
+    """Repo-relative paths under ROOT, skipping VCS/dependency/cache dirs and
+    anything `.gitignore` excludes — the `find`-driven stand-in for
+    `git ls-files` a ratcheted check walks instead of listing from git."""
+    ignored = _ignored_paths(root)
     found: list[str] = []
     stack = [root]
     while stack:
         current = stack.pop()
         for entry in current.iterdir():
+            rel = str(entry.relative_to(root))
+            if rel in ignored:
+                continue
+            if entry.is_symlink():
+                # git does not descend a symlinked directory, so neither does
+                # this walk — following one double-counts its target's files,
+                # or loops forever when the link points at an ancestor.
+                continue
             if entry.is_dir():
                 if entry.name in _SKIP_DIRS:
                     continue
                 stack.append(entry)
             elif entry.is_file():
-                found.append(str(entry.relative_to(root)))
+                found.append(rel)
     return found
 
 
