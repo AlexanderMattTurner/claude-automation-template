@@ -25,7 +25,7 @@ CALLER = WORKFLOWS / "auto-resolve-conflicts.yaml"
 # Injected by Actions into every workflow, so it is never declared or passed.
 AUTOMATIC = {"GITHUB_TOKEN"}
 
-SECRET_REF = re.compile(r"\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)")
+SECRET_REF = re.compile(r"\bsecrets\.(?P<name>[A-Za-z_][A-Za-z0-9_]*)")
 
 
 def _declared() -> set[str]:

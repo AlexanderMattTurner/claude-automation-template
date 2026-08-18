@@ -11,8 +11,8 @@
 # Adopters turn it off with repository VARIABLES rather than by editing this
 # file, which template-sync would hand back: AUTO_RESOLVE_DISABLED=true for the
 # whole workflow, AUTO_RESOLVE_SCHEDULE_DISABLED=true for the backstop scan
-# alone, AUTO_RESOLVE_SELF_REVIEW_DISABLED=true for the pre-push review. README's
-# "Auto-resolving merge conflicts" section is the user-facing copy of this list.
+# alone. README's "Auto-resolving merge conflicts" section is the user-facing
+# copy of this list.
 #
 # WHY FOUR TRIGGERS. A base branch that moves underneath a PR conflicts it while
 # emitting no `pull_request` event, and it does not re-fire `labeled` for a PR
@@ -29,6 +29,13 @@
 # push/schedule, so the dispatched run cannot relay again.
 # ci-map: PR automation & review bots | Discovers this repository's conflicting PRs and hands each to the reusable resolver workflow
 name: Auto-resolve merge conflicts
+
+# concurrency-not-required: the expensive jobs are not in this file. The reusable
+# workflow keys `resolve` and `land` on `auto-resolve-pr-<n>`, both with
+# `cancel-in-progress: false`, so a resolution that has already paid a model
+# finishes. A workflow-level group here would cancel the whole call tree on the
+# next push and throw that spend away; the jobs this file does own — discover and
+# relay — are one `gh` scan each.
 
 on:
   pull_request: # not-required-check — mutates the PR branch; never gate merges on it
@@ -192,15 +199,20 @@ jobs:
       # workflow's `with:` cannot read `env`. Change both together.
       resolver-repository: AlexanderMattTurner/claude-automation-template
       resolver-ref: main
-      # This repository ships no scripts/lib_marked_region.py and no derived-file
-      # resolver, so the generated-region pre-pass and the deterministic pre-pass
-      # both stay off: every conflict reaches the model whole. A consumer that has
-      # them passes `marked-regions: true`, `resolver-mjs` and `pre-pass-command`.
+      # This repository ships no scripts/lib_marked_region.py, and its regen rule
+      # table (config/auto-resolve-regen-rules.json) ships EMPTY — so the
+      # generated-region pre-pass and the deterministic pre-pass both stay off and
+      # every conflict reaches the model whole. A consumer that declares rules
+      # passes `marked-regions: true`, `resolver-mjs` and `pre-pass-command`.
       #
       # `log-redactor` is likewise unset, which publishes NO fan-out logs. That is
       # the fail-closed default: an agent transcript carries whatever the merge
       # exposed it to, so a repository with no redactor uploads nothing.
-      protected-paths-regex: "^(\\.github/|\\.claude/|\\.hooks/)"
+      #
+      # A repository VARIABLE with this file's own default behind it. An adopter
+      # widens the flagged set without editing a synced file, which template-sync
+      # would hand straight back on the next run.
+      protected-paths-regex: ${{ vars.AUTO_RESOLVE_PROTECTED_RE || '^(\.github/|\.claude/|\.hooks/)' }}
     # Named rather than `secrets: inherit`, so this call passes only what the
     # resolver declares and a consumer repository can copy the block verbatim.
     # An unset secret arrives empty, which drops that ladder rung.

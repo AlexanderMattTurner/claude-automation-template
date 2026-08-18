@@ -88,7 +88,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib-ci-retry.sh"
 # error the caller is already reporting.
 apply_blocked_label() {
   local pr_num="$1" label="$2" tool="$3"
+  # Both stdouts are discarded rather than kept: `gh` echoes the label name and
+  # the PR URL, nothing reads either, and a kept stdout beside `|| true` is what
+  # turns a real failure into parseable output. Each stderr still reaches the log.
   retry gh label create "$label" --color e4e669 --force \
-    --description "${tool} cannot resolve this PR; remove the label to let it retry" || true
-  retry gh pr edit "$pr_num" --add-label "$label" || true
+    --description "${tool} cannot resolve this PR; remove the label to let it retry" >/dev/null || true
+  retry gh pr edit "$pr_num" --add-label "$label" >/dev/null || true
 }

@@ -1,4 +1,8 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2016
+#   Every `$name` below sits inside a GraphQL query string, where GitHub binds it
+#   from the `-F` flags beside it. Shell expansion there would send the VALUE
+#   where the query declares a variable, and the API would reject the document.
 # kcov-exclude: a GitHub Actions step body that no test runs: it reads the runner's context
 #   — GITHUB_*, a job-scoped GH_TOKEN, an actions/ working directory — or provisions the
 #   runner itself, so it has no entry point off a runner.

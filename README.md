@@ -205,14 +205,13 @@ Two jobs, and the split is the security boundary. `resolve` checks out the PR's 
 
 Conflicts are resolved one file per model call, in parallel, so a single hard file cannot burn the whole run's budget — and before anything is bundled, a second model reviews the merge-resolution delta (the changes present in neither parent) and either corrects it or refuses to hand it on.
 
-| Variable                            | Default                   | Effect                                                                                                                                                     |
-| ----------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTO_RESOLVE_DISABLED`             | unset                     | `true` turns the whole workflow off. Nothing is discovered, so nothing is resolved, pushed, or commented on.                                               |
-| `AUTO_RESOLVE_SCHEDULE_DISABLED`    | unset                     | `true` drops only the scheduled backstop scan. Conflicts are still resolved when a PR is opened, pushed to, or labelled `merge-conflict`.                  |
-| `AUTO_RESOLVE_SELF_REVIEW_DISABLED` | unset                     | `true` skips the pre-push self-review. The replay verification in `land` still runs; you lose the second opinion on the resolution's _content_.            |
-| `AUTO_RESOLVE_MAX_COMMIT_AGE_HOURS` | `24`                      | Only PRs whose newest commit is this recent are resolved, so a stale branch does not cost a model call on every push to the base. `0` disables the window. |
-| `AUTO_RESOLVE_ATTEMPT_TTL_HOURS`    | `6`                       | How long one attempt against a given PR head suppresses the next, so a push to the base costs at most one resolution per PR rather than one per push.      |
-| `AUTO_RESOLVE_PROTECTED_RE`         | `^(\.claude/\|\.github/)` | Paths matched here are still resolved, but the pushed-resolution comment flags them for human review.                                                      |
+| Variable                            | Default                             | Effect                                                                                                                                                     |
+| ----------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTO_RESOLVE_DISABLED`             | unset                               | `true` turns the whole workflow off. Nothing is discovered, so nothing is resolved, pushed, or commented on.                                               |
+| `AUTO_RESOLVE_SCHEDULE_DISABLED`    | unset                               | `true` drops only the scheduled backstop scan. Conflicts are still resolved when a PR is opened, pushed to, or labelled `merge-conflict`.                  |
+| `AUTO_RESOLVE_MAX_COMMIT_AGE_HOURS` | `24`                                | Only PRs whose newest commit is this recent are resolved, so a stale branch does not cost a model call on every push to the base. `0` disables the window. |
+| `AUTO_RESOLVE_ATTEMPT_TTL_HOURS`    | `6`                                 | How long one attempt against a given PR head suppresses the next, so a push to the base costs at most one resolution per PR rather than one per push.      |
+| `AUTO_RESOLVE_PROTECTED_RE`         | `^(\.github/\|\.claude/\|\.hooks/)` | Paths matched here are still resolved, but the pushed-resolution comment flags them for human review.                                                      |
 
 To stop auto-resolve on **one PR** rather than repo-wide, add the `auto-resolve-blocked` label to it; remove the label to let it retry. The workflow applies that label itself when it hits a wall a human has to clear (no push token, a token without the `workflow` scope), so it never re-spends on the same rejection.
 

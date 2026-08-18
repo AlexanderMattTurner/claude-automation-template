@@ -111,7 +111,7 @@ patch_comment_if_changed() {
   if [[ -z "$current" ]]; then
     scratch="$(mktemp)"
     current="$scratch"
-    retry_stdout gh api "$endpoint" --jq .body >"$current" || true
+    retry_stdout gh api "$endpoint" --jq .body >"$current" || true # allow-exit-suppress: a failed read leaves "$current" empty, and the `-s` test below then treats the comment as changed — the same answer an absent comment gives, which is the safe direction here
   fi
   if [[ -s "$current" ]] && [[ "$(tr -d '\r' <"$current")" == "$(tr -d '\r' <"$body_file")" ]]; then
     unchanged=1

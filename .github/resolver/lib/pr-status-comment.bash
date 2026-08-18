@@ -91,7 +91,7 @@ if [[ -z "${_PR_STATUS_COMMENT_SOURCED:-}" ]]; then
     _pr_status_comment_write "$file" "$2" "${3:-}"
     if id="$(marker_owned_comment_id "repos/${repo}/issues/${pr}/comments" "$PR_STATUS_COMMENT_MARKER")"; then
       if [[ -n "$id" ]]; then
-        patch_comment_if_changed "repos/${repo}/issues/comments/${id}" "$file" || true
+        patch_comment_if_changed "repos/${repo}/issues/comments/${id}" "$file" || true # allow-exit-suppress: a status comment is cosmetic, and nothing below reads this call — failing the resolve because a comment edit lost a race is the worse outcome
       else
         # Deliberately unretried: a create is not idempotent, and a retry that lost its
         # response posts the second comment this file exists to prevent. A create that
@@ -132,7 +132,7 @@ if [[ -z "${_PR_STATUS_COMMENT_SOURCED:-}" ]]; then
         grep -qF "$PR_STATUS_COMMENT_WORKING_MARKER" "$current"; }; then
       file="$(mktemp)"
       _pr_status_comment_write "$file" "$2"
-      patch_comment_if_changed "$endpoint" "$file" "$current" || true
+      patch_comment_if_changed "$endpoint" "$file" "$current" || true # allow-exit-suppress: this runs from an `always()` step reporting a job that already ended, so nothing reads the result and a nonzero exit here would only mask the outcome being reported
       rm -f "$file"
     fi
     rm -f "$current"

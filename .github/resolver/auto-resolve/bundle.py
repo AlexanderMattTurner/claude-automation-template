@@ -40,7 +40,9 @@ from typing import Any, cast
 # sit unflushed while a child writes straight through, and the two interleave. Line
 # buffering flushes every print() at its trailing newline — except a `print(…, end="")`
 # tail, so the two sites printing raw subprocess output flush `sys.stdout` themselves.
-cast(io.TextIOWrapper, sys.stdout).reconfigure(line_buffering=True)
+cast(io.TextIOWrapper, sys.stdout).reconfigure(
+    line_buffering=True
+)  # allow-stdio-swap: single-threaded CLI, reconfigured once at import before any work starts
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR))
@@ -916,5 +918,7 @@ if __name__ == "__main__":
     # is typed as TextIO, which has no `reconfigure`; a harness can replace it with a
     # capture object that is not a TextIOWrapper, so guard instead of asserting.
     if isinstance(sys.stdout, io.TextIOWrapper):
-        sys.stdout.reconfigure(line_buffering=True)
+        sys.stdout.reconfigure(
+            line_buffering=True
+        )  # allow-stdio-swap: single-threaded CLI, at the entry point before main() starts
     main()

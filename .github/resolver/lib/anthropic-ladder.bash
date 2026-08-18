@@ -75,13 +75,12 @@ _anthropic_post() {
   local code
   # The `||` stand-in covers only an EMPTY capture: curl writes its own `000` on
   # a transport failure, so a second one would report `HTTP 000000`.
-  # pin-exempt: Anthropic API JSON response, parsed by jq — never executed/extracted
   # curl-retry-ok: gb_retry dispatches this whole function, so the attempt loop is one frame up
   code=$(curl -s -o "$_ANTHROPIC_RESPONSE_FILE" -w "%{http_code}" \
     --max-time 30 https://api.anthropic.com/v1/messages \
     -H "Content-Type: application/json" \
     "${AUTH_HEADERS[@]}" \
-    -d "$_ANTHROPIC_REQUEST_BODY") || code="${code:-000}"
+    -d "$_ANTHROPIC_REQUEST_BODY") || code="${code:-000}" # pin-exempt: Anthropic API JSON response, parsed by jq — never executed/extracted
   [[ "$code" == "200" ]] && return 0
   _anthropic_report_failure "$code"
   _ANTHROPIC_HTTP_CODE="$code"

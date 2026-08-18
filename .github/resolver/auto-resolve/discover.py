@@ -45,7 +45,9 @@ from typing import NoReturn, cast
 # A separate process from bundle.py, so its own print-vs-inherited-subprocess
 # ordering needs its own fix — see bundle.py's fuller PROBLEM CLASS comment
 # beside its own `reconfigure` call.
-cast(io.TextIOWrapper, sys.stdout).reconfigure(line_buffering=True)
+cast(io.TextIOWrapper, sys.stdout).reconfigure(
+    line_buffering=True
+)  # allow-stdio-swap: single-threaded CLI, reconfigured once at import before any work starts
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(1, str(Path(__file__).resolve().parent.parent))

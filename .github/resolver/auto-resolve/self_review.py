@@ -480,7 +480,9 @@ def review_rounds(cfg: SelfReviewConfig) -> None:
                 f"::error::self-review: still flagged after {cfg.max_rounds} fix "
                 "round(s); refusing to push. Findings:"
             )
-            sys.stderr.write(review.read_text(encoding="utf-8"))
+            sys.stderr.write(
+                review.read_text(encoding="utf-8")
+            )  # allow-stdio-swap: a write to the job log from a single-threaded CLI, never a swap of the stream
             sys.stderr.flush()
             raise SystemExit(_EXIT_FLAGGED)
         round_number += 1

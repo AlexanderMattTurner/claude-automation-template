@@ -31,9 +31,11 @@ zero_cost=true
 wall_clock_only=false
 if [[ -n "${EXECUTION_FILE:-}" && -s "$EXECUTION_FILE" ]]; then
   # Never fails the decision: a missing metric point costs less than a refused
-  # merge resolution.
+  # merge resolution. Its stdout is discarded rather than kept — nothing below
+  # reads the recorder's chatter, and a kept stdout beside `|| true` is what
+  # makes a real failure look like an answer. Its stderr still reaches the log.
   /usr/bin/python3 "$(dirname "${BASH_SOURCE[0]}")/record-claude-usage.py" \
-    "$EXECUTION_FILE" || true
+    "$EXECUTION_FILE" >/dev/null || true
   result_jq='if type == "array" then (map(select(.type == "result")) | last) else . end'
   if ! jq -e "${result_jq} | .is_error == true" "$EXECUTION_FILE" >/dev/null; then
     errored=false

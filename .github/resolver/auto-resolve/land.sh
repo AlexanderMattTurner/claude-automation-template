@@ -137,7 +137,7 @@ replay_tree="$(git -C "$raw" write-tree)"
 
 if git grep -nE "$CONFLICT_MARKER_RE" "$merge_sha" -- . >/dev/null 2>&1; then
   echo "Conflict markers in the bundled merge:"
-  git grep -nE "$CONFLICT_MARKER_RE" "$merge_sha" -- . || true
+  git grep -nE "$CONFLICT_MARKER_RE" "$merge_sha" -- . || true # allow-exit-suppress: the identical grep already succeeded in the `if` above, so this repeat exists only to print the hits; `fail` on the next line refuses the merge whatever it exits
   fail "the resolved merge still carries conflict markers" \
     "the resolution left conflict markers behind."
 fi
@@ -380,10 +380,8 @@ if [[ ${#de_lines[@]} -gt 0 ]]; then
   # on the strength of green CI alone — a human has to read the note above first.
   #   Best-effort: a failed disable must not swallow the push that already
   #   succeeded, so it only warns.
-  # echo-fallback-ok: the text is a GitHub warning annotation on stdout, not a
-  # value anything downstream parses.
   gh pr merge "$PR" --disable-auto ||
-    echo "::warning::could not disable auto-merge on PR #${PR} after a dropped-edit fallback; review it before merging."
+    echo "::warning::could not disable auto-merge on PR #${PR} after a dropped-edit fallback; review it before merging." # echo-fallback-ok: a GitHub warning annotation on stdout, not a value anything downstream parses
 fi
 
 # Paths the model read and DECLINED. bundle.py kept this branch's content there so the files it did resolve could still land, which drops the base's edit to each declined path — the same consequence as the dropped-edit note above, from a different cause. Only the resolve job knows a decline happened, so this is read from its sidecar; every term is a reason to hold the PR back, never to relax anything. The blob comparison confirms the drop actually happened rather than trusting the list.
@@ -484,10 +482,8 @@ if [[ -n "${declined_note}${unverified_note}${modify_delete_note}${dropped_edit_
     python3 "$_SCRIPT_DIR/../pr/body_region.py" "$body_file" "$note_file" \
       "$RESOLUTION_MARKER" "$RESOLUTION_END_MARKER" >"$spliced"
     mv "$spliced" "$body_file"
-    # echo-fallback-ok: the text is a GitHub warning annotation on stdout, not a
-    # value; the resolution is already pushed and the verdicts are in the comment.
     gh pr edit "$PR" --body-file "$body_file" ||
-      echo "::warning::could not append the resolution's verdicts to PR #${PR}'s description; they are in the comment above."
+      echo "::warning::could not append the resolution's verdicts to PR #${PR}'s description; they are in the comment above." # echo-fallback-ok: a GitHub warning annotation on stdout, not a value; the resolution is already pushed and the verdicts are in the comment
   else
     echo "::warning::could not read PR #${PR}'s description to append the resolution's verdicts; they are in the comment above."
   fi

@@ -31,7 +31,9 @@ source "$_SCRIPT_DIR/../lib/pr-status-comment.bash"
 # Only the states whose own text names the branch demand it. A caller that brings its
 # own body (STATE=verdict) has no reason to hold BASE_REF, and dying on a variable it
 # never reads would drop the diagnosis it came here to publish.
-[[ "$STATE" == verdict ]] || : "${BASE_REF:?BASE_REF required}"
+if [[ "$STATE" != verdict ]]; then
+  : "${BASE_REF:?BASE_REF required}"
+fi
 
 run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}"
 run_link="[this run](${run_url})"
