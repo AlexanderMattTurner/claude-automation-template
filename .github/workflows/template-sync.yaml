@@ -318,7 +318,7 @@ jobs:
           resolver_dir="${RUNNER_TEMP}/template-sync-resolver"
           git clone --no-tags --depth 1 \
             "https://github.com/AlexanderMattTurner/agent-resolve-merge-conflicts.git" "${resolver_dir}"
-          git -C "${resolver_dir}" fetch --no-tags --depth 1 origin 76e970409ac2f3b8101d6c904bec49187bc93b32
+          git -C "${resolver_dir}" fetch --no-tags --depth 1 origin ba747a3e64e954a30148db13be96e0cf0002f0a8
           git -C "${resolver_dir}" checkout --detach FETCH_HEAD
           RESOLVER_DIR="${resolver_dir}/.github/resolver" \
             bash .github/scripts/template-sync-resolve.sh
