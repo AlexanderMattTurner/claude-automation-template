@@ -448,3 +448,143 @@ def test_web_session_permissions_grant_requires_real_proxy_host(
     assert result.returncode == 0, result.stderr
     local_settings = sandbox / ".claude" / "settings.local.json"
     assert local_settings.is_file() == expect_settings
+
+
+PINNED_VERSION = "9.9.9"
+
+
+@pytest.fixture
+def mergiraf_sandbox(sandbox: Path) -> Path:
+    """`sandbox` plus the two files session-setup.sh's mergiraf leg reads: the
+    version pin and the installer. The installer is a stub that records its
+    destination argument and registers a driver — the real one downloads a
+    pinned tarball from Codeberg, which a unit test must not depend on."""
+    # Not under-provisioning: the hook installs nothing off Linux/x86_64 because
+    # the pinned asset is linux_amd64, so there is no install to assert.
+    if (os.uname().sysname, os.uname().machine) != ("Linux", "x86_64"):
+        pytest.skip("session-setup.sh installs mergiraf only on Linux/x86_64")
+    scripts = sandbox / ".github" / "scripts"
+    scripts.mkdir(parents=True)
+    (sandbox / ".github" / "tool-versions.sh").write_text(
+        f"MERGIRAF_VERSION=v{PINNED_VERSION}\n", encoding="utf-8"
+    )
+    installer = scripts / "install-mergiraf.sh"
+    installer.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" "$1" >>installer-calls\n'
+        'git config merge.mergiraf.driver "stub-driver"\n',
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+    return sandbox
+
+
+def _fake_home(sandbox: Path, mergiraf_version: str | None) -> Path:
+    """A HOME whose .local/bin the hook prepends to PATH, optionally holding a
+    `mergiraf` that reports *mergiraf_version*."""
+    bin_dir = sandbox / "home" / ".local" / "bin"
+    bin_dir.mkdir(parents=True)
+    if mergiraf_version is not None:
+        stub = bin_dir / "mergiraf"
+        stub.write_text(
+            f'#!/bin/bash\nprintf "mergiraf {mergiraf_version}\\n"\n', encoding="utf-8"
+        )
+        stub.chmod(0o755)
+    return sandbox / "home"
+
+
+def _installer_calls(sandbox: Path) -> list[str]:
+    record = sandbox / "installer-calls"
+    if not record.exists():
+        return []
+    return record.read_text(encoding="utf-8").splitlines()
+
+
+def _registered_driver(sandbox: Path) -> str:
+    result = subprocess.run(
+        ["git", "config", "--get", "merge.mergiraf.driver"],
+        cwd=sandbox,
+        capture_output=True,
+        text=True,
+        # The isolation run_session_setup already applies: mergiraf's own setup
+        # docs register a --global driver, which `--get` would answer with.
+        env={
+            **os.environ,
+            "GIT_CONFIG_GLOBAL": str(sandbox / "gitconfig-global"),
+            "GIT_CONFIG_SYSTEM": os.devnull,
+        },
+    )
+    return result.stdout.strip()
+
+
+@pytest.mark.parametrize(
+    "installed_version, pre_registered, expect_install",
+    [
+        (None, False, True),
+        (PINNED_VERSION, True, False),
+        # A checkout that survived a MERGIRAF_VERSION bump keeps a binary the
+        # pin no longer names, so presence alone must not license the skip.
+        ("0.1.0", True, True),
+        # The binary alone leaves every merge=mergiraf attribute inert.
+        (PINNED_VERSION, False, True),
+    ],
+    ids=["nothing-installed", "pinned-and-registered", "stale-binary", "no-driver"],
+)
+def test_mergiraf_install_runs_unless_pin_and_driver_both_hold(
+    mergiraf_sandbox: Path,
+    installed_version: str | None,
+    pre_registered: bool,
+    expect_install: bool,
+) -> None:
+    home = _fake_home(mergiraf_sandbox, installed_version)
+    if pre_registered:
+        subprocess.run(
+            ["git", "config", "merge.mergiraf.driver", "already-there"],
+            cwd=mergiraf_sandbox,
+            check=True,
+        )
+
+    _, result = run_session_setup(
+        mergiraf_sandbox,
+        extra_env={"HOME": str(home)},
+        scrub=("GH_REPO", "CLAUDE_CODE_BASE_REF"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    expected_calls = [str(home / ".local" / "bin")] if expect_install else []
+    assert _installer_calls(mergiraf_sandbox) == expected_calls
+    assert _registered_driver(mergiraf_sandbox) == (
+        "stub-driver" if expect_install else "already-there"
+    )
+
+
+@pytest.mark.parametrize(
+    "installer_body, expected_warning",
+    [
+        ("exit 1\n", "Failed to install mergiraf"),
+        # install-mergiraf.sh exits 0 after installing the binary when git
+        # refuses the checkout (dubious ownership), which leaves every
+        # merge=mergiraf attribute inert. The exit status alone misses it.
+        ("exit 0\n", "merge.mergiraf.driver is unset"),
+    ],
+    ids=["installer-fails", "installer-succeeds-without-registering"],
+)
+def test_mergiraf_leg_warns_and_the_session_still_starts(
+    mergiraf_sandbox: Path, installer_body: str, expected_warning: str
+) -> None:
+    """Every other tool here is optional, and a session with no working merge
+    driver must still start — it merges as it did before .gitattributes named
+    the driver, and says so."""
+    installer = mergiraf_sandbox / ".github" / "scripts" / "install-mergiraf.sh"
+    installer.write_text(f"#!/usr/bin/env bash\n{installer_body}", encoding="utf-8")
+    installer.chmod(0o755)
+
+    _, result = run_session_setup(
+        mergiraf_sandbox,
+        extra_env={"HOME": str(_fake_home(mergiraf_sandbox, None))},
+        scrub=("GH_REPO", "CLAUDE_CODE_BASE_REF"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert expected_warning in result.stderr
+    assert _registered_driver(mergiraf_sandbox) == ""

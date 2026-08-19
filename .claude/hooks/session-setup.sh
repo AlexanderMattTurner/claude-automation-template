@@ -151,6 +151,68 @@ if [[ -n "${CLAUDE_CODE_BASE_REF:-}" ]]; then
 fi
 
 #######################################
+# Syntax-aware merges (mergiraf)
+#######################################
+
+# .gitattributes marks file types `merge=mergiraf`, and every one of those
+# attributes is INERT until this checkout has the binary on PATH and
+# merge.mergiraf.driver in its git config. Git says nothing when either is
+# missing — it falls back to its built-in line merge — so a session resolving a
+# conflict by hand silently got the line merge. CI registers the driver in
+# template-sync's checkout and nowhere else; this is the session's half.
+#
+# .github/scripts/install-mergiraf.sh owns the pinned download, the sha256
+# refusal, the `solve -p` contract probe and the `git config` pair, so this
+# decides only WHETHER to call it.
+install_mergiraf() {
+  local installer="$PROJECT_DIR/.github/scripts/install-mergiraf.sh"
+  local pins="$PROJECT_DIR/.github/tool-versions.sh"
+  [[ -f "$installer" && -f "$pins" ]] || return 0
+
+  # The installer downloads a linux_amd64 asset and reads it with sha256sum, so
+  # on any other host it would install a binary that cannot run. Say so rather
+  # than warn about a download that was never going to work.
+  if [[ "$(uname -s) $(uname -m)" != "Linux x86_64" ]]; then
+    echo "mergiraf: no pinned asset for $(uname -s)/$(uname -m) — this checkout keeps git's line merge" >&2
+    return 0
+  fi
+
+  # Skip on the PINNED version, not on mere presence: a checkout that survives a
+  # MERGIRAF_VERSION bump would otherwise keep the old binary forever, and an
+  # unrelated mergiraf on PATH would bypass the digest check entirely. The pin
+  # is read by SOURCING the file bash owns, in a subshell this hook discards.
+  local pinned
+  pinned="$(bash -c 'source "$1" && printf "%s" "${MERGIRAF_VERSION#v}"' _ "$pins")"
+  if [[ -n "$pinned" ]] &&
+    [[ "$(mergiraf --version 2>/dev/null)" == "mergiraf ${pinned}" ]] &&
+    [[ -n "$(git -C "$PROJECT_DIR" config --get merge.mergiraf.driver)" ]]; then
+    return 0
+  fi
+
+  local bindir="$HOME/.local/bin"
+  mkdir -p "$bindir" # bare-mkdir-ok: the post-condition is checked on the next line
+  [[ -d "$bindir" ]] || {
+    warn "mergiraf: $bindir is not a directory — merges use git's line merge"
+    return 0
+  }
+
+  # A warn, not an exit: every other tool here is optional, and a session with no
+  # mergiraf must still start. It merges as it did before the attributes existed.
+  # The bound is on the whole install because curl's --connect-timeout does not
+  # cap an established transfer, so a stalled download would hang session start.
+  if ! (cd "$PROJECT_DIR" && timeout --kill-after=10 300 bash "$installer" "$bindir") >/dev/null; then
+    warn "Failed to install mergiraf — merges in this checkout use git's line merge"
+  elif [[ -z "$(git -C "$PROJECT_DIR" config --get merge.mergiraf.driver)" ]]; then
+    # The post-condition, not the exit status: install-mergiraf.sh exits 0 after
+    # installing the binary when git refuses the checkout (dubious ownership),
+    # which leaves every merge=mergiraf attribute inert and says nothing.
+    warn "mergiraf installed but merge.mergiraf.driver is unset — merges use git's line merge"
+  fi
+}
+
+install_mergiraf
+
+#######################################
 # GitHub CLI auth
 #######################################
 
