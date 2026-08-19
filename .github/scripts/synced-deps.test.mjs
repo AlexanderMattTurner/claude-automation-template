@@ -60,7 +60,13 @@ function runInstaller(root, script, stubs, args = []) {
     [join(root, ".github", "scripts", script), ...args],
     {
       encoding: "utf8",
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+      env: {
+        ...process.env,
+        PATH: `${dir}:${process.env.PATH}`,
+        // Self-contained: install-mergiraf.sh skips the download when its cache
+        // already holds the tarball, and this run asserts the download is reached.
+        MERGIRAF_CACHE_DIR: join(root, "cache"),
+      },
     },
   );
 }

@@ -4,8 +4,12 @@
 #
 # mergiraf backs auto-resolve/prepare.sh's structural pre-pass: the syntax-aware
 # merge that resolves the structural subset of a PR's conflicts so only genuinely
-# semantic conflicts reach the paid LLM pass. The version and the tarball SHA-256
-# both live in .github/tool-versions.sh.
+# semantic conflicts reach the paid LLM pass, and every merge in the checkout that
+# runs this, because it also registers the merge driver .gitattributes names. The
+# version and the tarball SHA-256 both live in .github/tool-versions.sh; the digest
+# there — not the release's own checksum manifest — is the anchor, because a
+# manifest fetched from the same tag as the artifact is re-published by anyone who
+# can re-tag the release.
 set -euo pipefail
 
 dest="${1:-/usr/local/bin}"
@@ -26,43 +30,96 @@ source "$pins"
 
 # An absent or empty pin must never degrade into "install without verifying" —
 # that is a supply-chain check reporting green because its input went missing.
+# Fail closed and name the fix, so it is one edit away.
 [[ -n "${MERGIRAF_VERSION:-}" && -n "${MERGIRAF_SHA256_linux_amd64:-}" ]] || {
   echo "install-mergiraf: MERGIRAF_VERSION / MERGIRAF_SHA256_linux_amd64 unset or empty in" >&2
-  echo "  .github/tool-versions.sh; refusing to install an unverified binary." >&2
+  echo "  .github/tool-versions.sh; refusing to install an unverified binary. Set the version" >&2
+  echo "  and its digest there together, from the release tarball's own sha256sum." >&2
   exit 1
 }
 
+# Already done: the destination holds the PINNED version and this checkout binds
+# the driver to THAT binary. Deciding it here keeps the pin parsed in one place — a
+# caller that re-derived it would silently re-download forever if the spelling ever
+# stopped matching its own strip. Presence alone is not enough: an unrelated
+# mergiraf, or one left by an earlier pin, must still be replaced and re-verified.
+bound_driver="$(git config --local --get merge.mergiraf.driver 2>/dev/null)" || bound_driver=""
+if [[ "$("${dest}/mergiraf" --version 2>/dev/null)" == "mergiraf ${MERGIRAF_VERSION#v}" ]] &&
+  [[ "$bound_driver" == "$(cd "$dest" && pwd)/mergiraf "* ]]; then
+  exit 0
+fi
+
 tarball="mergiraf_x86_64-unknown-linux-gnu.tar.gz"
+# Codeberg is contacted only after a version bump: the tarball is kept here, so a
+# re-run on the same machine — or a caller that restores and saves
+# MERGIRAF_CACHE_DIR — skips the download. Per-user, because setup.sh runs this on
+# a developer machine where a shared /tmp entry another account owns is not
+# writable by this one, and the `mv` below would then abort every re-run.
+cache_dir="${MERGIRAF_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/mergiraf}"
+sha_line="${MERGIRAF_SHA256_linux_amd64}  ${cache_dir}/${tarball}"
 workdir="$(mktemp -d)"
-trap 'rm -rf "$workdir"' EXIT
+partial="${cache_dir}/${tarball}.$$"
+trap 'rm -rf "$workdir" "$partial"' EXIT
 
-# --retry/--retry-all-errors so a transient release-CDN 5xx is retried, and
-# --fail so a 5xx is an error rather than an error page saved as the tarball,
-# which then fails `tar` with a misleading "not recoverable".
-curl -fsSL --retry 6 --retry-all-errors --retry-delay 15 --connect-timeout 30 \
-  -o "${workdir}/${tarball}" \
-  "https://codeberg.org/mergiraf/mergiraf/releases/download/${MERGIRAF_VERSION}/${tarball}"
+# A cached tarball is never trusted on its own: an absent, stale, or truncated one
+# fails this probe and is re-downloaded rather than used.
+if ! sha256sum --check --status <<<"$sha_line" 2>/dev/null; then
+  mkdir -p "$cache_dir" # bare-mkdir-ok: Linux CI runner or session container — this script installs a linux_amd64 asset and cannot run on a BSD/macOS host
+  # --retry/--retry-all-errors so a transient release-CDN 5xx is retried, and
+  # --fail so a 5xx is an error rather than an error page saved as the tarball,
+  # which then fails `tar` with a misleading "not recoverable".
+  curl -fsSL --retry 6 --retry-all-errors --retry-delay 15 --connect-timeout 30 \
+    -o "$partial" \
+    "https://codeberg.org/mergiraf/mergiraf/releases/download/${MERGIRAF_VERSION}/${tarball}"
+  # Downloaded INTO the cache directory, so this rename stays within one directory
+  # and is atomic. A rename across filesystems degrades to copy-then-unlink, and a
+  # concurrent install would read the partial copy.
+  mv "$partial" "${cache_dir}/${tarball}"
+fi
+cp "${cache_dir}/${tarball}" "${workdir}/${tarball}"
 
-# This refusal is what blocks a swapped, re-tagged, or corrupted release asset
-# from reaching PATH: the digest is the reviewed one from tool-versions.sh, so a
-# mismatch aborts the install rather than certifying a binary nobody vetted.
-(cd "$workdir" && echo "${MERGIRAF_SHA256_linux_amd64}  ${tarball}" | sha256sum -c -)
+# This refusal is what blocks a swapped, re-tagged, or corrupted release asset —
+# or a tampered cache entry — from reaching PATH: the digest is the reviewed one
+# from tool-versions.sh, so a mismatch aborts the install rather than certifying a
+# binary nobody vetted. It gates the PRIVATE copy that `tar` then reads, so no
+# write to the shared cache can land between the check and the extract.
+sha256sum --check <<<"${MERGIRAF_SHA256_linux_amd64}  ${workdir}/${tarball}"
 tar xzf "${workdir}/${tarball}" -C "$workdir" mergiraf
 
 # sudo only when the destination is not already writable, so this works both on a
 # hosted runner (root-owned /usr/local/bin) and in a local checkout writing to a
 # user-owned dir.
+mkdir -p "$dest" # bare-mkdir-ok: `install` below is the post-condition and fails loudly
 if [[ -w "$dest" ]]; then
   install -m 0755 "${workdir}/mergiraf" "${dest}/mergiraf"
 else
   sudo install -m 0755 "${workdir}/mergiraf" "${dest}/mergiraf"
 fi
 
+# A rejected binary is already installed by the time the refusals below fire, so a
+# driver bound by an earlier run would point every merge at it. Unbinding restores
+# git's line merge, which is what those refusals promise.
+unbind_driver() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  # --local on BOTH: this script only ever binds locally, and `--unset` writes to
+  # local whatever `--get` searched. An all-scope read would pass on a host
+  # carrying a global binding, then unset nothing and leave the driver bound.
+  git config --local --get merge.mergiraf.driver >/dev/null || return 0
+  git config --local --unset merge.mergiraf.driver
+}
+
 # The guard's success is the post-condition, not the exit status of the install:
-# a destination off PATH would leave the resolver looking at a binary it cannot
-# find, which is precisely the missing-prerequisite state this script prevents.
-command -v mergiraf >/dev/null || {
-  echo "install-mergiraf: installed to ${dest} but mergiraf is not on PATH" >&2
+# bare `mergiraf` must be THIS binary. The driver below names an absolute path, but
+# auto-resolve/prepare.sh's pre-pass invokes the bare command, so a destination off
+# PATH leaves it looking at a binary it cannot find — and a different mergiraf
+# earlier on PATH is worse, because the pre-pass would run a version no digest vetted.
+dest_dir="$(cd "$dest" && pwd)"
+mergiraf_bin="${dest_dir}/mergiraf"
+resolved="$(command -v mergiraf)" || resolved=""
+[[ -n "$resolved" && "$(cd "$(dirname "$resolved")" && pwd)" = "$dest_dir" ]] || {
+  echo "install-mergiraf: installed ${mergiraf_bin}, but 'mergiraf' on PATH resolves to" >&2
+  echo "  '${resolved:-nothing}'; refusing to certify a binary this run did not verify." >&2
+  unbind_driver
   exit 1
 }
 
@@ -76,18 +133,20 @@ command -v mergiraf >/dev/null || {
 # fails it too.
 probe="${workdir}/contract.json"
 printf '%s\n' '{' '<<<<<<< ours' '  "a": 1,' '||||||| base' '=======' '  "b": 2,' '>>>>>>> theirs' '  "c": 3' '}' >"$probe"
-solved="$(mergiraf solve -p "$probe")" || {
+solved="$("$mergiraf_bin" solve -p "$probe")" || {
   echo "install-mergiraf: 'mergiraf solve -p' exited non-zero on a conflict it must resolve —" >&2
   echo "  the ${MERGIRAF_VERSION} CLI contract auto-resolve/prepare.sh depends on has changed." >&2
+  unbind_driver
   exit 1
 }
 [[ "$solved" != *'<<<<<<<'* && "$solved" == *'"a": 1'* && "$solved" == *'"b": 2'* ]] || {
   echo "install-mergiraf: 'mergiraf solve -p' reported success without merging both sides of the" >&2
   echo "  probe conflict; refusing to install a binary the structural pre-pass cannot trust. Got:" >&2
   printf '%s\n' "$solved" >&2
+  unbind_driver
   exit 1
 }
-mergiraf --version
+"$mergiraf_bin" --version
 
 # Register the git merge driver the committed .gitattributes already points at,
 # so every merge in this checkout — the resolver's own `git merge`, a rebase, a
@@ -95,9 +154,12 @@ mergiraf --version
 # is what keeps the attribute honest: the driver name is only ever bound to a
 # binary whose contract was just proven above, and a checkout without mergiraf
 # leaves it unbound (git silently falls back to the built-in text driver) rather
-# than pointing at a command that does not exist. --git makes it overwrite the
-# left revision in place, and -t bounds a pathological parse so the merge falls
-# back to git's algorithm instead of hanging the job.
+# than pointing at a command that does not exist. The value names the ABSOLUTE
+# path: git config outlives any one shell's PATH, so a bare command would break
+# every merge run from a terminal or IDE whose PATH lacks the install directory —
+# and a failing driver is a conflict git reports, not a fallback to the line merge.
+# --git makes it overwrite the left revision in place, and -t bounds a pathological
+# parse so the merge falls back to git's algorithm instead of hanging the job.
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   echo "install-mergiraf: not inside a git work tree, so the merge driver was not registered;"
   echo "  the binary is installed and usable. Re-run this from a checkout to bind the driver."
@@ -105,4 +167,4 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 }
 git config merge.mergiraf.name "mergiraf structured merge"
 git config merge.mergiraf.driver \
-  'mergiraf merge --git %O %A %B -s %S -x %X -y %Y -p %P -t 30000'
+  "${mergiraf_bin} merge --git %O %A %B -s %S -x %X -y %Y -p %P -t 30000"
