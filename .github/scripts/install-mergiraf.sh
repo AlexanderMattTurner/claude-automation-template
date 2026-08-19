@@ -38,6 +38,13 @@ source "$pins"
   exit 1
 }
 
+# Spelled once, so the skip below compares the WHOLE bound value against what the
+# bind at the end of this script writes. Matching the path alone would keep an
+# argument string an earlier revision bound, and a changed flag or timeout would
+# never reach an installed checkout. --git overwrites the left revision in place;
+# -t bounds a pathological parse so the merge falls back to git's algorithm.
+driver_args=" merge --git %O %A %B -s %S -x %X -y %Y -p %P -t 30000"
+
 # Already done: the destination holds the PINNED version, bare `mergiraf` resolves
 # to it, and this checkout binds the driver to it. The PATH condition is not
 # redundant — the environment is what changes between runs, and a foreign mergiraf
@@ -49,7 +56,7 @@ if resolved="$(command -v mergiraf)"; then resolved_dir="$(cd "$(dirname "$resol
 if [[ "$("${dest}/mergiraf" --version 2>/dev/null)" == "mergiraf ${MERGIRAF_VERSION#v}" ]]; then
   installed_dir="$(cd "$dest" && pwd)"
   want="${installed_dir}/mergiraf"
-  if [[ "$resolved_dir" = "$installed_dir" && "$bound_driver" == "${want@Q} "* ]]; then
+  if [[ "$resolved_dir" = "$installed_dir" && "$bound_driver" = "${want@Q}${driver_args}" ]]; then
     exit 0
   fi
 fi
@@ -163,8 +170,6 @@ solved="$("$mergiraf_bin" solve -p "$probe")" || {
 # path: git config outlives any one shell's PATH, so a bare command would break
 # every merge run from a terminal or IDE whose PATH lacks the install directory —
 # and a failing driver is a conflict git reports, not a fallback to the line merge.
-# --git makes it overwrite the left revision in place, and -t bounds a pathological
-# parse so the merge falls back to git's algorithm instead of hanging the job.
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   echo "install-mergiraf: not inside a git work tree, so the merge driver was not registered;"
   echo "  the binary is installed and usable. Re-run this from a checkout to bind the driver."
@@ -173,5 +178,4 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
 git config merge.mergiraf.name "mergiraf structured merge"
 # @Q shell-quotes the path: git hands this value to a shell, so a destination
 # containing a space would otherwise split into two words and fail every merge.
-git config merge.mergiraf.driver \
-  "${mergiraf_bin@Q} merge --git %O %A %B -s %S -x %X -y %Y -p %P -t 30000"
+git config merge.mergiraf.driver "${mergiraf_bin@Q}${driver_args}"

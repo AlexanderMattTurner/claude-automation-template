@@ -1,14 +1,16 @@
-"""install-mergiraf.sh's already-done skip — the one decision every caller
-delegates to it instead of re-deriving the pin.
+"""install-mergiraf.sh — the decisions every caller delegates to it rather than
+re-deriving: whether the install is already done, whether the downloaded tarball
+is the pinned one, and what `merge.mergiraf.driver` ends up bound to.
 
-The download is never exercised: `curl` is stubbed to fail, so a run that does
-NOT skip is visible as a non-zero exit that names the stub. What is driven for
-real is the script's own comparison of the pinned version against the binary at
-the destination and the driver bound in the checkout.
+No test reaches the network. `curl` is stubbed throughout: to fail, so a run that
+did NOT skip is a non-zero exit naming the stub; or to serve bytes the test
+chose. Everything after it — the digest refusal, the PATH guard, the contract
+probe, the `git config` pair — runs for real.
 """
 
 import os
 import subprocess
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -35,7 +37,7 @@ def sandbox(tmp_path: Path) -> Path:
         INSTALLER.read_bytes()
     )
     (tmp_path / ".github" / "tool-versions.sh").write_text(
-        f"MERGIRAF_VERSION=v{PINNED_VERSION}\nMERGIRAF_SHA256_linux_amd64=deadbeef\n",
+        f"MERGIRAF_VERSION=v{PINNED_VERSION}\nMERGIRAF_SHA256_linux_amd64={'f' * 64}\n",
         encoding="utf-8",
     )
     (tmp_path / "bin").mkdir()
@@ -136,23 +138,29 @@ def test_skips_when_the_pinned_binary_is_installed_resolved_and_bound(
         (PINNED_VERSION, "elsewhere", True),
         (PINNED_VERSION, None, True),
         (PINNED_VERSION, "dest", False),
+        (PINNED_VERSION, "stale-args", True),
     ],
     ids=[
         "stale-binary",
         "driver-names-another-path",
         "no-driver",
         "another-mergiraf-wins-on-path",
+        "driver-carries-an-older-argument-string",
     ],
 )
 def test_reinstalls_when_the_pin_or_the_binding_does_not_match(
     sandbox: Path, installed_version: str, driver_dir: str | None, on_path: bool
 ) -> None:
     """Each arm is a state where the destination's binary is not provably the one
-    this checkout merges through, so the download must be attempted. The last is
-    the environment changing under a checkout the first three call settled: a
-    foreign mergiraf ahead on PATH is what auto-resolve/prepare.sh would run."""
+    this checkout merges through, so the download must be attempted. Two are the
+    environment or the config changing under a checkout the first three call
+    settled: a foreign mergiraf ahead on PATH is what auto-resolve/prepare.sh
+    would run, and a driver an older revision of this script bound names the
+    right binary with arguments this revision no longer writes."""
     dest = install_binary(sandbox, installed_version)
-    if driver_dir is not None:
+    if driver_dir == "stale-args":
+        bind_driver(sandbox, f"'{dest / 'mergiraf'}' merge --git %O %A %B -t 5")
+    elif driver_dir is not None:
         bind_driver(sandbox, driver_value(sandbox / driver_dir / "mergiraf"))
     if not on_path:
         foreign = sandbox / "bin" / "mergiraf"
@@ -180,8 +188,9 @@ ACCEPTED_BINARY = (
 def stub_the_download(sandbox: Path, binary: str = REJECTED_BINARY) -> None:
     """Replace the network and the archive tools, so a run reaches the PATH guard.
 
-    The digest is NOT weakened as a shortcut: it never sees a real tarball here, and
-    every refusal after the install is left in place for the tests to drive.
+    `sha256sum` is stubbed only because no real tarball is involved; the refusal
+    it stands in for is driven for real by the digest-mismatch test below. Every
+    refusal after the install is left in place for the tests here to drive.
     """
     stubs = {
         # `-o <path>`: the tarball's bytes never matter, only that the file exists.
@@ -275,4 +284,38 @@ def test_a_failed_contract_probe_unbinds_the_driver(
 
     assert result.returncode == 1
     assert expected in result.stderr
+    assert local_driver(sandbox) == ""
+
+
+def test_a_digest_mismatch_refuses_before_installing(sandbox: Path) -> None:
+    """The pinned digest is the supply-chain anchor, so a tarball that does not
+    match it must abort before anything reaches the destination.
+
+    `sha256sum` and `tar` are the real ones here — only `curl` is stubbed, and it
+    serves a WELL-FORMED tarball carrying a working `mergiraf`. That is what
+    makes the refusal the only thing standing between this run and an installed
+    binary: deleting the digest check leaves `tar` and `install` both succeeding.
+    """
+    (sandbox / ".github" / "tool-versions.sh").write_text(
+        f"MERGIRAF_VERSION=v{PINNED_VERSION}\nMERGIRAF_SHA256_linux_amd64={'0' * 64}\n",
+        encoding="utf-8",
+    )
+    served = sandbox / "served.tar.gz"
+    payload = sandbox / "mergiraf"
+    payload.write_text(f"#!/usr/bin/env bash\n{ACCEPTED_BINARY}", encoding="utf-8")
+    payload.chmod(0o755)
+    with tarfile.open(served, "w:gz") as archive:
+        archive.add(payload, arcname="mergiraf")
+    (sandbox / "bin" / "curl").write_text(
+        "#!/usr/bin/env bash\n"
+        'while [[ $# -gt 1 ]]; do [[ "$1" = "-o" ]] && out="$2"; shift; done\n'
+        f'cp "{served}" "$out"\n',
+        encoding="utf-8",
+    )
+    dest = sandbox / "dest"
+
+    result = run_installer(sandbox, dest, path_prefix=dest)
+
+    assert result.returncode != 0
+    assert not (dest / "mergiraf").exists()
     assert local_driver(sandbox) == ""
