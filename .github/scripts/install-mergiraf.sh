@@ -38,15 +38,19 @@ source "$pins"
   exit 1
 }
 
-# Already done: the destination holds the PINNED version and this checkout binds
-# the driver to THAT binary. Deciding it here keeps the pin parsed in one place — a
-# caller that re-derived it would silently re-download forever if the spelling ever
-# stopped matching its own strip. Presence alone is not enough: an unrelated
-# mergiraf, or one left by an earlier pin, must still be replaced and re-verified.
+# Already done: the destination holds the PINNED version, bare `mergiraf` resolves
+# to it, and this checkout binds the driver to it. The PATH condition is not
+# redundant — the environment is what changes between runs, and a foreign mergiraf
+# that appeared since would otherwise be certified by a skip. Deciding it here keeps
+# the pin parsed in one place, so no caller re-derives it and drifts.
 bound_driver="$(git config --local --get merge.mergiraf.driver 2>/dev/null)" || bound_driver=""
-if [[ "$("${dest}/mergiraf" --version 2>/dev/null)" == "mergiraf ${MERGIRAF_VERSION#v}" ]] &&
-  [[ "$bound_driver" == "$(cd "$dest" && pwd)/mergiraf "* ]]; then
-  exit 0
+resolved_dir=""
+if resolved="$(command -v mergiraf)"; then resolved_dir="$(cd "$(dirname "$resolved")" && pwd)"; fi
+if [[ "$("${dest}/mergiraf" --version 2>/dev/null)" == "mergiraf ${MERGIRAF_VERSION#v}" ]]; then
+  want="$(cd "$dest" && pwd)/mergiraf"
+  if [[ "$resolved_dir" = "$(dirname "$want")" && "$bound_driver" == "${want@Q} "* ]]; then
+    exit 0
+  fi
 fi
 
 tarball="mergiraf_x86_64-unknown-linux-gnu.tar.gz"
@@ -166,5 +170,7 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
   exit 0
 }
 git config merge.mergiraf.name "mergiraf structured merge"
+# @Q shell-quotes the path: git hands this value to a shell, so a destination
+# containing a space would otherwise split into two words and fail every merge.
 git config merge.mergiraf.driver \
-  "${mergiraf_bin} merge --git %O %A %B -s %S -x %X -y %Y -p %P -t 30000"
+  "${mergiraf_bin@Q} merge --git %O %A %B -s %S -x %X -y %Y -p %P -t 30000"
