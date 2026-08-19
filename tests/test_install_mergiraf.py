@@ -252,3 +252,27 @@ def test_a_refusal_leaves_a_global_driver_alone(sandbox: Path) -> None:
     assert result.returncode == 1
     assert local_driver(sandbox) == ""
     assert global_driver(sandbox) == "global-driver"
+
+
+@pytest.mark.parametrize(
+    "binary, expected",
+    [
+        ("exit 1\n", "exited non-zero on a conflict it must resolve"),
+        ('cat "$3"\n', "reported success without merging both sides"),
+    ],
+    ids=["solve-exits-non-zero", "solve-leaves-the-markers"],
+)
+def test_a_failed_contract_probe_unbinds_the_driver(
+    sandbox: Path, binary: str, expected: str
+) -> None:
+    """The binary is installed before the probe runs, so a driver an earlier run
+    bound would point every merge at the copy the probe just rejected."""
+    dest = sandbox / "dest"
+    stub_the_download(sandbox, binary)
+    bind_driver(sandbox, driver_value(dest / "mergiraf"))
+
+    result = run_installer(sandbox, dest, path_prefix=dest)
+
+    assert result.returncode == 1
+    assert expected in result.stderr
+    assert local_driver(sandbox) == ""

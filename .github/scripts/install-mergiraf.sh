@@ -47,8 +47,9 @@ bound_driver="$(git config --local --get merge.mergiraf.driver 2>/dev/null)" || 
 resolved_dir=""
 if resolved="$(command -v mergiraf)"; then resolved_dir="$(cd "$(dirname "$resolved")" && pwd)"; fi
 if [[ "$("${dest}/mergiraf" --version 2>/dev/null)" == "mergiraf ${MERGIRAF_VERSION#v}" ]]; then
-  want="$(cd "$dest" && pwd)/mergiraf"
-  if [[ "$resolved_dir" = "$(dirname "$want")" && "$bound_driver" == "${want@Q} "* ]]; then
+  installed_dir="$(cd "$dest" && pwd)"
+  want="${installed_dir}/mergiraf"
+  if [[ "$resolved_dir" = "$installed_dir" && "$bound_driver" == "${want@Q} "* ]]; then
     exit 0
   fi
 fi
