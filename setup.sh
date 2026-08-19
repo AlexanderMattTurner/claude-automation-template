@@ -39,10 +39,13 @@ fi
 # pinned asset is linux_amd64, so every other host is skipped and keeps the line
 # merge it had before.
 if [[ "$(uname -s) $(uname -m)" = "Linux x86_64" ]]; then
-  mergiraf_dest="/usr/local/bin"
-  case ":${PATH}:" in
-  *":${HOME}/.local/bin:"*) mergiraf_dest="${HOME}/.local/bin" ;;
-  esac
+  # Under $HOME, never /usr/local/bin: that directory is root-owned on an
+  # ordinary machine, so the installer would take its `sudo install` arm and the
+  # one-command setup would stop on a root password prompt for a tool the adopter
+  # did not ask for. Worse, `timeout` below runs sudo outside the foreground
+  # process group, so the prompt cannot be answered and the leg burns 300s.
+  mergiraf_dest="${HOME}/.local/bin"
+  mkdir -p "$mergiraf_dest" # bare-mkdir-ok: install-mergiraf.sh's PATH guard is the post-condition
   echo "Installing mergiraf (pinned, digest-verified) into ${mergiraf_dest}..."
   # `timeout` because curl's --connect-timeout does not cap an established
   # transfer, so a stalled download would hang the whole setup.

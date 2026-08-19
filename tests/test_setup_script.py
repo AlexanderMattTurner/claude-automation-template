@@ -47,7 +47,7 @@ def run_setup(sandbox: Path, installer_body: str) -> subprocess.CompletedProcess
     )
     installer.chmod(0o755)
     home = sandbox / "home"
-    (home / ".local" / "bin").mkdir(parents=True)
+    home.mkdir(exist_ok=True)
     return subprocess.run(
         ["bash", "setup.sh"],
         cwd=sandbox,
@@ -56,7 +56,10 @@ def run_setup(sandbox: Path, installer_body: str) -> subprocess.CompletedProcess
         env={
             **os.environ,
             "HOME": str(home),
-            "PATH": f"{home / '.local' / 'bin'}{os.pathsep}{os.environ['PATH']}",
+            # Deliberately WITHOUT $HOME/.local/bin: setup.sh must not fall back
+            # to a root-owned /usr/local/bin, which would make the installer
+            # escalate with sudo and stall the one-command setup on a prompt.
+            "PATH": os.environ["PATH"],
             # A host with a global merge.mergiraf.driver — mergiraf's own setup
             # docs register one — would answer for this sandbox otherwise.
             "GIT_CONFIG_GLOBAL": str(sandbox / "gitconfig-global"),
@@ -85,11 +88,13 @@ def test_setup_registers_the_merge_driver(sandbox: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert registered_driver(sandbox) == "stub-driver"
-    # $HOME/.local/bin is on PATH here, so it wins over /usr/local/bin: the
-    # installer refuses to bind a driver whose binary is not on PATH.
+    # Under $HOME even when it is not on PATH, and created before the call: a
+    # root-owned destination would send the installer through `sudo install`.
+    bindir = sandbox / "home" / ".local" / "bin"
     assert (sandbox / "installer-calls").read_text(encoding="utf-8").splitlines() == [
-        str(sandbox / "home" / ".local" / "bin")
+        str(bindir)
     ]
+    assert bindir.is_dir()
 
 
 @pytest.mark.parametrize(
