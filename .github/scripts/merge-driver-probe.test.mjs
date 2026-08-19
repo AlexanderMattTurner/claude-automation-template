@@ -12,10 +12,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scratchDir } from "./lib-test-scratch.mjs";
+
+// Removed on exit rather than per test: a case that throws never reaches its own
+// cleanup, and one leaked directory per failing run adds up.
+const scratched = [];
+process.on("exit", () => {
+  for (const dir of scratched) rmSync(dir, { recursive: true, force: true });
+});
+const scratchDir = (prefix) => {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  scratched.push(dir);
+  return dir;
+};
 
 const SCRIPT = join(
   dirname(fileURLToPath(import.meta.url)),
