@@ -448,3 +448,148 @@ def test_web_session_permissions_grant_requires_real_proxy_host(
     assert result.returncode == 0, result.stderr
     local_settings = sandbox / ".claude" / "settings.local.json"
     assert local_settings.is_file() == expect_settings
+
+
+@pytest.fixture
+def mergiraf_sandbox(sandbox: Path) -> Path:
+    """`sandbox` plus the one file session-setup.sh's mergiraf leg reads. The
+    installer is a stub that records its destination argument and registers a
+    driver — the real one downloads a pinned tarball from Codeberg, which a unit
+    test must not depend on."""
+    # Not under-provisioning: the hook installs nothing off Linux/x86_64 because
+    # the pinned asset is linux_amd64, so there is no install to assert.
+    if (os.uname().sysname, os.uname().machine) != ("Linux", "x86_64"):
+        pytest.skip("session-setup.sh installs mergiraf only on Linux/x86_64")
+    scripts = sandbox / ".github" / "scripts"
+    scripts.mkdir(parents=True)
+    installer = scripts / "install-mergiraf.sh"
+    installer.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" "$1" >>installer-calls\n'
+        'git config merge.mergiraf.driver "stub-driver"\n',
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+    return sandbox
+
+
+def _fake_home(sandbox: Path) -> Path:
+    """A HOME whose .local/bin the hook prepends to PATH and passes to the
+    installer as its destination."""
+    (sandbox / "home" / ".local" / "bin").mkdir(parents=True)
+    return sandbox / "home"
+
+
+def _installer_calls(sandbox: Path) -> list[str]:
+    record = sandbox / "installer-calls"
+    if not record.exists():
+        return []
+    return record.read_text(encoding="utf-8").splitlines()
+
+
+def _registered_driver(sandbox: Path) -> str:
+    result = subprocess.run(
+        ["git", "config", "--get", "merge.mergiraf.driver"],
+        cwd=sandbox,
+        capture_output=True,
+        text=True,
+        # The isolation run_session_setup already applies: mergiraf's own setup
+        # docs register a --global driver, which `--get` would answer with.
+        env={
+            **os.environ,
+            "GIT_CONFIG_GLOBAL": str(sandbox / "gitconfig-global"),
+            "GIT_CONFIG_SYSTEM": os.devnull,
+        },
+    )
+    return result.stdout.strip()
+
+
+def test_the_hook_calls_the_installer_and_leaves_the_driver_it_bound(
+    mergiraf_sandbox: Path,
+) -> None:
+    """install-mergiraf.sh owns the pin, the digest and the already-done skip, so
+    the hook calls it unconditionally rather than re-deriving any of that. The
+    destination is the bin directory the hook prepends to PATH, because the
+    installer refuses to bind a driver whose binary is not on PATH."""
+    home = _fake_home(mergiraf_sandbox)
+
+    _, result = run_session_setup(
+        mergiraf_sandbox,
+        extra_env={"HOME": str(home)},
+        scrub=("GH_REPO", "CLAUDE_CODE_BASE_REF"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _installer_calls(mergiraf_sandbox) == [str(home / ".local" / "bin")]
+    assert _registered_driver(mergiraf_sandbox) == "stub-driver"
+
+
+@pytest.mark.parametrize(
+    "installer_body, pre_registered, expected_warning",
+    [
+        ("exit 1\n", False, "merges in this checkout use git's line merge"),
+        # A download or digest refusal aborts before the binary is replaced, so
+        # the checkout keeps merging through the driver an earlier run bound —
+        # the one outcome "line merge" does not describe.
+        ("exit 1\n", True, "keep using the already-bound driver"),
+        # install-mergiraf.sh exits 0 after installing the binary when git
+        # refuses the checkout (dubious ownership), which leaves every
+        # merge=mergiraf attribute inert. The exit status alone misses it.
+        ("exit 0\n", False, "merge.mergiraf.driver is unset"),
+    ],
+    ids=["failed-with-nothing-bound", "failed-with-a-driver-bound", "no-driver-bound"],
+)
+def test_mergiraf_leg_warns_and_the_session_still_starts(
+    mergiraf_sandbox: Path,
+    installer_body: str,
+    pre_registered: bool,
+    expected_warning: str,
+) -> None:
+    """Every other tool here is optional, and a session with no working merge
+    driver must still start. Each warn names what the checkout actually merges
+    with afterwards, which is not the same in all three states."""
+    installer = mergiraf_sandbox / ".github" / "scripts" / "install-mergiraf.sh"
+    installer.write_text(f"#!/usr/bin/env bash\n{installer_body}", encoding="utf-8")
+    installer.chmod(0o755)
+    if pre_registered:
+        subprocess.run(
+            ["git", "config", "--local", "merge.mergiraf.driver", "already-there"],
+            cwd=mergiraf_sandbox,
+            check=True,
+        )
+
+    _, result = run_session_setup(
+        mergiraf_sandbox,
+        extra_env={"HOME": str(_fake_home(mergiraf_sandbox))},
+        scrub=("GH_REPO", "CLAUDE_CODE_BASE_REF"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert expected_warning in result.stderr
+    assert _registered_driver(mergiraf_sandbox) == (
+        "already-there" if pre_registered else ""
+    )
+
+
+def test_a_global_driver_does_not_answer_for_this_checkout(
+    mergiraf_sandbox: Path,
+) -> None:
+    """install-mergiraf.sh binds locally and nowhere else, so both warns read the
+    local scope. mergiraf's own setup docs tell users to register a global
+    driver, and it would otherwise silence the warning while merges ran through a
+    binary this run never verified."""
+    installer = mergiraf_sandbox / ".github" / "scripts" / "install-mergiraf.sh"
+    installer.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    installer.chmod(0o755)
+    (mergiraf_sandbox / "gitconfig-global").write_text(
+        '[merge "mergiraf"]\n\tdriver = global-driver\n', encoding="utf-8"
+    )
+
+    _, result = run_session_setup(
+        mergiraf_sandbox,
+        extra_env={"HOME": str(_fake_home(mergiraf_sandbox))},
+        scrub=("GH_REPO", "CLAUDE_CODE_BASE_REF"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "merge.mergiraf.driver is unset" in result.stderr
