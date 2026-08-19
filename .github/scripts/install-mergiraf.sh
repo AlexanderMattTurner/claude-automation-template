@@ -62,39 +62,20 @@ if [[ "$("${dest}/mergiraf" --version 2>/dev/null)" == "mergiraf ${MERGIRAF_VERS
 fi
 
 tarball="mergiraf_x86_64-unknown-linux-gnu.tar.gz"
-# Codeberg is contacted only after a version bump: the tarball is kept here, so a
-# re-run on the same machine — or a caller that restores and saves
-# MERGIRAF_CACHE_DIR — skips the download. Per-user, because setup.sh runs this on
-# a developer machine where a shared /tmp entry another account owns is not
-# writable by this one, and the `mv` below would then abort every re-run.
-cache_dir="${MERGIRAF_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/mergiraf}"
-sha_line="${MERGIRAF_SHA256_linux_amd64}  ${cache_dir}/${tarball}"
 workdir="$(mktemp -d)"
-partial="${cache_dir}/${tarball}.$$"
-trap 'rm -rf "$workdir" "$partial"' EXIT
+trap 'rm -rf "$workdir"' EXIT
 
-# A cached tarball is never trusted on its own: an absent, stale, or truncated one
-# fails this probe and is re-downloaded rather than used.
-if ! sha256sum --check --status <<<"$sha_line" 2>/dev/null; then
-  mkdir -p "$cache_dir" # bare-mkdir-ok: Linux CI runner or session container — this script installs a linux_amd64 asset and cannot run on a BSD/macOS host
-  # --retry/--retry-all-errors so a transient release-CDN 5xx is retried, and
-  # --fail so a 5xx is an error rather than an error page saved as the tarball,
-  # which then fails `tar` with a misleading "not recoverable".
-  curl -fsSL --retry 6 --retry-all-errors --retry-delay 15 --connect-timeout 30 \
-    -o "$partial" \
-    "https://codeberg.org/mergiraf/mergiraf/releases/download/${MERGIRAF_VERSION}/${tarball}"
-  # Downloaded INTO the cache directory, so this rename stays within one directory
-  # and is atomic. A rename across filesystems degrades to copy-then-unlink, and a
-  # concurrent install would read the partial copy.
-  mv "$partial" "${cache_dir}/${tarball}"
-fi
-cp "${cache_dir}/${tarball}" "${workdir}/${tarball}"
+# --retry/--retry-all-errors so a transient release-CDN 5xx is retried, and
+# --fail so a 5xx is an error rather than an error page saved as the tarball,
+# which then fails `tar` with a misleading "not recoverable". Downloaded into a
+# private directory, so nothing else can write the bytes between here and `tar`.
+curl -fsSL --retry 6 --retry-all-errors --retry-delay 15 --connect-timeout 30 \
+  -o "${workdir}/${tarball}" \
+  "https://codeberg.org/mergiraf/mergiraf/releases/download/${MERGIRAF_VERSION}/${tarball}"
 
-# This refusal is what blocks a swapped, re-tagged, or corrupted release asset —
-# or a tampered cache entry — from reaching PATH: the digest is the reviewed one
-# from tool-versions.sh, so a mismatch aborts the install rather than certifying a
-# binary nobody vetted. It gates the PRIVATE copy that `tar` then reads, so no
-# write to the shared cache can land between the check and the extract.
+# This refusal is what blocks a swapped, re-tagged, or corrupted release asset
+# from reaching PATH: the digest is the reviewed one from tool-versions.sh, so a
+# mismatch aborts the install rather than certifying a binary nobody vetted.
 sha256sum --check <<<"${MERGIRAF_SHA256_linux_amd64}  ${workdir}/${tarball}"
 tar xzf "${workdir}/${tarball}" -C "$workdir" mergiraf
 

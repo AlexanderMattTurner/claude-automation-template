@@ -69,9 +69,6 @@ def git_env(sandbox: Path, path_prefix: Path | None = None) -> dict[str, str]:
     return {
         **os.environ,
         "PATH": os.pathsep.join(entries),
-        # Self-contained: otherwise the reinstall arms create and consult the
-        # developer's real ~/.cache/mergiraf.
-        "MERGIRAF_CACHE_DIR": str(sandbox / "cache"),
         # A host with a global merge.mergiraf.driver — mergiraf's own setup docs
         # register one — would answer for this sandbox otherwise.
         "GIT_CONFIG_GLOBAL": str(sandbox / "gitconfig-global"),
@@ -195,9 +192,7 @@ def stub_the_download(sandbox: Path, binary: str = REJECTED_BINARY) -> None:
     stubs = {
         # `-o <path>`: the tarball's bytes never matter, only that the file exists.
         "curl": 'while [[ $# -gt 1 ]]; do [[ "$1" = "-o" ]] && out="$2"; shift; done\n: >"$out"\n',
-        # Non-zero for the cached-tarball pre-check (`--status`), zero for the
-        # verification of the private copy.
-        "sha256sum": '[[ " $* " == *" --status "* ]] && exit 1\nexit 0\n',
+        "sha256sum": "exit 0\n",
         # `xzf <tarball> -C <workdir> mergiraf`
         "tar": 'while [[ $# -gt 1 ]]; do [[ "$1" = "-C" ]] && into="$2"; shift; done\n'
         "cat >\"${into}/mergiraf\" <<'FAKE'\n"
