@@ -15,10 +15,14 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # A committed `.patch`/`.diff` is exempt from every hook that rewrites
+      # bytes. A unified diff's context line for a BLANK line is a lone space,
+      # so stripping it makes `git apply` answer `corrupt patch`; appending a
+      # newline or rewriting line endings breaks the same file the same way.
       - id: trailing-whitespace
-        exclude: ^pnpm-lock\.yaml$
+        exclude: ^(pnpm-lock\.yaml|.*\.(patch|diff))$
       - id: end-of-file-fixer
-        exclude: ^pnpm-lock\.yaml$
+        exclude: ^(pnpm-lock\.yaml|.*\.(patch|diff))$
       - id: check-yaml
       - id: check-json
       - id: check-merge-conflict
@@ -30,6 +34,7 @@ repos:
       - id: check-symlinks
       - id: mixed-line-ending
         args: [--fix=lf]
+        exclude: ^.*\.(patch|diff)$
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1
