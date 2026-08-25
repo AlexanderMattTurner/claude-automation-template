@@ -283,7 +283,7 @@ jobs:
             Please review the changes and merge if appropriate.
           branch: template-sync
           delete-branch: true
-          labels: ${{ steps.sync.outputs.has_conflicts == 'true' && 'template-sync,merge-conflict' || 'template-sync' }}
+          labels: template-sync
 
       # Resolve IN THIS RUN rather than posting an @claude comment and hoping a
       # separate workflow gets to it. The PR then arrives readable instead of
