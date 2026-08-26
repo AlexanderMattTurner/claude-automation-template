@@ -44,7 +44,8 @@ def run(tmp_path: Path, **overrides: str):
         f'printf "%s\\n" "$*" >> "{log}"\n'
         # The read-back the script performs after arming.
         'if [[ "$1 $2" == "pr view" ]]; then echo true; fi\n'
-        "exit 0\n"
+        "exit 0\n",
+        encoding="utf-8",
     )
     (bin_dir / "gh").chmod(0o755)
     env = {
@@ -62,7 +63,7 @@ def run(tmp_path: Path, **overrides: str):
         env=env,
         cwd=REPO_ROOT,
     )
-    calls = log.read_text() if log.exists() else ""
+    calls = log.read_text(encoding="utf-8") if log.exists() else ""
     return res, calls
 
 
@@ -126,7 +127,8 @@ def test_a_rejected_arming_fails_loud(tmp_path: Path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     (bin_dir / "gh").write_text(
-        '#!/usr/bin/env bash\nif [[ "$1 $2" == "pr view" ]]; then echo false; fi\nexit 0\n'
+        '#!/usr/bin/env bash\nif [[ "$1 $2" == "pr view" ]]; then echo false; fi\nexit 0\n',
+        encoding="utf-8",
     )
     (bin_dir / "gh").chmod(0o755)
     res = subprocess.run(

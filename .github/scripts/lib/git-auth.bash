@@ -12,13 +12,10 @@
 # on-disk .git/config, outliving the process that minted the token
 # (tests/test_no_credential_in_url.py guards the class).
 #
-# Two ways to apply it, differing only in HOW LONG the reset lasts:
-#   git_authed TOKEN GIT-ARGS… — run ONE git command under it, in a subshell. Prefer it: the
-#     caller's own environment is untouched, so no later command inherits the header.
-#   git_auth_header TOKEN — apply it to EVERY git call this process makes afterwards. For a
-#     script whose remote calls are many and all github.com (fetch, ls-remote, push).
+# git_auth_header TOKEN applies it to EVERY git call this process makes afterwards, for a
+# script whose remote calls are many and all github.com (fetch, ls-remote, push).
 #
-# Both spell the config key ONCE, here, and both RESET. A hand-written key rides to any host
+# It spells the config key ONCE, here, and RESETS it. A hand-written key rides to any host
 # git talks to the moment someone writes the unscoped `http.extraheader`, and a hand-written
 # `git -c` defends nothing against the environment: `-c` ADDS to GIT_CONFIG_*, it does not
 # displace it, so an inherited header still resolves beside it and an inherited transport
@@ -50,16 +47,4 @@ git_auth_header() {
   export GIT_CONFIG_KEY_0="$_GIT_AUTH_HEADER_KEY"
   GIT_CONFIG_VALUE_0="$(_git_auth_header_value "$1")"
   export GIT_CONFIG_VALUE_0
-}
-
-# git_authed TOKEN GIT-ARGS… — run one git command under TOKEN, and return its exit status.
-# The reset lives in a subshell, so the caller's GIT_CONFIG_* survives the call unchanged and
-# no later command in the script carries the header.
-git_authed() {
-  local token="$1"
-  shift
-  (
-    git_auth_header "$token"
-    git "$@"
-  )
 }

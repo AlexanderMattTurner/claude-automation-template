@@ -41,27 +41,6 @@ def _failing_grep(tmp_path: Path) -> Path:
     return tmp_path
 
 
-# --- path_gate_matches ------------------------------------------------------
-
-
-def test_matches_reports_a_hit() -> None:
-    assert _bash('path_gate_matches "$1" "$2"', r"^src/", CHANGED)[0] == 0
-
-
-def test_matches_reports_a_clean_no_match() -> None:
-    assert _bash('path_gate_matches "$1" "$2"', r"^nope/", CHANGED)[0] == 1
-
-
-def test_matches_fails_open_when_grep_fails(tmp_path: Path) -> None:
-    status, _ = _bash(
-        'path_gate_matches "$1" "$2"',
-        r"^nope/",
-        CHANGED,
-        path_prepend=_failing_grep(tmp_path),
-    )
-    assert status == 0, "a grep failure must read as a match, never as no-match"
-
-
 # --- path_gate_matching_lines -----------------------------------------------
 
 

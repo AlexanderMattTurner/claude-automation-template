@@ -102,14 +102,13 @@ repos:
   # claude-code-action steps this template ships) plus the unnamed-regex-group
   # and global-stdio-swap Python lints. Tier aggregates over per-check ids so a
   # check added upstream to a tier applies here with no config change.
-  - repo: https://github.com/alexander-turner/ci-truth-serum
-    rev: a5c3991e7b1eea7c8a65d9cd9573f3f65f520ee8 # ci-truth-serum v0.2.0
+  - repo: https://github.com/AlexanderMattTurner/ci-truth-serum
+    rev: b5c7fdc1fbf8cd3222e3a8a34d62535d645702ef # ci-truth-serum#169 head, not yet on main
     hooks:
       - id: check-tier1
       # check-path-gate-deps and check-failure-notifier-coverage are Tier 2
-      # members but are listed explicitly below (the notifier check needs
-      # --require-notifier, which the aggregate can't pass), so skip them here to
-      # avoid running each twice.
+      # members but are listed explicitly below, so skip them here to avoid
+      # running each twice.
       - id: check-tier2
         args:
           [
@@ -126,8 +125,10 @@ repos:
       # The notifier's workflow_run list is a derived copy of the tree's
       # push/schedule workflows; --require-notifier fails loud if this repo's
       # ci-failure-notify.yaml is ever deleted or its list drifts.
+      # Fails closed by default when no notifier workflow is discoverable — the
+      # explicit opt-in this repo used to need (--require-notifier) is now the
+      # check's own default; --allow-no-notifier is the escape hatch, unused here.
       - id: check-failure-notifier-coverage
-        args: [--require-notifier]
 
   - repo: local
     hooks:

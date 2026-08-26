@@ -86,9 +86,9 @@ def run(
     rungs = {"GH_TOKEN_ACTIONS": ACTIONS_TOKEN} if rungs is None else rungs
     quotas = {ACTIONS_TOKEN: 5000} if quotas is None else quotas
     threads_json, reviews_json = graphql_payloads(threads, reviews)
-    (tmp_path / "threads.json").write_text(threads_json)
-    (tmp_path / "reviews.json").write_text(reviews_json)
-    (tmp_path / "quotas.json").write_text(json.dumps(quotas))
+    (tmp_path / "threads.json").write_text(threads_json, encoding="utf-8")
+    (tmp_path / "reviews.json").write_text(reviews_json, encoding="utf-8")
+    (tmp_path / "quotas.json").write_text(json.dumps(quotas), encoding="utf-8")
     log = tmp_path / "gh-calls.txt"
 
     def arm(err: str | None) -> str:
@@ -149,7 +149,7 @@ exit 0
 """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    (bin_dir / "gh").write_text(stub)
+    (bin_dir / "gh").write_text(stub, encoding="utf-8")
     (bin_dir / "gh").chmod(0o755)
 
     res = subprocess.run(
@@ -165,7 +165,7 @@ exit 0
             **rungs,
         },
     )
-    calls = log.read_text() if log.exists() else ""
+    calls = log.read_text(encoding="utf-8") if log.exists() else ""
     return res, calls
 
 

@@ -40,6 +40,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib-ci-retry.sh"
 MAX_DIFF_LINES="${MAX_DIFF_LINES:-20000}"
 
 mkdir -p "$PR_INPUT_DIR"
+[[ -d "$PR_INPUT_DIR" ]] || {
+  echo "::error::could not create PR_INPUT_DIR ($PR_INPUT_DIR)" >&2
+  exit 1
+}
 
 emit_output() {
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
@@ -109,7 +113,22 @@ sanitize <"$raw_diff" >"${PR_INPUT_DIR}/diff.txt" 2>"${PR_INPUT_DIR}/diff.report
 # the sanitizer — retrying gh directly inside the `| sanitize` pipe is unsafe (a
 # failing attempt would stream partial JSON into the sanitizer, and a SIGPIPE if
 # it exited early would trip pipefail).
-meta_json="$(retry_stdout gh pr view "$PR" --json title,body,author,files)"
+# `--json files` asks GraphQL for files(first: 100) with no cursor, so a PR
+# touching more files than that silently drops the rest with exit 0. Read the
+# scalar fields with `gh pr view` and the file list with the paginated REST
+# endpoint, then merge — the jq filter maps the REST field `filename` to
+# `path` so meta.json's shape stays the one the sanitizer and prompt expect.
+meta_scalars="$(retry_stdout gh pr view "$PR" --json title,body,author)"
+# --paginate returns one page ARRAY per page; --slurp wraps them in one outer
+# array so `.[][]` below flattens both levels. gh rejects --slurp together with
+# --jq, so the filter runs as a separate jq call over the slurped pages.
+pr_files_pages="$(retry_stdout gh api --paginate --slurp "repos/{owner}/{repo}/pulls/${PR}/files")"
+if [[ -n "$pr_files_pages" ]]; then
+  pr_files="$(jq -c '[.[][] | {path: .filename, additions, deletions}]' <<<"$pr_files_pages")"
+else
+  pr_files="[]"
+fi
+meta_json="$(jq -c --argjson files "$pr_files" '. + {files: $files}' <<<"$meta_scalars")"
 printf '%s' "$meta_json" |
   sanitize >"${PR_INPUT_DIR}/meta.txt" 2>"${PR_INPUT_DIR}/meta.report.txt"
 

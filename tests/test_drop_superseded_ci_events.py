@@ -45,7 +45,7 @@ def _project_with_remote(tmp_path: Path) -> tuple[Path, str]:
     subprocess.run(["git", "init", "-q", str(project)], check=True)
     _git(project, "config", "user.email", "t@t.t")
     _git(project, "config", "user.name", "t")
-    (project / "f.txt").write_text("x\n")
+    (project / "f.txt").write_text("x\n", encoding="utf-8")
     _git(project, "add", "-A")
     _git(project, "commit", "-qm", "init")
     _git(project, "remote", "add", "origin", bare.as_uri())

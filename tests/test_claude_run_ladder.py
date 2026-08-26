@@ -25,7 +25,6 @@ contains some string.
 
 import re
 import subprocess
-import time
 from pathlib import Path
 from typing import Any
 
@@ -514,22 +513,30 @@ def test_no_backoff_is_spent_once_a_credential_works(tmp_path: Path) -> None:
     assert run.backoffs == []
 
 
-def test_the_backoff_step_really_sleeps_for_its_configured_seconds() -> None:
+def test_the_backoff_step_really_sleeps_for_its_configured_seconds(
+    tmp_path: Path,
+) -> None:
     """The `if:` simulation above reads the declared budget; this proves the
     body the runner executes spends it, rather than merely carrying the
-    number."""
+    number. A stubbed `sleep` records what it was asked for instead of the
+    test measuring wall-clock time, which a loaded shared runner would flake
+    on in both directions."""
     step = next(s for s in _steps() if str(s.get("name", "")).startswith("Back off"))
-    started = time.monotonic()
+    record = tmp_path / "sleep-args.txt"
+    fake_sleep = tmp_path / "sleep"
+    fake_sleep.write_text(f'#!/bin/sh\necho "$1" >> {record}\n', encoding="utf-8")
+    fake_sleep.chmod(0o755)
     proc = subprocess.run(
         ["bash", "-c", step["run"]],
-        env={"PATH": "/usr/bin:/bin", "BACKOFF_SECONDS": "1"},
+        env={"PATH": f"{tmp_path}:/usr/bin:/bin", "BACKOFF_SECONDS": "1"},
         capture_output=True,
         text=True,
         check=False,
     )
-    elapsed = time.monotonic() - started
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert elapsed >= 1.0, f"backoff body returned after {elapsed:.2f}s"
+    assert record.read_text(encoding="utf-8").strip() == "1", (
+        "backoff body did not call sleep with BACKOFF_SECONDS"
+    )
 
 
 def test_every_retry_rung_is_preceded_by_a_backoff_on_its_own_gate() -> None:

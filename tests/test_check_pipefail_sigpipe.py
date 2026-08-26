@@ -20,7 +20,7 @@ PIPEFAIL = "set -euo pipefail\n"
 
 def run_lint(tmp_path: Path, source: str) -> subprocess.CompletedProcess:
     target = tmp_path / "sample.sh"
-    target.write_text(source)
+    target.write_text(source, encoding="utf-8")
     return subprocess.run(
         [sys.executable, str(LINT), str(target)],
         capture_output=True,
@@ -146,7 +146,10 @@ def test_opt_out_comment_suppresses(tmp_path: Path, source: str) -> None:
 # bash turns a `| head` inside a prose code span into a reported pipeline.
 def test_ignores_a_non_shell_file(tmp_path: Path) -> None:
     doc = tmp_path / "README.md"
-    doc.write_text("# Hooks\n\nRun `set -o pipefail`, then `producer | head -5`.\n")
+    doc.write_text(
+        "# Hooks\n\nRun `set -o pipefail`, then `producer | head -5`.\n",
+        encoding="utf-8",
+    )
     result = subprocess.run(
         [sys.executable, str(LINT), str(doc)], capture_output=True, text=True
     )
@@ -162,7 +165,7 @@ def test_checks_an_extensionless_shell_script(tmp_path: Path, shebang: str) -> N
     """The skip above must not swallow the git hooks it exists alongside: they
     carry no extension, so the shebang is the only thing marking them shell."""
     hook = tmp_path / "pre-commit"
-    hook.write_text(shebang + PIPEFAIL + "producer | head -5\n")
+    hook.write_text(shebang + PIPEFAIL + "producer | head -5\n", encoding="utf-8")
     result = subprocess.run(
         [sys.executable, str(LINT), str(hook)], capture_output=True, text=True
     )

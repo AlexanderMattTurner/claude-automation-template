@@ -60,7 +60,7 @@ def _search(pattern: str, path: Path, *, flags: int = 0) -> str:
     Failing when the pattern matches nothing keeps the test from passing
     vacuously if a source file is restructured and a pin moves or disappears.
     """
-    m = re.search(pattern, path.read_text(), flags)
+    m = re.search(pattern, path.read_text(encoding="utf-8"), flags)
     assert m, f"Pattern {pattern!r} matched nothing in {path}"
     return m.group(1)
 
@@ -94,7 +94,7 @@ def _zizmor_pins() -> dict[str, str]:
 
 def _python_pins() -> dict[str, str]:
     return {
-        ".python-version": PYTHON_VERSION_FILE.read_text().strip(),
+        ".python-version": PYTHON_VERSION_FILE.read_text(encoding="utf-8").strip(),
         ".pre-commit-config.yaml": _search(
             r"default_language_version:\s*\n\s*python:\s*python(\S+)", PRE_COMMIT_CFG
         ),
@@ -107,10 +107,10 @@ def _python_pins() -> dict[str, str]:
 def _ci_truth_serum_pins() -> dict[str, str]:
     return {
         ".pre-commit-config.yaml": _search(
-            r"alexander-turner/ci-truth-serum\s+rev:\s+(\S+)", PRE_COMMIT_CFG
+            r"AlexanderMattTurner/ci-truth-serum\s+rev:\s+(\S+)", PRE_COMMIT_CFG
         ),
         "sync-required-checks.yaml": _search(
-            r"ci-truth-serum @ git\+https://github\.com/alexander-turner/ci-truth-serum@(\S+)\"",
+            r"ci-truth-serum @ git\+https://github\.com/AlexanderMattTurner/ci-truth-serum@(\S+)\"",
             SYNC_REQUIRED_CHECKS_WORKFLOW,
         ),
     }

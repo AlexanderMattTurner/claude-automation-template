@@ -13,7 +13,7 @@ LINT = REPO_ROOT / ".github" / "scripts" / "check-test-repo-root.py"
 
 def run_lint(tmp_path: Path, source: str) -> subprocess.CompletedProcess:
     target = tmp_path / "test_sample.py"
-    target.write_text(source)
+    target.write_text(source, encoding="utf-8")
     return subprocess.run(
         [sys.executable, str(LINT), str(target)],
         capture_output=True,

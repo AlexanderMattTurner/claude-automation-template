@@ -33,7 +33,9 @@ def test_valid_target_without_exec_bit_still_runs(tmp_path: Path) -> None:
     `exec "$target"` fails 126 and the target never runs."""
     sentinel = tmp_path / "ran"
     target = tmp_path / "hook.sh"
-    target.write_text(f'#!/bin/bash\necho ran > "{sentinel}"\nexit 0\n')
+    target.write_text(
+        f'#!/bin/bash\necho ran > "{sentinel}"\nexit 0\n', encoding="utf-8"
+    )
     # Explicitly clear every execute bit.
     target.chmod(target.stat().st_mode & ~0o111)
     result = _run(
@@ -49,7 +51,7 @@ def test_broken_syntax_target_degrades_to_ask(tmp_path: Path) -> None:
     """A target that fails its syntax check degrades to an 'ask' verdict rather
     than blocking the session."""
     target = tmp_path / "broken.sh"
-    target.write_text("#!/bin/bash\nif [ ; then\n")  # invalid bash
+    target.write_text("#!/bin/bash\nif [ ; then\n", encoding="utf-8")  # invalid bash
     target.chmod(target.stat().st_mode | stat.S_IEXEC)
     result = _run(
         target, tmp_path, {"hook_event_name": "PreToolUse", "tool_name": "Bash"}
@@ -77,7 +79,7 @@ def test_broken_target_allows_self_repair_edit(tmp_path: Path) -> None:
     (exit 0, no verdict) so the broken hook can be repaired in-session."""
     (tmp_path / ".claude" / "hooks").mkdir(parents=True)
     target = tmp_path / ".claude" / "hooks" / "broken.sh"
-    target.write_text("#!/bin/bash\nif [ ; then\n")
+    target.write_text("#!/bin/bash\nif [ ; then\n", encoding="utf-8")
     payload = {
         "hook_event_name": "PreToolUse",
         "tool_name": "Edit",

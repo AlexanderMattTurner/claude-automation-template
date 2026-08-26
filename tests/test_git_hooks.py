@@ -75,7 +75,7 @@ def test_pre_commit_passes_without_package_json(hook_repo: Path) -> None:
 def test_pre_commit_fails_when_lint_staged_missing(hook_repo: Path) -> None:
     """A Node project (package.json present) whose lint-staged is not
     installed must FAIL the commit, not silently skip all lint/format checks."""
-    (hook_repo / "package.json").write_text('{"name": "x"}')
+    (hook_repo / "package.json").write_text('{"name": "x"}', encoding="utf-8")
     result = run_hook(hook_repo, "pre-commit", path=minimal_path(hook_repo))
     assert result.returncode == 1
     assert "lint-staged" in result.stderr
@@ -85,10 +85,10 @@ def test_pre_commit_fails_when_lint_staged_missing(hook_repo: Path) -> None:
 def test_pre_commit_fails_when_no_package_manager(hook_repo: Path) -> None:
     """lint-staged installed but neither pnpm nor npm on PATH must fail loud —
     this previously fell through an if/elif and exited 0 silently."""
-    (hook_repo / "package.json").write_text('{"name": "x"}')
+    (hook_repo / "package.json").write_text('{"name": "x"}', encoding="utf-8")
     fake_bin = hook_repo / "node_modules" / ".bin"
     fake_bin.mkdir(parents=True)
-    (fake_bin / "lint-staged").write_text("#!/bin/bash\nexit 0\n")
+    (fake_bin / "lint-staged").write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
     (fake_bin / "lint-staged").chmod(0o755)
     result = run_hook(hook_repo, "pre-commit", path=minimal_path(hook_repo))
     assert result.returncode == 1
@@ -100,7 +100,7 @@ def test_commit_msg_fails_when_no_node_toolchain(hook_repo: Path) -> None:
     """No commitlint binary and no pnpm/npx to fetch one must FAIL the commit,
     not skip message validation with only a warning."""
     msg = hook_repo / "msg.txt"
-    msg.write_text("feat: valid message\n")
+    msg.write_text("feat: valid message\n", encoding="utf-8")
     result = run_hook(hook_repo, "commit-msg", str(msg), path=minimal_path(hook_repo))
     assert result.returncode == 1
     assert "commitlint" in result.stderr
@@ -161,7 +161,8 @@ def test_pre_push_checks_every_range_when_body_consumes_stdin(
     # records its argv — one line per invocation. Draining uses the read
     # builtin because the stub runs under the test's minimal PATH (no cat).
     stub.write_text(
-        f'#!/bin/bash\nwhile IFS= read -r _; do :; done\necho "$@" >>"{log}"\n'
+        f'#!/bin/bash\nwhile IFS= read -r _; do :; done\necho "$@" >>"{log}"\n',
+        encoding="utf-8",
     )
     stub.chmod(0o755)
     stdin = "".join(
@@ -170,7 +171,7 @@ def test_pre_push_checks_every_range_when_body_consumes_stdin(
     )
     result = run_hook(hook_repo, "pre-push", "origin", "url", path=path, stdin=stdin)
     assert result.returncode == 0, result.stderr
-    invocations = log.read_text().splitlines()
+    invocations = log.read_text(encoding="utf-8").splitlines()
     assert len(invocations) == 2, invocations
     for head, line in zip(heads, invocations):
         assert f"--to-ref {head}" in line

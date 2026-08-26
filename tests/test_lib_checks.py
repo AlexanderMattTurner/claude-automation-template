@@ -30,7 +30,7 @@ def _run_has_script(project_dir: Path, name: str = "build", path: str | None = N
 def test_malformed_package_json_exits_2(tmp_path: Path) -> None:
     """RED without the guard: a broken package.json would fall through to
     'not configured' (exit 1) instead of the loud exit 2."""
-    (tmp_path / "package.json").write_text("{ not valid json ")
+    (tmp_path / "package.json").write_text("{ not valid json ", encoding="utf-8")
     # Provide a real PATH so jq is found and actually reports the parse error.
     import os
 
@@ -42,7 +42,9 @@ def test_malformed_package_json_exits_2(tmp_path: Path) -> None:
 def test_configured_script_returns_0(tmp_path: Path) -> None:
     import os
 
-    (tmp_path / "package.json").write_text('{"scripts": {"build": "tsc"}}')
+    (tmp_path / "package.json").write_text(
+        '{"scripts": {"build": "tsc"}}', encoding="utf-8"
+    )
     result = _run_has_script(tmp_path, path=os.environ["PATH"])
     assert result.returncode == 0, result.stderr
 
@@ -52,7 +54,9 @@ def test_unconfigured_script_returns_1_not_2(tmp_path: Path) -> None:
     (exit 1) — distinct from the exit-2 'could not classify'."""
     import os
 
-    (tmp_path / "package.json").write_text('{"scripts": {"lint": "eslint"}}')
+    (tmp_path / "package.json").write_text(
+        '{"scripts": {"lint": "eslint"}}', encoding="utf-8"
+    )
     result = _run_has_script(tmp_path, path=os.environ["PATH"])
     assert result.returncode == 1
 
@@ -60,7 +64,9 @@ def test_unconfigured_script_returns_1_not_2(tmp_path: Path) -> None:
 def test_missing_jq_fails_loud(tmp_path: Path) -> None:
     """With a package.json present but jq absent from PATH, has_script must not
     silently return 'not configured' — jq's absence trips the loud exit 2."""
-    (tmp_path / "package.json").write_text('{"scripts": {"build": "tsc"}}')
+    (tmp_path / "package.json").write_text(
+        '{"scripts": {"build": "tsc"}}', encoding="utf-8"
+    )
     # A PATH containing only bash (so the subprocess can start) but no jq.
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
