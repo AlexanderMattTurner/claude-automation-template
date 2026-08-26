@@ -38,10 +38,10 @@ fold or in a <details> block — never above the statement of what changed.
 
 <!-- ## Lessons Learned — add ONLY a truly generalizable insight that would help a maintainer
      of an unrelated project sharing none of this code (what to change, where, why). Triggers
-     the phone-home workflow, which sends the lesson one way into
-     AlexanderMattTurner/claude-automation-template. Omit the section entirely if there are
-     none; never write "None." Skip it altogether only in that template repo itself — check
-     the name with `git remote get-url origin`. -->
+     the phone-home workflow, which sends the lesson one way into the repo TEMPLATE_REPO
+     names in .github/workflows/phone-home.yaml. Omit the section entirely if there are
+     none; never write "None." Skip it altogether only in that template repo itself —
+     compare `git remote get-url origin` with that declaration. -->
 
 <details>
 <summary>Author checklist</summary>

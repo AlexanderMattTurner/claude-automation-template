@@ -106,7 +106,7 @@ to engage, not raise it. Concretely:
   navigates to the code (information foraging).
 - Note any breaking changes.
 - **Default to NO “Lessons Learned” section.** It exists only for a genuinely novel, cross-project insight that would improve the template for a downstream repo sharing none of this code — a rare case; most PRs have none. Each lesson filed triggers the phone-home workflow (one issue per PR on the template repo), so a low-value or repo-specific “lesson” is triage noise, not a contribution. When you do include one, each lesson must specify **what** to change, **where**, and **why**. **Never write a negative placeholder** (“none applicable”, “N/A”, “nothing generalizable”): phone-home now drops those, so the sentence achieves nothing — omit the whole heading instead.
-- **Skip the Lessons Learned section entirely when THIS repo is the template.** Confirm with `git remote get-url origin`, never from the repo's own prose — a repo made from the template often still calls itself the template in `CLAUDE.md`. Phone-home sends lessons one way into `AlexanderMattTurner/claude-automation-template`. Every other repo only sends and never receives, so dropping the section there loses the lesson.
+- **Skip the Lessons Learned section entirely when THIS repo is the template.** Confirm with `git remote get-url origin`, never from the repo's own prose — a repo made from the template often still calls itself the template in `CLAUDE.md`. Phone-home sends lessons one way into the repo that `TEMPLATE_REPO` names in `.github/workflows/phone-home.yaml`, which a fork redirects with `vars.TEMPLATE_SYNC_ORG`. Every other repo only sends and never receives, so dropping the section there loses the lesson.
 
 ## Updating PR Description After Additional Commits
 

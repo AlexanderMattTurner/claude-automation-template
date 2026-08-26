@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-`AlexanderMattTurner/claude-automation-template` is a starter template for running Claude Code on a repo unattended: `.claude/` hooks, rules and skills, `.hooks/` git hooks, `.github/workflows/`, and `setup.sh`. A repo made from it inherits these and diverges. `phone-home` runs one way. It sends a merged PR's `## Lessons Learned` to the template as an issue, and no other repo receives one. **A repo made from this template rewrites this line to name itself** — a copy that still names the template tells every session it is the template.
+`AlexanderMattTurner/claude-automation-template` is a starter template for running Claude Code on a repo unattended: `.claude/` hooks, rules and skills, `.hooks/` git hooks, `.github/workflows/`, and `setup.sh`. A repo made from it inherits these, diverges, and rewrites this line to name itself. `phone-home` runs one way. It sends a merged PR's `## Lessons Learned` to the template as an issue, and no other repo receives one.
 
 ## Where the rest of the guidance lives
 
