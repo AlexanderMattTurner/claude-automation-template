@@ -189,10 +189,10 @@ jobs:
     # pull requests to hand it and what this repository can do.
     #
     # Pinned by SHA, never by tag: the resolver runs with this repository's
-    # secrets, so a moving ref would let its owner change what runs here. The
-    # `uses:` line below is the only place that sha appears — the called workflow
-    # reads it back from `github.job_workflow_sha` and runs the scripts from the
-    # same commit, so there is nothing here to drift.
+    # secrets, so a moving ref would let its owner change what runs here. That
+    # sha is written TWICE — here and in `env.RESOLVER_REF` above, which
+    # `discover` checks out before any called workflow exists to read
+    # `github.job_workflow_sha`. Move both, or the two jobs run different code.
     # The CEILING on what the called workflow may hold, not a grant to this file.
     # It must cover the UNION of the resolver's two jobs, because a calling job that
     # names less silently narrows them: this workflow sets `permissions: {}` at the
