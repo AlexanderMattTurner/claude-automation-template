@@ -110,6 +110,9 @@ fi
 # API blip.
 reviews_rc=0
 reviews_json="$(gh api "repos/$REPO/pulls/${PR:-}/reviews" --paginate --slurp 2>/dev/null)" || reviews_rc=$?
+# allow-exit-suppress: a malformed reviews_json (already covered by reviews_rc
+# above) makes jq fail here too; the fallback empty state reads as "never
+# reviewed" only when reviews_rc is 0, which the caller checks first.
 state="$(printf '%s' "$reviews_json" |
   jq -r "[.[][] | ${REVIEWER_MATCH_USER}] | last | .state // empty" 2>/dev/null || true)"
 if [[ "$reviews_rc" -ne 0 ]]; then
