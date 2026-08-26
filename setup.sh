@@ -67,7 +67,7 @@ if [[ "$(git config core.hooksPath)" = ".hooks" ]]; then
   echo "✓ Setup complete!"
   echo ""
   echo "Next steps:"
-  echo "  1. Edit CLAUDE.md with your project details"
+  echo "  1. Rewrite the opening line of CLAUDE.md under the heading to name THIS repo, then add your project details"
   if [[ -f package.json ]]; then
     echo "  2. Configure scripts in package.json"
   fi
