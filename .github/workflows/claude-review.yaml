@@ -9,7 +9,8 @@ name: Claude reviewers
 # base-only checkout posture, and `if:` guards. Each is guarded by
 # `github.event.action` so it fires on exactly the events it acts on.
 # Concurrency is declared PER JOB (never workflow-level), so the jobs never
-# cancel one another.
+# cancel one another. The `review` job declares none because the CALLED workflow
+# owns it — see that job's annotation.
 #
 # The merge-conflict auto-resolver stays a SEPARATE file
 # (auto-resolve-conflicts.yaml), and it CALLS its own upstream reusable workflow
@@ -81,6 +82,11 @@ jobs:
   # offer doing nothing.
   # ────────────────────────────────────────────────────────────────────────────
   review:
+    # concurrency-not-required: the called workflow keys its own per-PR groups —
+    # `claude-pr-review-<n>` and `claude-pr-review-synthesis-<n>`, both with
+    # `cancel-in-progress: false`, so a read this repository has already paid for
+    # finishes and a newer push queues behind it. A group here would cancel that
+    # call tree mid-read and throw the spend away.
     if: >-
       github.event.label.name == 'needs-auto-review' ||
       (

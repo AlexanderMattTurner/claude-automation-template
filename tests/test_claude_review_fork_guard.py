@@ -249,6 +249,14 @@ def test_a_label_forces_a_review_of_an_untrusted_pull_request():
     assert reviews(pl)
 
 
+@pytest.mark.parametrize("label", ["documentation", "needs-auto-reviews", ""])
+def test_only_the_escape_hatch_label_forces_a_review(label):
+    """The label NAME is now the `if:`'s own check, and a wrong one fails
+    silently: no runner boots, no step runs, and nothing reports."""
+    pl = payload(action="labeled", title="chore: x", label=label)
+    assert not reviews(pl), f"{label!r} bought a review"
+
+
 def test_a_draft_is_neither_reviewed_nor_approved():
     pl = payload(title="feat: x", draft=True, same_repo=True)
     assert not reviews(pl)
