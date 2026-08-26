@@ -52,7 +52,7 @@ jobs:
         run: |
           # pin-exempt: PEP 508 `name @ git+URL@sha` pins to an exact commit;
           # the commit SHA after the trailing @ is the pin, not a missing version.
-          python3 -m pip install --user "ci-truth-serum @ git+https://github.com/AlexanderMattTurner/ci-truth-serum@57a2005f5de2621dc3beb63191d911870de39d7a"
+          python3 -m pip install --user "ci-truth-serum @ git+https://github.com/AlexanderMattTurner/ci-truth-serum@b5c7fdc1fbf8cd3222e3a8a34d62535d645702ef"
 
       - name: Sync required status checks
         env:
