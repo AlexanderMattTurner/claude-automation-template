@@ -35,7 +35,7 @@ def run(tmp_path: Path, template_repo: str, running_repo: str, parent: str = "")
         if parent == "!fail"
         else f"printf '%s\\n' '{parent}'\n"
     )
-    (bin_dir / "gh").write_text(f"#!/usr/bin/env bash\n{body}")
+    (bin_dir / "gh").write_text(f"#!/usr/bin/env bash\n{body}", encoding="utf-8")
     (bin_dir / "gh").chmod(0o755)
 
     output = tmp_path / "gh-output"

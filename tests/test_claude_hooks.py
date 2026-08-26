@@ -238,7 +238,7 @@ def test_gh_repo_extraction(
     )
     exports = [
         line
-        for line in env_file.read_text().splitlines()
+        for line in env_file.read_text(encoding="utf-8").splitlines()
         if line.startswith("export GH_REPO=")
     ]
     if expected is None:
@@ -266,7 +266,9 @@ def safe_launch_sandbox(tmp_path: Path) -> Path:
     parser = hooks_dir / "safe-launch-parse.py"
     parser.write_bytes(SAFE_LAUNCH_PARSE.read_bytes())
     broken = hooks_dir / "broken-hook.sh"
-    broken.write_text("if true; then\n  echo unterminated\n")  # missing `fi`
+    broken.write_text(
+        "if true; then\n  echo unterminated\n", encoding="utf-8"
+    )  # missing `fi`
     return tmp_path
 
 
@@ -292,7 +294,7 @@ def test_safe_launch_degraded_path_blocks_symlink_escape(
     is under the safe dir, but it resolves elsewhere. Must fall through to
     the fail-safe "ask" default rather than silently allowing the edit."""
     outside_target = safe_launch_sandbox.parent / "outside-secret.sh"
-    outside_target.write_text("echo not a hook\n")
+    outside_target.write_text("echo not a hook\n", encoding="utf-8")
     escape_link = safe_launch_sandbox / ".claude" / "hooks" / "escape-link.sh"
     escape_link.symlink_to(outside_target)
 
@@ -371,7 +373,7 @@ def test_pre_push_check_fails_loudly_when_jq_missing(
     """A configured package.json with no `jq` on PATH must fail the check,
     not silently skip all Node checks (there's no way to tell what's
     configured without jq)."""
-    (pre_push_sandbox / "package.json").write_text('{"scripts": {}}')
+    (pre_push_sandbox / "package.json").write_text('{"scripts": {}}', encoding="utf-8")
     result = _run_pre_push_check(pre_push_sandbox, _minimal_path(pre_push_sandbox))
     assert result.returncode == 1
     assert "jq is required" in result.stderr
@@ -382,7 +384,7 @@ def test_pre_push_check_fails_loudly_when_ruff_and_uv_missing(
 ) -> None:
     """A Python project with neither `ruff` nor `uv` on PATH must fail the
     check, not silently skip the ruff check."""
-    (pre_push_sandbox / "pyproject.toml").write_text("")
+    (pre_push_sandbox / "pyproject.toml").write_text("", encoding="utf-8")
     result = _run_pre_push_check(pre_push_sandbox, _minimal_path(pre_push_sandbox))
     assert result.returncode == 1
     assert "Neither ruff nor uv" in result.stderr
@@ -394,16 +396,18 @@ def test_pre_push_check_runs_ruff_when_available(
     """A Python project with `ruff` on PATH must actually invoke it with the
     exact expected argv (catches quoting/word-splitting regressions in the
     argv-based run_check)."""
-    (pre_push_sandbox / "pyproject.toml").write_text("")
+    (pre_push_sandbox / "pyproject.toml").write_text("", encoding="utf-8")
     path = _minimal_path(pre_push_sandbox)
     bin_dir = Path(path)
     marker = pre_push_sandbox / "ruff-invoked-with-args.txt"
     fake_ruff = bin_dir / "ruff"
-    fake_ruff.write_text(f'#!/bin/bash\nprintf "%s\\n" "$@" > "{marker}"\n')
+    fake_ruff.write_text(
+        f'#!/bin/bash\nprintf "%s\\n" "$@" > "{marker}"\n', encoding="utf-8"
+    )
     fake_ruff.chmod(0o755)
     result = _run_pre_push_check(pre_push_sandbox, path)
     assert result.returncode == 0, result.stderr
-    assert marker.read_text().splitlines() == ["check", "."]
+    assert marker.read_text(encoding="utf-8").splitlines() == ["check", "."]
 
 
 def test_preserves_pre_set_gh_repo(sandbox: Path) -> None:
@@ -417,7 +421,7 @@ def test_preserves_pre_set_gh_repo(sandbox: Path) -> None:
     assert result.returncode == 0, result.stderr
     exports = [
         line
-        for line in env_file.read_text().splitlines()
+        for line in env_file.read_text(encoding="utf-8").splitlines()
         if line.startswith("export GH_REPO=")
     ]
     assert exports == []

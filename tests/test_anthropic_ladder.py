@@ -47,7 +47,7 @@ anthropic_messages '{"model":"m"}' "$1"
 
 
 def _write_stub(path: Path, body: str) -> None:
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8")
     path.chmod(0o755)
 
 
@@ -60,9 +60,9 @@ def _run_messages(
     stub_dir.mkdir(exist_ok=True)
     _write_stub(stub_dir / "curl", CURL_STUB)
     _write_stub(stub_dir / "sleep", "#!/usr/bin/env bash\nexit 0\n")
-    (stub_dir / "codes").write_text("".join(f"{c}\n" for c in codes))
+    (stub_dir / "codes").write_text("".join(f"{c}\n" for c in codes), encoding="utf-8")
     args_log = stub_dir / "curl-args.log"
-    args_log.write_text("")
+    args_log.write_text("", encoding="utf-8")
     response_file = tmp_path / "response.json"
 
     env = {
@@ -81,7 +81,7 @@ def _run_messages(
         capture_output=True,
         text=True,
     )
-    calls = [line for line in args_log.read_text().splitlines() if line]
+    calls = [line for line in args_log.read_text(encoding="utf-8").splitlines() if line]
     return proc, calls, response_file
 
 
@@ -124,7 +124,7 @@ def test_401_on_rung_one_steps_to_rung_two_and_succeeds(tmp_path: Path) -> None:
     assert "sk-ant-oat-first" in calls[0]
     assert "sk-ant-oat-second" in calls[1]
     assert "was rejected (HTTP 401)" in proc.stderr
-    assert '"content"' in response_file.read_text()
+    assert '"content"' in response_file.read_text(encoding="utf-8")
 
 
 def test_persistent_429_exhausts_three_attempts_then_steps_rung(tmp_path: Path) -> None:

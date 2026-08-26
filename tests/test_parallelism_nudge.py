@@ -65,7 +65,9 @@ def _run_hook(
 
 def test_nudges_on_serial_streak_then_sentinel_silences(tmp_path: Path) -> None:
     transcript = tmp_path / "t.jsonl"
-    transcript.write_text(_serial_transcript(SERIAL_TOOL_TURN_THRESHOLD))
+    transcript.write_text(
+        _serial_transcript(SERIAL_TOOL_TURN_THRESHOLD), encoding="utf-8"
+    )
     first = _run_hook(transcript, tmp_path)
     assert first.returncode == 0
     body = json.loads(first.stdout)["hookSpecificOutput"]
@@ -80,7 +82,9 @@ def test_nudges_on_serial_streak_then_sentinel_silences(tmp_path: Path) -> None:
 
 def test_silent_below_threshold(tmp_path: Path) -> None:
     transcript = tmp_path / "t.jsonl"
-    transcript.write_text(_serial_transcript(SERIAL_TOOL_TURN_THRESHOLD - 1))
+    transcript.write_text(
+        _serial_transcript(SERIAL_TOOL_TURN_THRESHOLD - 1), encoding="utf-8"
+    )
     result = _run_hook(transcript, tmp_path)
     assert result.returncode == 0
     assert result.stdout == ""
@@ -91,7 +95,8 @@ def test_delegation_in_segment_silences(tmp_path: Path) -> None:
     transcript.write_text(
         _serial_transcript(
             SERIAL_TOOL_TURN_THRESHOLD, extra_lines=[_tool_line("mT", "Task")]
-        )
+        ),
+        encoding="utf-8",
     )
     result = _run_hook(transcript, tmp_path)
     assert result.returncode == 0
@@ -123,7 +128,7 @@ def test_nudges_on_cross_turn_cadence(tmp_path: Path) -> None:
     """Eight serial user-turns with zero delegation, none crossing the serial
     streak threshold, must trip the cadence nudge. RED without TURN_CADENCE."""
     transcript = tmp_path / "t.jsonl"
-    transcript.write_text(_cadence_transcript(TURN_CADENCE_THRESHOLD))
+    transcript.write_text(_cadence_transcript(TURN_CADENCE_THRESHOLD), encoding="utf-8")
     result = _run_hook(transcript, tmp_path)
     assert result.returncode == 0
     body = json.loads(result.stdout)["hookSpecificOutput"]
@@ -135,7 +140,9 @@ def test_cadence_silent_off_multiple(tmp_path: Path) -> None:
     """Past the threshold but not on a multiple of it (9 turns) stays silent —
     the nudge re-asks every Nth turn, not every turn after the first."""
     transcript = tmp_path / "t.jsonl"
-    transcript.write_text(_cadence_transcript(TURN_CADENCE_THRESHOLD + 1))
+    transcript.write_text(
+        _cadence_transcript(TURN_CADENCE_THRESHOLD + 1), encoding="utf-8"
+    )
     result = _run_hook(transcript, tmp_path)
     assert result.returncode == 0
     assert result.stdout == ""
@@ -145,7 +152,9 @@ def test_delegation_resets_cadence_counter(tmp_path: Path) -> None:
     """A delegation mid-run resets the counter, so eight turns TOTAL but with a
     Task at turn 4 leaves only four post-delegation turns — silent."""
     transcript = tmp_path / "t.jsonl"
-    transcript.write_text(_cadence_transcript(TURN_CADENCE_THRESHOLD, delegate_at=4))
+    transcript.write_text(
+        _cadence_transcript(TURN_CADENCE_THRESHOLD, delegate_at=4), encoding="utf-8"
+    )
     result = _run_hook(transcript, tmp_path)
     assert result.returncode == 0
     assert result.stdout == ""

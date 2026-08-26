@@ -1,10 +1,10 @@
 name: Claude reviewers
 
-# Umbrella for the two automated PR reviewers: the first-pass reviewer
-# (claude-pr-review.yaml) and the Sonnet merge-delta reviewer
-# (claude-merge-delta-review.yaml). Each was its own file; they are
-# consolidated here to cut the per-PR workflow fan-out on a shared, capped runner
-# pool. Every job stays self-contained and carries its own SECURITY header,
+# Umbrella for the two automated PR reviewers: the first-pass reviewer job
+# ("Claude PR review", below) and the Sonnet merge-delta reviewer job
+# ("Claude merge-delta review", below), one file to cut the per-PR workflow
+# fan-out on a shared, capped runner pool. Every job stays self-contained and
+# carries its own SECURITY header,
 # `permissions:`, base-only checkout posture, and `if:` guards verbatim — nothing
 # about the trust boundary changed in the move. Both run on the reviewers'
 # shared pull_request_target trigger (the union of the three source triggers) with
@@ -34,7 +34,7 @@ permissions: {}
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
-  # Claude PR review (Opus first pass) — from claude-pr-review.yaml
+  # Claude PR review (Opus first pass)
   #
   # Auto-review every incoming PR — including PRs from forks/outside contributors
   # — with Claude, using the CLAUDE_CODE_OAUTH_TOKEN secret (with a fallback).
@@ -266,15 +266,16 @@ jobs:
           # Claude only ANALYZES here — it reads the pre-sanitized files and WRITES
           # its findings to review.json; the next step posts it. --setting-sources
           # user loads ONLY user-level settings, so this repo's OWN project .claude
-          # hooks and deny rules do not apply to the reviewer in CI. --add-dir
-          # grants read+write to the sanitized-input dir under runner.temp
+          # hooks and deny rules do not apply to the reviewer in CI. --add-dir grants
+          # working-directory access to the sanitized-input dir under runner.temp
           # (Claude Code sandboxes reads and writes outside the checked-out
-          # workspace).
+          # workspace); --allowedTools additionally scopes Read/Grep/Glob and
+          # Edit/Write to that same dir, so neither grant reaches beyond it.
           model: ${{ needs.decide.outputs.model || 'claude-opus-5' }}
           claude_args: >-
             --effort medium
             --setting-sources user
-            --allowedTools "Read,Grep,Glob,Write"
+            --allowedTools "Read(/${{ runner.temp }}/pr-input/**),Edit(/${{ runner.temp }}/pr-input/**)"
             --add-dir "${{ runner.temp }}/pr-input"
           prompt: |
             You are the automated reviewer for PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
@@ -376,7 +377,7 @@ jobs:
         run: bash .github/scripts/auto-approve-skipped-pr.sh
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Claude merge-delta review (Sonnet) — from claude-merge-delta-review.yaml
+  # Claude merge-delta review (Sonnet)
   #
   # A dedicated Sonnet reviewer for a PR's hand-authored MERGE-RESOLUTION deltas
   # (`git show --remerge-diff`) — the one channel through which a conflict
@@ -474,7 +475,7 @@ jobs:
           model: claude-sonnet-5
           claude_args: >-
             --setting-sources user
-            --allowedTools "Read,Grep,Glob,Write"
+            --allowedTools "Read(/${{ runner.temp }}/pr-input/**),Edit(/${{ runner.temp }}/pr-input/**)"
             --add-dir "${{ runner.temp }}/pr-input"
           prompt: |
             You are the merge-delta reviewer for PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.

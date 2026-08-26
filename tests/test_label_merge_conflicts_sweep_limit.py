@@ -47,7 +47,7 @@ def run(
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     stub = bin_dir / "gh"
-    stub.write_text(FAKE_GH)
+    stub.write_text(FAKE_GH, encoding="utf-8")
     stub.chmod(0o755)
 
     # Already labeled by default, so a CONFLICTING row takes no label-editing
@@ -65,7 +65,8 @@ def run(
                 }
                 for n in range(1, row_count + 1)
             ]
-        )
+        ),
+        encoding="utf-8",
     )
 
     call_log = tmp_path / "gh-calls.txt"
@@ -98,7 +99,7 @@ def test_a_full_page_warns_the_sweep_may_have_missed_prs(tmp_path: Path) -> None
     assert "3-PR limit" in result.stderr
     # Non-vacuous coverage of SWEEP_LIMIT actually reaching `gh`: a hardcoded
     # --limit would still pass every other assertion here.
-    call_log = (tmp_path / "gh-calls.txt").read_text()
+    call_log = (tmp_path / "gh-calls.txt").read_text(encoding="utf-8")
     assert "--limit 3" in call_log
 
 
@@ -128,7 +129,7 @@ def test_a_capped_repeat_sweep_warns_only_once(tmp_path: Path) -> None:
     assert result.stderr.count("::warning::open-PR sweep") == 1
     # Non-vacuous: prove the retry loop actually ran all 3 passes — otherwise
     # this would pass just as well against a loop that never retried at all.
-    call_log = (tmp_path / "gh-calls.txt").read_text()
+    call_log = (tmp_path / "gh-calls.txt").read_text(encoding="utf-8")
     assert call_log.count("pr list") == 3
 
 
@@ -141,5 +142,5 @@ def test_a_pr_number_scoped_run_labels_an_unlabeled_conflicting_pr(
     # every other case here) so the label-editing action itself is observed.
     result = run(tmp_path, row_count=1, sweep_limit=100, labeled=False, pr_number="1")
     assert "::warning::" not in result.stderr
-    call_log = (tmp_path / "gh-calls.txt").read_text()
+    call_log = (tmp_path / "gh-calls.txt").read_text(encoding="utf-8")
     assert "pr edit 1 --repo o/r --add-label merge-conflict" in call_log

@@ -30,7 +30,9 @@ def _runner_patterns() -> list[str]:
     a restructured script must re-derive this, never silently match nothing and
     let the assertion below pass vacuously.
     """
-    test_script = json.loads(PACKAGE_JSON.read_text())["scripts"]["test"]
+    test_script = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))["scripts"][
+        "test"
+    ]
     tokens = shlex.split(test_script)
     assert "--test" in tokens, (
         f"package.json scripts.test no longer invokes `node --test`: {test_script!r}. "

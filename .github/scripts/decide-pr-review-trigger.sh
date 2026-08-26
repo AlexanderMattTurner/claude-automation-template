@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Decide whether the PR reviewer (claude-pr-review.yaml) should run for this
+# Decide whether the PR reviewer (claude-review.yaml's review job) should run for this
 # pull_request_target event, emitting run=true/false AND the model to use to
 # GITHUB_OUTPUT.
 #
@@ -87,6 +87,8 @@ esac
 # the opt-in would silently fail. Capture into a variable (never `gh … | grep`,
 # whose early-exit SIGPIPEs the still-writing gh under pipefail), then match the
 # subject line.
+# allow-exit-suppress: a transient API failure yields an empty message -> no
+# keyword match below -> no spurious re-review trigger, the safe default.
 message="$(gh api "repos/$REPO/commits/$HEAD_SHA" --jq '.commit.message' 2>/dev/null || true)"
 subject="${message%%$'\n'*}"
 if grep -qiF "$KEYWORD" <<<"$subject"; then
@@ -106,13 +108,21 @@ fi
 # element is that page's reviews array), so the filter must flatten BOTH levels
 # (`.[][]`) to walk every review across every page, then `last` picks the most
 # recent. A single `.[]` iterates PAGES, so `.user.login`/`.state` index a page
-# ARRAY — jq errors, the `2>/dev/null` swallows it to empty, and the recheck
-# silently never fires (the bug that stranded every held PR). `--slurp` keeps the
-# whole result in one document so `--jq` runs ONCE and emits a single line; bare
-# `--paginate` would run the filter per page and concatenate. A transient API
-# failure yields empty -> no re-review.
-state="$(gh api "repos/$REPO/pulls/${PR:-}/reviews" --paginate --slurp \
-  --jq "[.[][] | ${REVIEWER_MATCH_USER}] | last | .state // empty" 2>/dev/null || true)"
+# ARRAY — jq errors, and the recheck silently never fires (the bug that stranded
+# every held PR). `--slurp` keeps the whole result in one document so the filter
+# runs ONCE and emits a single line; bare `--paginate` would run the filter per
+# page and concatenate. `gh api` rejects `--slurp` together with `--jq` at
+# argument validation, so the slurp and the filter are two separate commands:
+# capture the slurped pages, then filter with a standalone jq. A transient API
+# failure, or no reviews at all, yields empty -> no re-review.
+# allow-exit-suppress: an empty reviews_json (API failure) falls through to an
+# empty state below via jq's own failure, which is the same safe no-re-review
+# default this comment already documents.
+reviews_json="$(gh api "repos/$REPO/pulls/${PR:-}/reviews" --paginate --slurp 2>/dev/null || true)"
+# allow-exit-suppress: an empty or malformed reviews_json makes jq fail, which
+# leaves state empty — the same safe no-re-review default as above.
+state="$(printf '%s' "$reviews_json" |
+  jq -r "[.[][] | ${REVIEWER_MATCH_USER}] | last | .state // empty" 2>/dev/null || true)"
 if [[ "$state" == "CHANGES_REQUESTED" || "$state" == "COMMENTED" ]]; then
   emit true "outstanding $REVIEWER_LOGIN hold ($state) — re-checking"
 else

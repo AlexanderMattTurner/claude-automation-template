@@ -41,7 +41,7 @@ def run_submit(
     JSON file so tests can assert on what the real script did, rather than
     re-implementing its dedup/create logic."""
     PHONE_HOME_DIR.mkdir(parents=True, exist_ok=True)
-    (PHONE_HOME_DIR / "lessons.txt").write_text(lessons)
+    (PHONE_HOME_DIR / "lessons.txt").write_text(lessons, encoding="utf-8")
 
     wrapper = tmp_path / "run.js"
     calls_file = tmp_path / "calls.json"
@@ -91,7 +91,8 @@ submit({{ github }})
     process.stderr.write(err.message + "\\n");
     process.exit(1);
   }});
-"""
+""",
+        encoding="utf-8",
     )
     env = {
         **os.environ,
@@ -108,7 +109,7 @@ submit({{ github }})
     )
     calls: dict = {}
     if result.returncode == 0 and calls_file.exists():
-        calls = json.loads(calls_file.read_text())
+        calls = json.loads(calls_file.read_text(encoding="utf-8"))
     return calls, result
 
 

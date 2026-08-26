@@ -22,7 +22,8 @@ def _fake_npm(bin_dir: Path) -> None:
     npm.write_text(
         "#!/usr/bin/env bash\n"
         'echo \'{"error":{"code":"E404","summary":"not found"}}\'\n'
-        "exit 1\n"
+        "exit 1\n",
+        encoding="utf-8",
     )
     npm.chmod(npm.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
@@ -32,7 +33,7 @@ def _run(tmp_path: Path, package_json: str) -> subprocess.CompletedProcess:
     bin_dir = tmp_path / "bin"
     repo.mkdir()
     bin_dir.mkdir()
-    (repo / "package.json").write_text(package_json)
+    (repo / "package.json").write_text(package_json, encoding="utf-8")
     _fake_npm(bin_dir)
     env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
     return subprocess.run(
