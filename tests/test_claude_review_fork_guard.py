@@ -1,4 +1,4 @@
-"""The `decide` and `auto-approve-skipped` jobs in claude-review.yaml decide, from
+"""The `review` and `auto-approve-skipped` jobs in claude-review.yaml decide, from
 the event payload alone, whether a pull request gets an automated review and
 whether it collects an automated approval. A PR TITLE is written by the PR
 author, so a title-only skip hands an outside contributor both levers.
@@ -170,7 +170,7 @@ def _job_condition(job: str) -> str:
 
 
 def reviews(pl: dict) -> bool:
-    return evaluate(_job_condition("decide"), pl)
+    return evaluate(_job_condition("review"), pl)
 
 
 def approves(pl: dict) -> bool:
@@ -193,7 +193,7 @@ def test_an_untrusted_author_never_gets_a_free_approval(title, association):
 @pytest.mark.parametrize("association", UNTRUSTED)
 def test_an_untrusted_author_always_gets_the_real_review(title, association):
     """The other half, and the reason the guard cannot live on the approval
-    alone: guarding only the approval leaves the same PR skipped by `decide` and
+    alone: guarding only the approval leaves the same PR skipped by `review` and
     approved by nobody — reviewed by nobody, with no event able to fix it."""
     pl = payload(title=title, association=association, same_repo=False)
     assert reviews(pl), f"{association}'s {title!r} PR is reviewed by nobody"
@@ -267,5 +267,5 @@ def test_the_pre_fix_conditions_fail_the_fork_guard_invariant(title):
         "that was the bug"
     )
     assert not evaluate(PRE_FIX_DECIDE, pl), (
-        "the pre-fix decide condition must skip the same PR — that was the bug"
+        "the pre-fix review condition must skip the same PR — that was the bug"
     )
