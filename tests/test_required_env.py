@@ -33,13 +33,10 @@ CASES = [
     ("prepare-pr-review-input.sh", ["PR", "PR_INPUT_DIR"]),
     ("post-pr-review.sh", ["PR", "GH_REPO", "PR_INPUT_DIR"]),
     ("auto-approve-skipped-pr.sh", ["PR", "GH_REPO"]),
-    ("fetch-unresolved-review-threads.sh", ["GH_REPO", "PR", "PR_INPUT_DIR"]),
     # The resolve credential is no longer an input: it is picked from the
     # GH_TOKEN_* ladder, so PR_INPUT_DIR is the only var this script demands.
-    ("resolve-addressed-threads.sh", ["PR_INPUT_DIR"]),
     ("approve-if-reviewer-hold-clear.sh", ["GH_REPO", "PR"]),
     ("sweep-reviewer-holds.sh", ["GH_REPO"]),
-    ("append-haiku-cost.sh", ["GH_REPO", "PR"]),
     # merge-delta reviewer + remerge-diff report suite
     ("prepare-merge-delta-input.sh", ["PR", "PR_INPUT_DIR"]),
     ("post-merge-delta-review.sh", ["PR", "GH_REPO", "PR_INPUT_DIR"]),

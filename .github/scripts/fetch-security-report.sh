@@ -74,6 +74,8 @@ if [[ -f package.json ]]; then
   pnpm_rc=$?
   printf '%s\n' "$pnpm_output" | awk 'NR <= 100' >>"$REPORT_PATH" # stderr-merge-ok: copied verbatim into the report so a reader sees pnpm's own diagnostics; never parsed or compared
   # Exit 0 = clean, exit 1 = vulnerabilities found (expected); higher = real error
+  # echo-fallback-ok: this note is appended to a human-read report, never
+  # captured or trusted as data — the real pnpm_rc is what the caller judges.
   [[ "${pnpm_rc:-0}" -le 1 ]] || echo "_pnpm audit encountered an error (exit code $pnpm_rc); output above may be incomplete._" >>"$REPORT_PATH"
 else
   echo "_Skipped: no package.json (not a Node project)._" >>"$REPORT_PATH"

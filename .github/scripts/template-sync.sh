@@ -258,7 +258,7 @@ main() {
     if [[ "$parent_dir" != "." ]]; then
       mkdir -p "$parent_dir" # bare-mkdir-ok: post-condition verified on the next line
       [[ -d "$parent_dir" ]] || {
-        echo "parent dir ($parent_dir) does not exist after mkdir -p" >&2
+        echo "::error::could not create $parent_dir for $rel_path" >&2
         return 1
       }
     fi
@@ -473,7 +473,8 @@ main() {
       echo "has_downgrades=true"
       echo "downgrade_files=$downgrade"
     } >>"$GITHUB_OUTPUT"
-    emit_multiline_output "downgrade_report" "$(cat "$DOWNGRADE_REPORT")"
+    downgrade_report_content="$(cat "$DOWNGRADE_REPORT")"
+    emit_multiline_output "downgrade_report" "$downgrade_report_content"
   else
     echo "has_downgrades=false" >>"$GITHUB_OUTPUT"
   fi
@@ -502,7 +503,8 @@ main() {
       printf '\n\n_Conflict report truncated at %d KB. Every conflicted file is listed in .template-sync-conflicts._\n' "$((max_report_bytes / 1000))" >>"$capped"
       mv "$capped" "$CONFLICT_REPORT"
     fi
-    emit_multiline_output "conflict_report" "$(cat "$CONFLICT_REPORT")"
+    conflict_report_content="$(cat "$CONFLICT_REPORT")"
+    emit_multiline_output "conflict_report" "$conflict_report_content"
     echo "Template updates available for: $conflicts" >.template-sync-conflicts
   else
     echo "has_conflicts=false" >>"$GITHUB_OUTPUT"

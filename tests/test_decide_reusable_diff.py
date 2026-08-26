@@ -593,7 +593,9 @@ def test_the_hook_lifecycle_gate_watches_its_closure_member_only_by_derivation()
     the REAL gate rather than only for the test's `^docs/`. Assert it, because a
     later widening of that regex would quietly turn the claim false."""
     workflow = yaml.safe_load(
-        (REPO_ROOT / ".github" / "workflows" / "hook-lifecycle.yaml").read_text()
+        (REPO_ROOT / ".github" / "workflows" / "hook-lifecycle.yaml").read_text(
+            encoding="utf-8"
+        )
     )
     gate = workflow["jobs"]["decide"]["with"]
     assert SHELL_TARGET in gate["shell-targets"].split()

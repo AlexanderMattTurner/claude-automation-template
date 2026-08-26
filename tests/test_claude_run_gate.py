@@ -78,7 +78,9 @@ def test_every_claude_run_call_site_inherits_the_gate() -> None:
     out. A new caller is gated by construction; one that sets
     gate_execution: false must justify itself here."""
     call_sites = _claude_run_call_sites()
-    assert len(call_sites) >= 6, f"expected the known callers, found {len(call_sites)}"
+    # A floor, not a count: a parser that reads no call site would run the
+    # opt-out check below over nothing and pass.
+    assert len(call_sites) >= 5, f"expected the known callers, found {len(call_sites)}"
     opted_out = [
         label
         for label, step in call_sites

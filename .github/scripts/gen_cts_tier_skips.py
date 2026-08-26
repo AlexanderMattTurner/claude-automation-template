@@ -13,7 +13,7 @@ twice. That skip list is a DERIVED value with two sources, and neither is this
 file's to invent:
 
 - which hook ids this repo lists on its own, read from `.pre-commit-config.yaml`;
-- which tier each member belongs to, read from `run_tier.TIERS` in the
+- which tier each member belongs to, read from `_registry.CHECKS` in the
   ci-truth-serum clone at the `rev:` this config pins.
 
 pre-commit reads `args` inline and cannot compute them, which is the hard
@@ -213,23 +213,29 @@ def cloned_repo(url: str, rev: str) -> Path:
 
 
 def parse_tiers(source: str) -> dict[str, list[str]]:
-    """{tier key: its member module names} from `run_tier.py`'s TIERS literal.
+    """{tier key: its member module names} from `_registry.py`'s `CHECKS` tuple.
 
-    Parsed rather than imported: the selector beside each member is a module
-    CONSTANT, and importing to resolve it would drag in `identify` and the rest
-    of the hook's own environment for a value this generator never reads.
+    `TIERS` itself is a dict comprehension over `CHECKS` (module, tier, kind,
+    *tags), not a literal — that shape cannot be read back by AST without
+    evaluating the comprehension. `CHECKS` is the literal SSOT it derives from:
+    each element is a `_check(module, tier, ...)` call whose first two
+    positional args are string constants. Parsed rather than imported: the
+    third positional arg is a module CONSTANT (e.g. `WORKFLOW`), and importing
+    to resolve it would drag in `identify` and the rest of the hook's own
+    environment for a value this generator never reads.
     """
     for node in ast.walk(ast.parse(source)):
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-        if not any(isinstance(t, ast.Name) and t.id == "TIERS" for t in targets):
+        if not any(isinstance(t, ast.Name) and t.id == "CHECKS" for t in targets):
             continue
-        return {
-            key.value: [member.elts[0].value for member in value.elts]
-            for key, value in zip(node.value.keys, node.value.values)
-        }
-    raise ValueError("run_tier.py declares no TIERS mapping")
+        tiers: dict[str, list[str]] = {}
+        for call in node.value.elts:
+            module, tier = call.args[0].value, call.args[1].value
+            tiers.setdefault(tier, []).append(module)
+        return tiers
+    raise ValueError("_registry.py declares no CHECKS tuple")
 
 
 def tiers_from_pin(config: YamlObject) -> dict[str, list[str]]:
@@ -237,7 +243,7 @@ def tiers_from_pin(config: YamlObject) -> dict[str, list[str]]:
     repo = cts_repo(config)
     clone = cloned_repo(repo["repo"], repo["rev"])
     return parse_tiers(
-        (clone / "ci_truth_serum" / "run_tier.py").read_text(encoding="utf-8")
+        (clone / "ci_truth_serum" / "_registry.py").read_text(encoding="utf-8")
     )
 
 

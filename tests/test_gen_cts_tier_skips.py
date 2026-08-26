@@ -126,10 +126,18 @@ def test_parse_tiers_reads_the_member_names_off_the_registry() -> None:
         """\
         WORKFLOW = "workflow"
         SHELL = "shell"
-        TIERS: dict[str, list[tuple[str, str]]] = {
-            "1": [("check_a", WORKFLOW), ("check_b", SHELL)],
-            "extras": [("check_c", SHELL)],
-        }
+        HONESTY = "honesty"
+
+
+        def _check(module, tier, kind, *tags):
+            return (module, tier, kind, frozenset(tags))
+
+
+        CHECKS = (
+            _check("check_a", "1", WORKFLOW, HONESTY),
+            _check("check_b", "1", SHELL, HONESTY),
+            _check("check_c", "extras", SHELL, HONESTY),
+        )
         """
     )
     assert mod.parse_tiers(source) == {
@@ -139,7 +147,7 @@ def test_parse_tiers_reads_the_member_names_off_the_registry() -> None:
 
 
 def test_parse_tiers_refuses_a_module_with_no_registry() -> None:
-    with pytest.raises(ValueError, match="no TIERS"):
+    with pytest.raises(ValueError, match="no CHECKS"):
         mod.parse_tiers("OTHER = {}\n")
 
 

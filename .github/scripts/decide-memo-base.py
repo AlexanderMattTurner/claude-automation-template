@@ -43,14 +43,12 @@ Env: GITHUB_REPOSITORY, GH_TOKEN, WORKFLOW_REF, HEAD_BRANCH, HEAD_SHA,
      MEMO_ANCHOR_JOBS (ERE over job names).
 """
 
-import functools
 import json
 import os
 import re
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 RUNS_PER_PAGE = 20
 # How old a verified run may be and still anchor the memo diff. A memoized pass
@@ -76,29 +74,18 @@ def gh_api(path: str) -> dict | None:
     return json.loads(result.stdout)
 
 
-@functools.lru_cache(maxsize=1)
-def _repo_root() -> str:
-    return subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=True,
-        # The invocation directory, NOT this script's own location: the
-        # script runs from a trusted checkout AGAINST a different working
-        # tree, so a root derived from __file__ inspects the wrong
-        # repository. An in-process caller must chdir before calling.
-        cwd=Path.cwd(),
-    ).stdout.strip()
-
-
 def git_ok(*args: str) -> bool:
+    # cwd-git-ok: explicitly names the process's own working directory (the
+    # repo this script is invoked against, in CI or in a test's scratch repo)
+    # instead of leaving it implicit, so an in-process caller elsewhere can
+    # never silently inherit a stale one.
     return (
         subprocess.run(
             ["git", *args],
             capture_output=True,
             text=True,
             check=False,
-            cwd=_repo_root(),
+            cwd=os.getcwd(),
         ).returncode
         == 0
     )

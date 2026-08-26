@@ -60,7 +60,7 @@ def test_the_same_credential_configured_twice_is_probed_once():
 def _with_quota(tmp_path: Path, budgets: dict[str, dict[str, int]], **rungs: str):
     """Drive github_token_with_quota against a `gh` whose /rate_limit answers
     from `budgets` (credential -> {core, graphql} requests remaining)."""
-    (tmp_path / "budgets.json").write_text(json.dumps(budgets))
+    (tmp_path / "budgets.json").write_text(json.dumps(budgets), encoding="utf-8")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     stub = f"""#!/usr/bin/env bash
@@ -73,7 +73,7 @@ entry="$(jq -c --arg t "${{GH_TOKEN:-}}" '.[$t] // empty' "{tmp_path}/budgets.js
 [[ -n "$entry" ]] || exit 1
 jq -r "$filter" <<<"{{\\"resources\\":$entry}}"
 """
-    (bin_dir / "gh").write_text(stub)
+    (bin_dir / "gh").write_text(stub, encoding="utf-8")
     (bin_dir / "gh").chmod(0o755)
     return _bash(
         "github_token_with_quota", rungs, path=f"{bin_dir}:/usr/bin:/bin:/usr/local/bin"

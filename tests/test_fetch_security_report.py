@@ -17,7 +17,7 @@ SCRIPT = REPO_ROOT / ".github" / "scripts" / "fetch-security-report.sh"
 
 def _write_gh(bin_dir: Path, body: str) -> None:
     gh = bin_dir / "gh"
-    gh.write_text("#!/usr/bin/env bash\n" + body)
+    gh.write_text("#!/usr/bin/env bash\n" + body, encoding="utf-8")
     gh.chmod(gh.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
 
 
@@ -38,7 +38,7 @@ def _run(tmp_path: Path, gh_body: str) -> str:
     subprocess.run(
         ["bash", str(SCRIPT)], cwd=tmp_path, env=env, capture_output=True, text=True
     )
-    return report.read_text()
+    return report.read_text(encoding="utf-8")
 
 
 def test_failed_socket_fetch_reports_error_not_no_alerts(tmp_path: Path) -> None:

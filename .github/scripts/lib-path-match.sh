@@ -10,18 +10,10 @@
 # echo false` — all collapse 2 into "no". The job then skips, its always()
 # reporter greens the skip, and nothing looked at the diff.
 #
-# All three helpers fail OPEN on every status except a clean 1: a wasted run is
+# Both helpers fail OPEN on every status except a clean 1: a wasted run is
 # safe, a silently skipped gate is not. They fail open rather than abort because one
 # decide job computes many verdicts, and a hard exit there blocks every gate it
 # feeds instead of just over-running one.
-
-# path_gate_matches REGEX TEXT — 0 when a line of TEXT matches REGEX, and 0 when
-# grep itself failed. 1 only on a clean no-match.
-path_gate_matches() {
-  local rc=0
-  grep -qE "$1" <<<"$2" || rc=$?
-  [[ "$rc" != 1 ]]
-}
 
 # path_gate_matching_lines REGEX TEXT — the matching lines of TEXT on stdout, or
 # ALL of TEXT when grep failed, so a caller that narrows the match further (a

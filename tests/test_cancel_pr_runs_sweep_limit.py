@@ -32,7 +32,7 @@ def run(
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     stub = bin_dir / "gh"
-    stub.write_text(FAKE_GH)
+    stub.write_text(FAKE_GH, encoding="utf-8")
     stub.chmod(0o755)
 
     # All "completed", so the script filters every run out and never calls
@@ -44,7 +44,8 @@ def run(
             f'{{"databaseId": {i}, "status": "completed", "headSha": "dead"}}'
             for i in range(1, run_count + 1)
         )
-        + "]"
+        + "]",
+        encoding="utf-8",
     )
 
     call_log = tmp_path / "gh-calls.txt"
@@ -75,7 +76,7 @@ def test_a_full_page_warns_the_sweep_may_have_missed_runs(tmp_path: Path) -> Non
     assert "3 newest runs" in result.stdout
     # Non-vacuous coverage of RUN_SWEEP_LIMIT actually reaching `gh`: a
     # hardcoded --limit would still pass every other assertion here.
-    call_log = (tmp_path / "gh-calls.txt").read_text()
+    call_log = (tmp_path / "gh-calls.txt").read_text(encoding="utf-8")
     assert "--limit 3" in call_log
 
 

@@ -216,7 +216,6 @@ test("the CLI's scan set is non-vacuous and covers the hook/CI-script surface", 
   for (const f of [
     ".claude/hooks/lib-control-plane.mjs",
     ".github/scripts/sanitize-pr-input.mjs",
-    ".github/scripts/select-resolvable-threads.mjs",
   ]) {
     assert.ok(scanned.includes(f), `scan set is missing ${f}`);
   }

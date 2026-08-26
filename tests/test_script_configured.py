@@ -15,7 +15,9 @@ pytestmark = pytest.mark.skipif(
 
 
 def write_package_json(repo: Path, scripts: dict[str, str]) -> None:
-    (repo / "package.json").write_text(json.dumps({"name": "x", "scripts": scripts}))
+    (repo / "package.json").write_text(
+        json.dumps({"name": "x", "scripts": scripts}), encoding="utf-8"
+    )
 
 
 def run_script(repo: Path, copy_script, name: str) -> subprocess.CompletedProcess:
@@ -61,7 +63,9 @@ def test_malformed_package_json_fails_loud(tmp_path: Path, copy_script) -> None:
     report green with zero work. Red on the old script, which used
     `jq -re … || exit 1` and returned 1 (== "not configured") on invalid JSON.
     """
-    (tmp_path / "package.json").write_text('{ "scripts": { "test": }')  # invalid
+    (tmp_path / "package.json").write_text(
+        '{ "scripts": { "test": }', encoding="utf-8"
+    )  # invalid
     result = run_script(tmp_path, copy_script, "test")
     assert result.returncode >= 2, (result.returncode, result.stderr)
     assert "cannot read package.json" in result.stderr
@@ -82,7 +86,7 @@ def run_output(
     copy_script("script-configured.sh", repo)  # sibling the wrapper resolves
     wrapper = copy_script("script-configured-output.sh", repo)
     gh_out = repo / "gh_output"
-    gh_out.write_text("")
+    gh_out.write_text("", encoding="utf-8")
     result = subprocess.run(
         ["bash", str(wrapper), name, out_var],
         cwd=repo,
@@ -90,7 +94,7 @@ def run_output(
         text=True,
         env={**os.environ, "GITHUB_OUTPUT": str(gh_out)},
     )
-    return result, gh_out.read_text()
+    return result, gh_out.read_text(encoding="utf-8")
 
 
 def test_wrapper_writes_true_when_configured(tmp_path: Path, copy_script) -> None:
@@ -112,7 +116,7 @@ def test_wrapper_fails_loud_on_malformed_json(tmp_path: Path, copy_script) -> No
     (never emit configured=false), so the required check can't go green with
     zero work. Red on the old inline `if bash …; then true; else false; fi`,
     which routed exit >=2 into the false branch."""
-    (tmp_path / "package.json").write_text('{ "scripts": { "test": }')
+    (tmp_path / "package.json").write_text('{ "scripts": { "test": }', encoding="utf-8")
     result, out = run_output(tmp_path, copy_script, "test")
     assert result.returncode >= 2, (result.returncode, result.stderr)
     assert "configured=false" not in out

@@ -30,7 +30,7 @@ INERT_SPELLINGS = ("minimum-release-age", "minimum_release_age")
 
 
 def _workspace() -> dict:
-    return yaml.safe_load(WORKSPACE.read_text())
+    return yaml.safe_load(WORKSPACE.read_text(encoding="utf-8"))
 
 
 def _github_owner(repository: str) -> str:
@@ -88,7 +88,7 @@ def test_no_inert_minimum_release_age_spelling() -> None:
     for path in (NPMRC, WORKSPACE):
         if not path.exists():
             continue
-        text = path.read_text().lower()
+        text = path.read_text(encoding="utf-8").lower()
         # Comments legitimately name the inert spelling to warn about it; only a
         # line that actually sets it is a problem. .npmrc takes both ini comment
         # markers, so a commented-out setting is not an offender either.
@@ -112,7 +112,7 @@ def _exempted() -> list[str]:
 def test_exempted_packages_are_declared_dependencies() -> None:
     """A stale exemption is a landmine: if the name is ever re-added — or taken
     over by a typosquatter — it installs with no release-age floor at all."""
-    manifest = json.loads(PACKAGE_JSON.read_text())
+    manifest = json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))
     declared = {
         **manifest.get("dependencies", {}),
         **manifest.get("devDependencies", {}),
@@ -139,7 +139,9 @@ def test_exempted_packages_are_first_party() -> None:
         f"cannot verify first-party ownership of {exempted}: {NODE_MODULES} is "
         "missing. Run `pnpm install` and re-run."
     )
-    owner = _github_owner(json.loads(PACKAGE_JSON.read_text())["repository"]["url"])
+    owner = _github_owner(
+        json.loads(PACKAGE_JSON.read_text(encoding="utf-8"))["repository"]["url"]
+    )
 
     for name in exempted:
         installed = Path(NODE_MODULES, name, "package.json")
@@ -147,7 +149,7 @@ def test_exempted_packages_are_first_party() -> None:
             f"{name} is exempt from the release-age floor but is not installed at "
             f"{installed}; run `pnpm install` and re-run."
         )
-        repository = json.loads(installed.read_text()).get("repository")
+        repository = json.loads(installed.read_text(encoding="utf-8")).get("repository")
         url = repository.get("url") if isinstance(repository, dict) else repository
         assert url, (
             f"{name} is exempt from the release-age floor but publishes no "
