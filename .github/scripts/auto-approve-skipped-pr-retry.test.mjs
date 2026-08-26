@@ -1,7 +1,7 @@
 // auto-approve-skipped-pr.sh's reviews-API retry: an APPROVE can 422 under
-// GITHUB_TOKEN the same way it does in post-pr-review.sh, while COMMENT
+// GITHUB_TOKEN the same way it does for any formal vote, while COMMENT
 // always succeeds. Drives the real script (which shares
-// lib-post-review-with-retry.sh with post-pr-review.sh) against a fake `gh`
+// lib-post-review-with-retry.sh with its caller) against a fake `gh`
 // that rejects a chosen set of events, so the retry-as-COMMENT path is
 // exercised end to end rather than re-implemented.
 import { test } from "node:test";

@@ -147,8 +147,11 @@ def test_known_untrusted_ingesting_call_sites_declare_their_files() -> None:
     feed repo/PR content to Claude. Their prompt docs no longer carry a guard of
     their own, so dropping `untrusted_files` here would leave the run genuinely
     unguarded. A new untrusted-ingesting automation belongs in this list."""
+    # The first-pass PR reviewer is absent on purpose: claude-review.yaml calls
+    # the reusable workflow in AlexanderMattTurner/agent-review, which sanitizes
+    # the diff and declares its own untrusted files. This repository holds no
+    # call site for it to cover.
     required = {
-        "Review the PR with Claude",
         "Review the merge deltas with Claude (Sonnet)",
         "Triage and fix with Claude",
     }

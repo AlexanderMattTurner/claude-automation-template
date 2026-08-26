@@ -15,7 +15,7 @@
 #
 # PR-SCOPED, NOT HEAD-SCOPED, and that is load-bearing. Requiring a review OF THE
 # CURRENT HEAD looks stricter and strands the pull request instead:
-# decide-pr-review-trigger.sh answers run=false for a plain `synchronize`, so
+# the reviewer skips a plain `synchronize` once it has spent its read, so
 # once the reviewer has approved, the next push produces a head nothing will ever
 # review, and a head-scoped gate would hold that pull request at `pending`
 # forever with no event able to clear it. Whether a later push still satisfies
@@ -76,14 +76,14 @@ GATE_CONTEXT="Automated review posted"
 #     in-thread with addPullRequestReviewThreadReply. Without the body filter,
 #     that reply alone greens the gate for a pull request the reviewer is still
 #     holding. Every writer of a
-#     REAL review here sends a non-empty body: post-pr-review.mjs falls back to
+#     REAL review here sends a non-empty body: the reviewer falls back to
 #     "Automated review." when the model returns nothing, auto-approve-skipped-pr.sh
 #     and approve-if-reviewer-hold-clear.sh both hardcode theirs.
 #
 # The approval that auto-approve-skipped posts for a PR the reviewer skips by
 # title or author still clears the gate: it is posted with GITHUB_TOKEN, so it
 # carries the reviewer identity. Reading that OUTCOME beats re-deriving the skip
-# predicate, which would be a second copy of decide-pr-review-trigger.sh's rules.
+# predicate, which would be a second copy of the reviewer's own skip rules.
 reviewers="$(gh api --paginate "repos/${GH_REPO}/pulls/${PR}/reviews" \
   --jq ".[] | select(.state != \"DISMISSED\") | ${REVIEWER_MATCH_USER} | select((.body // \"\") != \"\") | .user.login // \"\"")"
 reviewer="$(head -n 1 <<<"$reviewers")"

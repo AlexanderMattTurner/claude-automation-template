@@ -79,8 +79,11 @@ def test_every_claude_run_call_site_inherits_the_gate() -> None:
     gate_execution: false must justify itself here."""
     call_sites = _claude_run_call_sites()
     # A floor, not a count: a parser that reads no call site would run the
-    # opt-out check below over nothing and pass.
-    assert len(call_sites) >= 5, f"expected the known callers, found {len(call_sites)}"
+    # opt-out check below over nothing and pass. The first-pass PR reviewer is
+    # not among them: claude-review.yaml calls the reusable workflow in
+    # AlexanderMattTurner/agent-review, so that agent invocation and its gate
+    # live in that repository.
+    assert len(call_sites) >= 4, f"expected the known callers, found {len(call_sites)}"
     opted_out = [
         label
         for label, step in call_sites
