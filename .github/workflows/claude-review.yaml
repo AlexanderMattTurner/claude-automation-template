@@ -367,7 +367,11 @@ jobs:
           # decide/review jobs: the script is trusted repo content, no PR code runs.
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
-          sparse-checkout: .github/scripts/auto-approve-skipped-pr.sh
+          # Both files: the script sources the retry library, and a list that
+          # names only the entrypoint leaves the runner without it.
+          sparse-checkout: |
+            .github/scripts/auto-approve-skipped-pr.sh
+            .github/scripts/lib-post-review-with-retry.sh
           sparse-checkout-cone-mode: false
       - name: Approve so a review-required ruleset doesn't strand a skipped PR
         env:
