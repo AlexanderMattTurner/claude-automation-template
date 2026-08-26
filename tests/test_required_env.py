@@ -30,7 +30,6 @@ CASES = [
     # label-merge-conflicts.sh requires GH_TOKEN and REPO
     ("label-merge-conflicts.sh", ["GH_TOKEN", "REPO"]),
     # PR-review suite (claude-pr-review.yaml and friends)
-    ("prepare-pr-review-input.sh", ["PR", "PR_INPUT_DIR"]),
     ("post-pr-review.sh", ["PR", "GH_REPO", "PR_INPUT_DIR"]),
     ("auto-approve-skipped-pr.sh", ["PR", "GH_REPO"]),
     # The resolve credential is no longer an input: it is picked from the
