@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PROBLEM CLASS: `gh api POST .../reviews` can 422 on APPROVE (and occasionally
 # REQUEST_CHANGES) under GITHUB_TOKEN when the repo does not allow Actions to
-# cast a formal vote — observed in both post-pr-review.sh and
+# cast a formal vote — observed in both the reviewer's poster and
 # auto-approve-skipped-pr.sh — while COMMENT always succeeds. Any script in
 # this repo that posts a PR review via the reviews API must retry a rejected
 # event as COMMENT before giving up, since review-gate.sh's "Automated review

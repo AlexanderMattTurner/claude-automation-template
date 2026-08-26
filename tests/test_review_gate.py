@@ -26,7 +26,6 @@ LIB_REL = ".github/scripts/lib/reviewer-login.bash"
 REVIEWER_SCRIPTS = (
     "review-gate.sh",
     "approve-if-reviewer-hold-clear.sh",
-    "decide-pr-review-trigger.sh",
 )
 
 BOT = "github-actions[bot]"
