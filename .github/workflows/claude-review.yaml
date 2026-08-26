@@ -76,16 +76,13 @@ jobs:
   # entirely — the label IS the request to review a PR the skips would otherwise
   # drop — and the reviewer's decide script confirms the label is
   # `needs-auto-review` before running, so every other label edit costs one
-  # skipped job. The bot guard rides the label arm too: claude-code-action
-  # refuses a Bot-initiated run outright, so a labelled bot PR would walk every
-  # credential rung and fail each one identically, for a cause no token changes.
+  # skipped job. The label arm carries NO bot guard: auto-approve-skipped-pr.sh
+  # offers this label on a bot-authored PR too, and a guard here would leave that
+  # offer doing nothing.
   # ────────────────────────────────────────────────────────────────────────────
   review:
     if: >-
-      (
-      github.event.label.name == 'needs-auto-review' &&
-      github.event.pull_request.user.type != 'Bot'
-      ) ||
+      github.event.label.name == 'needs-auto-review' ||
       (
       github.event.action != 'labeled' &&
       github.event.pull_request.draft == false &&
