@@ -41,7 +41,7 @@ fold or in a <details> block — never above the statement of what changed.
      the phone-home workflow, which sends the lesson one way into the repo TEMPLATE_REPO
      names in .github/workflows/phone-home.yaml. Omit the section entirely if there are
      none; never write "None." Skip it altogether only when the repo this PR MERGES INTO
-     is that one — the base repo decides, not your fork. -->
+     is named claude-automation-template — the base repo decides, not your fork. -->
 
 <details>
 <summary>Author checklist</summary>
