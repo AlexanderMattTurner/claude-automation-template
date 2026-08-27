@@ -31,9 +31,18 @@ Everything else is out of scope. Do not widen the set because a neighbouring PR 
 
 **Build it in ONE call, already in the order you must work it.** `mcp__github__list_pull_requests` with `state: open`, `sort: created`, `direction: asc`, and `fields: ["number","title","state","draft","created_at","head"]`. `fields` drops `body`, which is the largest part of each result, and forty PR bodies is the difference between a list you can read and a wall you cannot.
 
-**REBUILD the set from that call whenever THIS session did not build it — at the start, after a compaction, and whenever the set has drained.** Rebuilding re-applies the three criteria above to the live open list; it never adopts every open PR. The list call is the filter's INPUT, not the set: `auto_merge` is not among its `fields`, so confirm criterion 1 per candidate from `GET /repos/{o}/{r}/pulls/{n}`. A written-down set is valid for one run of wakes and no longer. Members leave it by merging, and members enter it with no webhook to you, because a PR opened after you built the list notifies nobody who is not already subscribed to it. So a set that has shrunk to one or two PRs is not a repository with one or two PRs left — it is a stale list of numbers that still reads like a watch set. Carry a set forward only across wakes within the session that built it, and re-read the open list before you conclude there is nothing left to drive.
+**Rebuilding means re-running that call and re-applying the three criteria above; it never adopts every open PR.** The call is the filter's INPUT, not the set. `auto_merge` is not among its `fields`, so confirm criterion 1 per candidate from `GET /repos/{o}/{r}/pulls/{n}`.
 
-**Drop the drafts when you build it — unless the user named one, or it was in the set before it was converted.** A draft cannot arm auto-merge, so driving an unrelated one to green lands nothing. A named or already-tracked draft stays on the checklist as `parked (draft)` rather than vanishing from it, which is what the draft-conversion paragraph above needs to remain reachable. Never mark one ready to widen the set: where the repository parks PRs as drafts to limit how many check batteries run at once, that spends the capacity the PRs you are landing need, and the parked ones return on their own as those land.
+**Rebuild the set at four points:**
+
+- the start of a session — a set never carries into one that did not build it;
+- after a compaction;
+- when a member merges or closes;
+- when every remaining member waits on something you cannot speed up.
+
+The last two carry the rule. A set drains one PR at a time. One long-blocked member keeps it non-empty for the rest of the session, so "rebuild when it drains" never fires. Members leave by merging. Members enter with no webhook to you, because a PR opened after you built the list notifies nobody already subscribed. A set that shrank to one or two PRs is a stale list, not a quiet repository.
+
+**Drop the drafts when you build it — except one the user named, or one already in the set when it was converted.** A draft cannot arm auto-merge, so driving an unrelated one to green lands nothing. Keep those two on the checklist as `parked (draft)`, which keeps the draft-conversion paragraph above reachable. Never mark one ready to widen the set: where a repository parks PRs as drafts to bound concurrent check batteries, that spends the capacity the PRs you are landing need, and the parked ones return as those land.
 
 **`mergeable_state` is an allowed `fields` value that the call does not return** — GitHub's list endpoint never serves it and the tool does not backfill it, so it comes back absent rather than as an error. Reading its absence as "this PR has no mergeable state" is the failure. Get it per PR from `GET /repos/{o}/{r}/pulls/{n}`.
 
