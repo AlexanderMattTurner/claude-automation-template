@@ -29,7 +29,11 @@ Write the list down before acting, because "the ones with auto-merge on" is a mo
 
 Everything else is out of scope. Do not widen the set because a neighbouring PR is also red.
 
-**Build it in ONE call, already in the order you must work it.** `mcp__github__list_pull_requests` with `state: open`, `sort: created`, `direction: asc`, and `fields: ["number","title","state","created_at","head"]`. `fields` drops `body`, which is the largest part of each result, and forty PR bodies is the difference between a list you can read and a wall you cannot.
+**Build it in ONE call, already in the order you must work it.** `mcp__github__list_pull_requests` with `state: open`, `sort: created`, `direction: asc`, and `fields: ["number","title","state","draft","created_at","head"]`. `fields` drops `body`, which is the largest part of each result, and forty PR bodies is the difference between a list you can read and a wall you cannot.
+
+**REBUILD the set from that call whenever THIS session did not build it — at the start, after a compaction, and whenever the set has drained.** A written-down set is valid for one run of wakes and no longer. Members leave it by merging, and members enter it with no webhook to you, because a PR opened after you built the list notifies nobody who is not already subscribed to it. So a set that has shrunk to one or two PRs is not a repository with one or two PRs left — it is a stale list of numbers that still reads like a watch set. Carry a set forward only across wakes within the session that built it, and re-read the open list before you conclude there is nothing left to drive.
+
+**Drop the drafts when you build it.** A draft cannot arm auto-merge, so driving one to green lands nothing. Where the repository parks PRs as drafts to limit how many check batteries run at once, never mark one ready to widen the set: that spends the capacity the PRs you are landing need, and the parked ones return on their own as those land.
 
 **`mergeable_state` is an allowed `fields` value that the call does not return** — GitHub's list endpoint never serves it and the tool does not backfill it, so it comes back absent rather than as an error. Reading its absence as "this PR has no mergeable state" is the failure. Get it per PR from `GET /repos/{o}/{r}/pulls/{n}`.
 
