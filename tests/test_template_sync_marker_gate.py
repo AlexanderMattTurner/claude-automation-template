@@ -170,6 +170,25 @@ def test_marker_text_the_repo_already_had_is_left_alone(sandbox):
     assert git_out(work, "rev-parse", "origin/template-sync") == tip
 
 
+def test_a_base_the_checkout_cannot_resolve_stops_the_gate(sandbox):
+    """BASE_SHA says what each marked file goes back to, and a path it cannot
+    resolve is deleted. An unreadable base must stop the gate, not empty it."""
+    work, _ = sandbox
+    tip = commit_files(
+        work,
+        {".github/scripts/lib/retry.bash": MARKED},
+        "sync from template",
+    )
+    push_branch(work)
+
+    result = run_gate(work, "0" * 40)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "is not a commit" in result.stdout
+    fetch_origin(work)
+    assert git_out(work, "rev-parse", "origin/template-sync") == tip
+
+
 def test_a_clean_branch_passes_and_is_left_alone(sandbox):
     work, base_sha = sandbox
     tip = commit_files(

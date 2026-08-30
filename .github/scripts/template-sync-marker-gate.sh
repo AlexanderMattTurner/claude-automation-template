@@ -32,6 +32,14 @@ source "${LIB_DIR}/git-auth.bash"
 
 BRANCH="template-sync"
 
+# BASE_SHA decides what each marked file goes back to, and a path it cannot
+# resolve is DELETED below. An unreadable base would restore nothing and delete
+# everything, so refuse it here rather than acting on it.
+git rev-parse --verify --quiet "${BASE_SHA}^{commit}" >/dev/null || {
+  echo "::error::template-sync-marker-gate: BASE_SHA ${BASE_SHA} is not a commit in this checkout."
+  exit 1
+}
+
 git_auth_header "$GITHUB_TOKEN"
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
