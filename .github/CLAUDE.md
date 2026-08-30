@@ -82,7 +82,9 @@ Two things make this more than a formality. **The notify step must be REACHABLE 
 
 ## A trigger that runs unreviewed code holds no secret
 
-**Never give a secret to a workflow that fires on a bare `push` to an unreviewed branch** — a `claude/**` branch, or any ref an agent or a bot writes. The job runs that branch's code as pushed, so whoever writes the branch reads the secret before a human reads the diff. Approval settings do not cover it: they gate `pull_request` runs, and this run needs no pull request. Watch for a `paths:` filter naming the one file the job executes. The branch then supplies the trigger and the payload together. Move the job to `pull_request` behind an approval, or take the secret out of its env.
+**Never give a secret to a workflow that fires on a bare `push` to an unreviewed branch** — a `claude/**` branch, or any ref an agent or a bot writes. The job runs that branch's code as pushed, so whoever writes the branch reads the secret before a human reads the diff. Watch for a `paths:` filter naming the one file the job executes. The branch then supplies the trigger and the payload together.
+
+**The trigger is not the fix, because no trigger gates a same-repo branch.** GitHub's workflow-approval settings cover **fork** pull requests only, so a `pull_request` opened from a `claude/**` branch runs with the full secret set on its first event. Take the secret out of the job's env, or put the job behind an `environment:` with a required reviewer. That deployment protection rule is evaluated per job on any trigger, and it withholds the environment's secrets until a human approves — the one gate that holds for a ref inside the repo.
 
 **A policy the head branch supplies does not bound the head branch.** Per-job secret scoping, an allowlist, or a check manifest read from the pushed ref limits an honest job and nothing else: a branch that would abuse the secret edits the file that grants it in the same commit. Read such a policy from the base ref, or from a ref the branch author cannot write.
 
