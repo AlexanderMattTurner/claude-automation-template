@@ -46,7 +46,7 @@ git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
 # The branch, not the workspace, is what a consumer checks out, so judge and
 # repair the branch. `-f` drops the edits the resolve step chose not to push.
-git fetch --no-tags origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}"
+timeout --kill-after=30 300 git fetch --no-tags origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}"
 git checkout -q -f -B "$BRANCH" "origin/${BRANCH}"
 
 marked=()
