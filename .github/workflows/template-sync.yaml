@@ -332,6 +332,19 @@ jobs:
           BY_MODEL: ${{ steps.resolve.outputs.by_model }}
         run: bash .github/scripts/template-sync-push.sh
 
+      # The markers reach the branch before either resolver tier runs, because
+      # create-pull-request commits the whole synced tree. So this is the step
+      # that holds the invariant: no file on `template-sync` carries a conflict
+      # marker. It runs even when a step above it failed, because a resolve step
+      # that died is exactly when the markers survive.
+      - name: Refuse conflict markers on the sync branch
+        if: ${{ !cancelled() && inputs.dry-run != true && steps.create-pr.outputs.pull-request-number }}
+        env:
+          BASE_SHA: ${{ github.sha }}
+          # token-fallback-ok: designed graceful degradation, not an accident.
+          GITHUB_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/template-sync-marker-gate.sh
+
       # A sync merges itself only when NOTHING needed judgement. See the script
       # for the full predicate; the two carve-outs are that a model-resolved file
       # never qualifies, and neither does a change to the supervision surface.

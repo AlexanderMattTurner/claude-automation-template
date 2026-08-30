@@ -25,6 +25,8 @@ CASES = [
     ("fetch-security-report.sh", ["GH_TOKEN", "REPO"]),
     # template-sync.sh requires GITHUB_OUTPUT
     ("template-sync.sh", ["GITHUB_OUTPUT"]),
+    # template-sync-marker-gate.sh requires BASE_SHA and GITHUB_TOKEN
+    ("template-sync-marker-gate.sh", ["BASE_SHA", "GITHUB_TOKEN"]),
     # cancel-pr-runs.sh requires REPO, HEAD_REF, HEAD_SHA, GH_TOKEN
     ("cancel-pr-runs.sh", ["REPO", "HEAD_REF", "HEAD_SHA", "GH_TOKEN"]),
     # label-merge-conflicts.sh requires GH_TOKEN and REPO
