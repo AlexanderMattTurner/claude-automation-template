@@ -38,7 +38,7 @@ cheapest reviewer tell for a hollow regression test.
 
 **Read the subject's state before its output, and read it without touching it.** Ask the runtime's own inventory — `docker ps -a`, a job list, a status endpoint — rather than entering the thing. Entering a stopped container starts it, so the probe destroys the ending it exists to observe.
 
-**Exclude your own guards' words from any failure-signature list.** A defence usually refuses in the operating system's wording, so `Permission denied` from a root-owned file is the guard working. A crash-signature or error-string match that does not carve those out scores a correct refusal as a failure.
+**Exclude your own guards' words from any failure-signature list.** A defense usually refuses in the operating system's wording, so `Permission denied` from a root-owned file is the guard working. A crash-signature or error-string match that does not carve those out scores a correct refusal as a failure.
 
 ## Never skip or weaken a test unless asked
 
