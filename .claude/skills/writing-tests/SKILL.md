@@ -32,6 +32,14 @@ and drive cases from that claim rather than the single input that first triggere
 the bug. "Comment promises more generality than the test exercises" is the
 cheapest reviewer tell for a hollow regression test.
 
+## An accusation needs evidence from the subject, never an absence
+
+**A check that concludes from a missing artifact reads a dead environment as a violation.** An absent log, an unreadable output file, a process that exited before it wrote anything — each is evidence-shaped and proves nothing. Assert that the subject ran and produced the artifact, then judge what the artifact says. A check that skips the first step goes red loudest exactly when its own harness broke. It is the twin of the vacuous green: one missing input, reported as a false accusation instead of a false pass.
+
+**Read the subject's state before its output, and read it without touching it.** Ask the runtime's own inventory — `docker ps -a`, a job list, a status endpoint — rather than entering the thing. Entering a stopped container starts it, so the probe destroys the ending it exists to observe.
+
+**Exclude your own guards' words from any failure-signature list.** A defence usually refuses in the operating system's wording, so `Permission denied` from a root-owned file is the guard working. A crash-signature or error-string match that does not carve those out scores a correct refusal as a failure.
+
 ## Never skip or weaken a test unless asked
 
 Including silently dropping an assertion while refactoring, and including

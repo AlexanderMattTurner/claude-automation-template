@@ -80,7 +80,10 @@ waiting turn after turn. Reproduce that layer locally and iterate there until it
 green, then let CI confirm once. Two traps make "dispatched and waiting" a false
 signal: a faked-input unit test can enshrine a wrong assumption the real
 dependency would refute, and a run tied to a branch/PR is **cancelled on merge**
-so it may never reach the assertion.
+so it may never reach the assertion. When you do need one full-pipeline
+confirmation, dispatch it against the **default branch** after the merge: a run
+with no PR association is not cancelled by the PR closing, and it exercises the
+code that actually landed.
 
 ## Before claiming green
 
