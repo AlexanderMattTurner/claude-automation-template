@@ -4,6 +4,7 @@
 
 - **Every job that is (or could become) a required status check must have a `name:` that describes what it verifies**, not a restatement of the job ID — the name appears verbatim in the branch-protection UI and the PR check list. Bad: `pytest:`, `check:`. Good: `name: Python tests (pytest)`. For a matrix job, include the matrix variable: `name: Hook lifecycle (${{ matrix.os }})`.
 - **Don't inline a substantial shell script in a `run:` block — extract it to `.github/scripts/<name>.sh` and call `run: bash .github/scripts/<name>.sh`.** Inline shell is invisible to the repo's shell linters (shellcheck and shfmt only see standalone `.sh` files), so a long inline block ships unchecked. Rule of thumb: more than ~10 lines, or any branching logic, gets extracted; trivial glue (one command, one output assignment) stays inline. **A job calling an external script must `actions/checkout` first** — a checkout-less decide or report job either adds `sparse-checkout: .github/scripts` or keeps the small block inline.
+- **A `sparse-checkout` list covers what the entry point loads, not just the entry point**: a shell script's `source` lines, a module's imports, and theirs in turn. A missing library is invisible until the step runs. It then dies with `No such file or directory` on every PR that reaches it, while the static checks on that file report clean.
 - **Pin every third-party action to a commit SHA** with a `# vX.Y` comment. A mutable tag lets a compromised maintainer replace the code you reviewed. Example: `uses: actions/checkout@9c091bb…9 # v7.0.0`.
 - Use `uv` (not `pip`) for Python tool installs in CI, and `uv python install <version>` instead of `actions/setup-python`'s tool cache when pinning a version — that removes the runner-image dependency entirely.
 - When `.pre-commit-config.yaml` pins `default_language_version`, the workflow must install that exact Python version. Runner images drop versions on their own schedule; keep the two in sync.
@@ -70,6 +71,7 @@ Two things make this more than a formality. **The notify step must be REACHABLE 
 ## Scoping work to a change range
 
 - **A job scoping work to a PR's change range must derive the head from the checkout, not the event payload.** Resolve it with `git rev-parse HEAD` after `actions/checkout`, never `github.event.pull_request.head.sha` — the event SHA is frozen at trigger time, so a rebase or force-push points it at a diverged commit and silently mis-scopes the range to the whole branch history.
+- **A range-scoped job needs the merge-base in its checkout, so it takes `fetch-depth: 0`.** Under a shallow clone `git merge-base main HEAD` does not resolve, and a check that then falls back to "scan all the history I can see" reports other people's already-merged commits as violations of the PR in front of it. Deepen the clone before computing the range, and fail loud when the base is still absent — never widen the range to whatever is reachable.
 - **A formatter wired only into the staged-files commit hook leaves a hole the merge button drives through.** GitHub's squash and merge run no client hooks, so a 3-way merge can land formatting drift that a CI `format --check` then rejects on an otherwise-clean `main`. Wire the formatter into an all-files autofix step or CI job, so the check side and the fix side cover the same surface.
 
 ## Tokens and the API
@@ -77,6 +79,14 @@ Two things make this more than a formality. **The notify step must be REACHABLE 
 - **`GITHUB_TOKEN` cannot resolve review threads in Actions.** `resolveReviewThread` returns "Resource not accessible by integration" for the app installation token even with `pull-requests: write`, while `addPullRequestReviewThreadReply` on the same thread succeeds. A bot that auto-resolves conversations needs a PAT (a user-actor token) for the resolve mutation.
 - **`gh api --paginate --jq` applies the jq filter per page.** A filter ending in a reducer (`last`, `first`, `max_by`, `add`) is silently wrong across a page boundary — it runs the reducer on each page separately. Add `--slurp` so the pages merge into one array and the reducer runs once.
 - **An explicit `permissions:` block sets every unlisted scope to `none`.** A step that lists workflow runs needs `actions: read`; one that reads a PR's draft state needs `pull-requests: read`. A missing scope answers 403, and a script that treats an API fault as "no data" then degrades silently instead of failing.
+
+## A trigger that runs unreviewed code holds no secret
+
+**Never give a secret to a workflow that fires on a bare `push` to an unreviewed branch** — a `claude/**` branch, or any ref an agent or a bot writes. The job runs that branch's code as pushed, so whoever writes the branch reads the secret before a human reads the diff. Watch for a `paths:` filter naming the one file the job executes. The branch then supplies the trigger and the payload together.
+
+**The trigger is not the fix, because no trigger gates a same-repo branch.** GitHub's workflow-approval settings cover **fork** pull requests only, so a `pull_request` opened from a `claude/**` branch runs with the full secret set on its first event. Take the secret out of the job's env, or put the job behind an `environment:` with a required reviewer. That deployment protection rule is evaluated per job on any trigger, and it withholds the environment's secrets until a human approves — the one gate that holds for a ref inside the repo.
+
+**A policy the head branch supplies does not bound the head branch.** Per-job secret scoping, an allowlist, or a check manifest read from the pushed ref limits an honest job and nothing else: a branch that would abuse the secret edits the file that grants it in the same commit. Read such a policy from the base ref, or from a ref the branch author cannot write.
 
 ## Autofix workflows
 

@@ -1,6 +1,6 @@
 ---
 name: writing-tests
-description: How to write, change, or review tests — the load-bearing rule is test real behavior, not source text. Also covers non-vacuity (prove the test can fail), e2e tests that secretly stub the component they name, drift guards as a design smell to name rather than launder, SSOT contract tests that must move with their data, stubs that must drain stdin, and the Python test idioms (repo-root discovery, `exec()`-ing a module's `__main__`, `from __future__ import annotations`) that bite under pytest-xdist. Activate whenever the user asks to write, add, fix, refactor, strengthen, or review tests ("write a test", "add tests", "test this", "regression test", "cover this", "why didn't this test catch it"), or when a coding task's last step is testing the change you just made.
+description: How to write, change, or review tests — the load-bearing rule is test real behavior, not source text. Also covers non-vacuity (prove the test can fail), e2e tests that secretly stub the component they name, drift guards as a design smell to name rather than launder, SSOT contract tests that must move with their data, stubs that must drain stdin, checks that must prove the subject ran before judging its output, probes that must not perturb the state they read, failure-signature lists that must carve out your own guards' refusals, and the Python test idioms (repo-root discovery, `exec()`-ing a module's `__main__`, `from __future__ import annotations`) that bite under pytest-xdist. Activate whenever the user asks to write, add, fix, refactor, strengthen, or review tests ("write a test", "add tests", "test this", "regression test", "cover this", "why didn't this test catch it"), or when a coding task's last step is testing the change you just made.
 ---
 
 # Writing tests
@@ -31,6 +31,14 @@ wording", "handles any of these retryable phrasings") as the behavior under test
 and drive cases from that claim rather than the single input that first triggered
 the bug. "Comment promises more generality than the test exercises" is the
 cheapest reviewer tell for a hollow regression test.
+
+## An accusation needs evidence from the subject, never an absence
+
+**A check that concludes from a missing artifact reads a dead environment as a violation.** An absent log, an unreadable output file, a process that exited before it wrote anything — each is evidence-shaped and proves nothing. Assert that the subject ran and produced the artifact, then judge what the artifact says. A check that skips the first step goes red loudest exactly when its own harness broke. It is the twin of the vacuous green: one missing input, reported as a false accusation instead of a false pass.
+
+**Read the subject's state before its output, and read it without touching it.** Ask the runtime's own inventory — `docker ps -a`, a job list, a status endpoint — rather than entering the thing. Entering a stopped container starts it, so the probe destroys the ending it exists to observe.
+
+**Exclude your own guards' words from any failure-signature list.** A defense usually refuses in the operating system's wording, so `Permission denied` from a root-owned file is the guard working. A crash-signature or error-string match that does not carve those out scores a correct refusal as a failure.
 
 ## Never skip or weaken a test unless asked
 
