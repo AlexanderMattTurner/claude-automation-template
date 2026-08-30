@@ -13,12 +13,20 @@ branch the remote ends up holding, because the branch is what a consumer checks
 out.
 """
 
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from tests._helpers import REPO_ROOT, commit_files, git_env, git_out, init_test_repo
+from tests._helpers import (
+    REPO_ROOT,
+    commit_all,
+    commit_files,
+    git_env,
+    git_out,
+    init_test_repo,
+)
 
 SCRIPT = REPO_ROOT / ".github" / "scripts" / "template-sync-marker-gate.sh"
 
@@ -88,11 +96,19 @@ def push_branch(work: Path) -> None:
     )
 
 
-def run_gate(work: Path, base_sha: str) -> subprocess.CompletedProcess[str]:
+def run_gate(
+    work: Path,
+    base_sha: str,
+    script: Path = SCRIPT,
+    extra_path: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    env = {**git_env(), "BASE_SHA": base_sha, "GITHUB_TOKEN": "x"}
+    if extra_path is not None:
+        env["PATH"] = f"{extra_path}:{env['PATH']}"
     return subprocess.run(
-        ["bash", str(SCRIPT)],
+        ["bash", str(script)],
         cwd=work,
-        env={**git_env(), "BASE_SHA": base_sha, "GITHUB_TOKEN": "x"},
+        env=env,
         capture_output=True,
         text=True,
         check=False,
@@ -187,6 +203,111 @@ def test_a_base_the_checkout_cannot_resolve_stops_the_gate(sandbox):
     assert "is not a commit" in result.stdout
     fetch_origin(work)
     assert git_out(work, "rev-parse", "origin/template-sync") == tip
+
+
+def test_a_failed_scan_never_reads_as_a_clean_branch(sandbox, tmp_path):
+    """The scan is the gate's only evidence. A `git grep` that dies must reach
+    the caller as a failure, not as an empty list that looks like no markers."""
+    work, base_sha = sandbox
+    commit_files(work, {".github/scripts/lib/retry.bash": MARKED}, "sync from template")
+    push_branch(work)
+    stub_dir = tmp_path / "stub-bin"
+    stub_dir.mkdir()
+    real_git = shutil.which("git")
+    assert real_git, "the stub forwards to the real git; without it this proves nothing"
+    (stub_dir / "git").write_text(
+        f'#!/usr/bin/env bash\n[[ "$1" == "grep" ]] && exit 128\nexec {real_git} "$@"\n',
+        encoding="utf-8",
+    )
+    (stub_dir / "git").chmod(0o755)
+
+    result = run_gate(work, base_sha, extra_path=stub_dir)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "the marker scan failed" in result.stdout
+    assert "no conflict markers" not in result.stdout
+
+
+def test_a_failed_per_file_check_never_reads_as_that_file_has_no_markers(
+    sandbox, tmp_path
+):
+    """has_marker_triple's own grep can fail (rc > 1), distinct from finding no
+    marker (rc <= 1). The per-file loop must abort the scan on that failure,
+    not read it as `|| continue` and report the branch clean."""
+    work, base_sha = sandbox
+    commit_files(work, {".github/scripts/lib/retry.bash": MARKED}, "sync from template")
+    push_branch(work)
+    stub_dir = tmp_path / "stub-bin"
+    stub_dir.mkdir()
+    # git grep (the top-level scan) is a git subcommand, not the grep binary, so
+    # this stub only reaches has_marker_triple's own `grep -oE` call.
+    (stub_dir / "grep").write_text("#!/usr/bin/env bash\nexit 2\n", encoding="utf-8")
+    (stub_dir / "grep").chmod(0o755)
+
+    result = run_gate(work, base_sha, extra_path=stub_dir)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "the marker scan failed" in result.stdout
+    assert "no conflict markers" not in result.stdout
+
+
+def test_the_gate_runs_from_a_base_copy_when_its_own_file_is_marked(sandbox, tmp_path):
+    """`.github/scripts` is in SYNC_PATHS, so a sync can leave markers in the
+    gate's own file. The workflow runs a BASE_SHA copy for exactly this case."""
+    work, base_sha = sandbox
+    gate_path = ".github/scripts/template-sync-marker-gate.sh"
+    commit_files(work, {gate_path: MARKED}, "sync from template")
+    push_branch(work)
+
+    in_tree = run_gate(work, base_sha, script=work / gate_path)
+    assert in_tree.returncode != 0
+    assert "::error::" not in in_tree.stdout, "bash cannot parse the marked copy"
+
+    base_copy = tmp_path / "gate" / ".github" / "scripts"
+    base_copy.mkdir(parents=True)
+    shutil.copy2(SCRIPT, base_copy / SCRIPT.name)
+    shutil.copytree(SCRIPT.parent / "lib", base_copy / "lib")
+
+    result = run_gate(work, base_sha, script=base_copy / SCRIPT.name)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    tracked = git_out(work, "ls-tree", "-r", "--name-only", "origin/template-sync")
+    assert gate_path not in tracked.splitlines()
+
+
+def test_a_branch_with_no_marker_text_at_all_is_clean(sandbox):
+    """`git grep` exits 1 when nothing matches, which is the ordinary result on
+    a clean sync. That is the scan's answer, not the scan failing — and it must
+    read that way to a caller that invokes the scan unprotected too, because the
+    contract cannot depend on the caller's syntax."""
+    work, base_sha = sandbox
+    subprocess.run(["git", "rm", "-q", FIXTURE], cwd=work, env=git_env(), check=True)
+    commit_all(work, "sync from template")
+    push_branch(work)
+
+    # HEAD is the branch here, so the scan matches nothing. Run it BEFORE the
+    # gate, which leaves the workspace back on a base that does carry markers.
+    lib = SCRIPT.parent / "lib" / "merge-conflict.bash"
+    unprotected = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'set -euo pipefail\nsource "{lib}"\n'
+            f'committed_marker_paths "{base_sha}"\necho survived\n',
+        ],
+        cwd=work,
+        env=git_env(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert unprotected.returncode == 0, unprotected.stdout + unprotected.stderr
+    assert "survived" in unprotected.stdout
+
+    result = run_gate(work, base_sha)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "no conflict markers" in result.stdout
 
 
 def test_a_clean_branch_passes_and_is_left_alone(sandbox):

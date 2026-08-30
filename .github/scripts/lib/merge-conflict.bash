@@ -32,12 +32,13 @@ protected_matches() {
 # has_marker_triple — true when stdin carries all three marker kinds. The complete triple is the
 # verdict, never one kind on its own. It reads the kinds back out of CONFLICT_MARKER_RE's own
 # matches rather than spelling a per-kind pattern, so there is still one regex to drift.
+# `|| rc=$?` keeps the next line reachable: a bare assignment carries the command's status, so
+# under `set -e` it kills an unprotected caller right here.
 has_marker_triple() {
-  local matches rc kinds
-  matches="$(grep -oE "$CONFLICT_MARKER_RE")"
-  rc=$?
+  local matches kinds rc=0
+  matches="$(grep -oE "$CONFLICT_MARKER_RE")" || rc=$?
   # 1 is "no marker at all", which is the answer, not a failure.
-  [[ "${rc:-0}" -le 1 ]] || return "$rc"
+  [[ "$rc" -le 1 ]] || return "$rc"
   kinds="$(cut -c1 <<<"$matches")"
   [[ "$kinds" == *'<'* ]] && [[ "$kinds" == *'='* ]] && [[ "$kinds" == *'>'* ]]
 }
@@ -47,16 +48,23 @@ has_marker_triple() {
 # cannot change the verdict about what a consumer would check out. A path whose BASE_REF copy
 # already carries markers is skipped, so a repository that keeps marker text on purpose — a test
 # fixture, a document about conflicts — is never withheld from itself.
+#
+# A failed scan returns git's own status, so the caller can tell "no markers" from "the scan never
+# ran". Read it: a caller that discards it reports a broken scan as a clean branch.
 committed_marker_paths() {
-  local base_ref="${1:?committed_marker_paths: BASE_REF required}" ref="${2:-HEAD}" listing rc f
-  listing="$(git grep -lE "$CONFLICT_MARKER_RE" "$ref" -- .)"
-  rc=$?
+  local base_ref="${1:?committed_marker_paths: BASE_REF required}" ref="${2:-HEAD}" listing f rc=0 rc_f=0
+  listing="$(git grep -lE "$CONFLICT_MARKER_RE" "$ref" -- .)" || rc=$?
   # 1 is "no match", the ordinary outcome on a branch nobody left a marker on.
-  [[ "${rc:-0}" -le 1 ]] || return "$rc"
+  [[ "$rc" -le 1 ]] || return "$rc"
   while IFS= read -r f; do
     f="${f#"${ref}:"}"
     [[ -n "$f" ]] || continue
-    git cat-file blob "${ref}:${f}" | has_marker_triple || continue
+    # Same rc<=1 contract as above, but per-file: a git/pipe failure here must
+    # abort the scan too, not read as "this one file has no markers".
+    rc_f=0
+    git cat-file blob "${ref}:${f}" | has_marker_triple || rc_f=$?
+    [[ "$rc_f" -le 1 ]] || return "$rc_f"
+    [[ "$rc_f" -eq 0 ]] || continue
     git cat-file blob "${base_ref}:${f}" 2>/dev/null | has_marker_triple && continue
     printf '%s\n' "$f"
   done <<<"$listing"

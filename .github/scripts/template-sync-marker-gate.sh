@@ -49,10 +49,20 @@ git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 timeout --kill-after=30 300 git fetch --no-tags origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}"
 git checkout -q -f -B "$BRANCH" "origin/${BRANCH}"
 
+# Command substitution, never `< <(…)`: a process substitution runs in a subshell whose exit
+# status the reading loop cannot see, so a scan that died would deliver an empty list and read
+# as a clean branch. Capturing the status is what makes a failed scan a failure.
+scan_rc=0
+scan="$(committed_marker_paths "$BASE_SHA")" || scan_rc=$?
+[[ "$scan_rc" -eq 0 ]] || {
+  echo "::error::template-sync-marker-gate: the marker scan failed (exit ${scan_rc}); ${BRANCH} is NOT known to be clean."
+  exit 1
+}
+
 marked=()
 while IFS= read -r path; do
   [[ -n "$path" ]] && marked+=("$path")
-done < <(committed_marker_paths "$BASE_SHA")
+done <<<"$scan"
 
 if [[ ${#marked[@]} -eq 0 ]]; then
   echo "template-sync-marker-gate: no conflict markers on ${BRANCH}."
