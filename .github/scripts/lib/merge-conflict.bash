@@ -28,3 +28,34 @@ protected_matches() {
   done
   return 0
 }
+
+# has_marker_triple — true when stdin carries all three marker kinds, each as a whole line.
+# The complete triple is the verdict, never one kind on its own.
+has_marker_triple() {
+  local text kind
+  text="$(cat)"
+  for kind in '<' '=' '>'; do
+    grep -qE "^${kind}{7}([ \t]|\$)" <<<"$text" || return 1
+  done
+}
+
+# committed_marker_paths BASE_REF [REF] — paths whose content in REF (default HEAD) carries the
+# marker triple. It reads the COMMIT and never the worktree, so an edit a resolver left unpushed
+# cannot change the verdict about what a consumer would check out. A path whose BASE_REF copy
+# already carries markers is skipped, so a repository that keeps marker text on purpose — a test
+# fixture, a document about conflicts — is never withheld from itself.
+committed_marker_paths() {
+  local base_ref="${1:?committed_marker_paths: BASE_REF required}" ref="${2:-HEAD}" listing rc f
+  listing="$(git grep -lE "$CONFLICT_MARKER_RE" "$ref" -- .)"
+  rc=$?
+  # 1 is "no match", the ordinary outcome on a branch nobody left a marker on.
+  [[ "${rc:-0}" -le 1 ]] || return "$rc"
+  while IFS= read -r f; do
+    f="${f#"${ref}:"}"
+    [[ -n "$f" ]] || continue
+    git cat-file blob "${ref}:${f}" | has_marker_triple || continue
+    git cat-file blob "${base_ref}:${f}" 2>/dev/null | has_marker_triple && continue
+    printf '%s\n' "$f"
+  done <<<"$listing"
+  return 0
+}
