@@ -29,14 +29,17 @@ protected_matches() {
   return 0
 }
 
-# has_marker_triple — true when stdin carries all three marker kinds, each as a whole line.
-# The complete triple is the verdict, never one kind on its own.
+# has_marker_triple — true when stdin carries all three marker kinds. The complete triple is the
+# verdict, never one kind on its own. It reads the kinds back out of CONFLICT_MARKER_RE's own
+# matches rather than spelling a per-kind pattern, so there is still one regex to drift.
 has_marker_triple() {
-  local text kind
-  text="$(cat)"
-  for kind in '<' '=' '>'; do
-    grep -qE "^${kind}{7}([ \t]|\$)" <<<"$text" || return 1
-  done
+  local matches rc kinds
+  matches="$(grep -oE "$CONFLICT_MARKER_RE")"
+  rc=$?
+  # 1 is "no marker at all", which is the answer, not a failure.
+  [[ "${rc:-0}" -le 1 ]] || return "$rc"
+  kinds="$(cut -c1 <<<"$matches")"
+  [[ "$kinds" == *'<'* ]] && [[ "$kinds" == *'='* ]] && [[ "$kinds" == *'>'* ]]
 }
 
 # committed_marker_paths BASE_REF [REF] — paths whose content in REF (default HEAD) carries the
