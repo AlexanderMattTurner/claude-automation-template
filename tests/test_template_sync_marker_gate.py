@@ -228,7 +228,9 @@ def test_a_failed_scan_never_reads_as_a_clean_branch(sandbox, tmp_path):
     assert "no conflict markers" not in result.stdout
 
 
-def test_a_failed_per_file_check_never_reads_as_that_file_has_no_markers(sandbox, tmp_path):
+def test_a_failed_per_file_check_never_reads_as_that_file_has_no_markers(
+    sandbox, tmp_path
+):
     """has_marker_triple's own grep can fail (rc > 1), distinct from finding no
     marker (rc <= 1). The per-file loop must abort the scan on that failure,
     not read it as `|| continue` and report the branch clean."""
