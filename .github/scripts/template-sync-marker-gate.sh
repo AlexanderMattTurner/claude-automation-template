@@ -66,9 +66,6 @@ done <<<"$scan"
 
 if [[ ${#marked[@]} -eq 0 ]]; then
   echo "template-sync-marker-gate: no conflict markers on ${BRANCH}."
-  # The next step resolves its own script from this workspace, and the workflow runs a reviewed
-  # copy rather than the template's proposal. Leave the workspace back on the base commit.
-  git checkout -q -f --detach "$BASE_SHA"
   exit 0
 fi
 

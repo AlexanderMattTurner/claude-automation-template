@@ -355,9 +355,13 @@ jobs:
       # A sync merges itself only when NOTHING needed judgement. See the script
       # for the full predicate; the two carve-outs are that a model-resolved file
       # never qualifies, and neither does a change to the supervision surface.
+      # It runs a BASE_SHA copy for the same reason the gate does: the gate
+      # passing only proves the branch carries no conflict marker, never that
+      # this script or the predicate it reads still match the reviewed version.
       - name: Enable auto-merge on a fully deterministic sync
         if: inputs.dry-run != true && steps.create-pr.outputs.pull-request-number && vars.TEMPLATE_SYNC_AUTOMERGE != 'false'
         env:
+          BASE_SHA: ${{ github.sha }}
           GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || github.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
@@ -366,4 +370,9 @@ jobs:
           HAS_DOWNGRADES: ${{ steps.sync.outputs.has_downgrades }}
           ALL_DETERMINISTIC: ${{ steps.resolve.outputs.all_deterministic }}
           CHANGED_PATHS: ${{ steps.sync.outputs.changed_paths }}
-        run: bash .github/scripts/template-sync-automerge.sh
+        run: |
+          set -o pipefail
+          automerge_dir="${RUNNER_TEMP}/marker-gate-automerge"
+          mkdir -p "${automerge_dir}" # bare-mkdir-ok: the extraction below is the post-condition and fails loudly
+          timeout --kill-after=30 300 git archive "${BASE_SHA}" .github/scripts | tar -x -f - -C "${automerge_dir}"
+          bash "${automerge_dir}/.github/scripts/template-sync-automerge.sh"

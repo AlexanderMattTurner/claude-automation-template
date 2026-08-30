@@ -52,14 +52,19 @@ has_marker_triple() {
 # A failed scan returns git's own status, so the caller can tell "no markers" from "the scan never
 # ran". Read it: a caller that discards it reports a broken scan as a clean branch.
 committed_marker_paths() {
-  local base_ref="${1:?committed_marker_paths: BASE_REF required}" ref="${2:-HEAD}" listing f rc=0
+  local base_ref="${1:?committed_marker_paths: BASE_REF required}" ref="${2:-HEAD}" listing f rc=0 rc_f=0
   listing="$(git grep -lE "$CONFLICT_MARKER_RE" "$ref" -- .)" || rc=$?
   # 1 is "no match", the ordinary outcome on a branch nobody left a marker on.
   [[ "$rc" -le 1 ]] || return "$rc"
   while IFS= read -r f; do
     f="${f#"${ref}:"}"
     [[ -n "$f" ]] || continue
-    git cat-file blob "${ref}:${f}" | has_marker_triple || continue
+    # Same rc<=1 contract as above, but per-file: a git/pipe failure here must
+    # abort the scan too, not read as "this one file has no markers".
+    rc_f=0
+    git cat-file blob "${ref}:${f}" | has_marker_triple || rc_f=$?
+    [[ "$rc_f" -le 1 ]] || return "$rc_f"
+    [[ "$rc_f" -eq 0 ]] || continue
     git cat-file blob "${base_ref}:${f}" 2>/dev/null | has_marker_triple && continue
     printf '%s\n' "$f"
   done <<<"$listing"

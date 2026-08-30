@@ -228,6 +228,27 @@ def test_a_failed_scan_never_reads_as_a_clean_branch(sandbox, tmp_path):
     assert "no conflict markers" not in result.stdout
 
 
+def test_a_failed_per_file_check_never_reads_as_that_file_has_no_markers(sandbox, tmp_path):
+    """has_marker_triple's own grep can fail (rc > 1), distinct from finding no
+    marker (rc <= 1). The per-file loop must abort the scan on that failure,
+    not read it as `|| continue` and report the branch clean."""
+    work, base_sha = sandbox
+    commit_files(work, {".github/scripts/lib/retry.bash": MARKED}, "sync from template")
+    push_branch(work)
+    stub_dir = tmp_path / "stub-bin"
+    stub_dir.mkdir()
+    # git grep (the top-level scan) is a git subcommand, not the grep binary, so
+    # this stub only reaches has_marker_triple's own `grep -oE` call.
+    (stub_dir / "grep").write_text("#!/usr/bin/env bash\nexit 2\n", encoding="utf-8")
+    (stub_dir / "grep").chmod(0o755)
+
+    result = run_gate(work, base_sha, extra_path=stub_dir)
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "the marker scan failed" in result.stdout
+    assert "no conflict markers" not in result.stdout
+
+
 def test_the_gate_runs_from_a_base_copy_when_its_own_file_is_marked(sandbox, tmp_path):
     """`.github/scripts` is in SYNC_PATHS, so a sync can leave markers in the
     gate's own file. The workflow runs a BASE_SHA copy for exactly this case."""
@@ -285,19 +306,6 @@ def test_a_branch_with_no_marker_text_at_all_is_clean(sandbox):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "no conflict markers" in result.stdout
-
-
-def test_a_clean_run_leaves_the_workspace_off_the_sync_branch(sandbox):
-    """The next workflow step resolves its own script from the workspace, and
-    the sync branch is the template's proposal rather than a reviewed tree."""
-    work, base_sha = sandbox
-    commit_files(work, {"README.md": "# repo v2\n"}, "sync from template")
-    push_branch(work)
-
-    result = run_gate(work, base_sha)
-
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert git_out(work, "rev-parse", "HEAD") == base_sha
 
 
 def test_a_clean_branch_passes_and_is_left_alone(sandbox):
