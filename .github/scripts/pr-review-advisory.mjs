@@ -27,8 +27,9 @@ export const MARKER = "<!-- pr-review-advisory -->";
 // The enforcement surfaces of THIS automation template — the guardrail hooks and
 // the CI automation (workflows + their scripts) — ARE the security-relevant code,
 // so they lead the review order and drive the risk tier. Adopters describe their
-// own surfaces in config/pr-review-paths.json; these defaults are the generic
-// fallback and already include .github/scripts + .github/workflows.
+// own surfaces in config/pr-review-paths.json; this repo ships no such file, so
+// these defaults are live here and already include .github/scripts,
+// .github/actions and .github/workflows.
 export const DEFAULT_PATHS = {
   securityPrefixes: [
     ".claude/hooks/",

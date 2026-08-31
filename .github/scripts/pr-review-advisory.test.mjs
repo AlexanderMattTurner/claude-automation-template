@@ -318,11 +318,8 @@ describe("path-tier config (adopter-overridable)", () => {
     });
   }
 
-  it("the committed config/pr-review-paths.json parses and keeps those surfaces", () => {
+  it("this repo's live config tiers an action's own scripts as high risk", () => {
     const cfg = loadPathConfig();
-    assert.ok(cfg.highRiskPrefixes.includes(".github/scripts/"));
-    assert.ok(cfg.highRiskPrefixes.includes(".github/actions/"));
-    assert.ok(cfg.highRiskPrefixes.includes(".github/workflows/"));
     assert.equal(isHighRiskPath(".github/workflows/ci.yaml", cfg), true);
     assert.equal(
       isHighRiskPath(".github/actions/claude-run/claude-run-errored.sh", cfg),
