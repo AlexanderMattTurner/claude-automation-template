@@ -206,7 +206,7 @@ test("CLI scans the real tree and finds it clean", () => {
 test("the CLI's scan set is non-vacuous and covers the hook/CI-script surface", () => {
   const scanned = execFileSync(
     "git",
-    ["ls-files", "-z", ".claude/hooks", ".github/scripts"],
+    ["ls-files", "-z", ...DEFAULT_SCAN_DIRS],
     { encoding: "utf8", cwd: join(here, "..") },
   )
     .split("\0")
@@ -227,6 +227,7 @@ test("scanDirs always includes the shipped surfaces incl. .github/scripts", () =
   const dirs = scanDirs({});
   assert.ok(dirs.includes(".claude/hooks"));
   assert.ok(dirs.includes(".github/scripts"));
+  assert.ok(dirs.includes(".github/actions"));
   assert.deepEqual(dirs, DEFAULT_SCAN_DIRS);
 });
 

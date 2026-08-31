@@ -158,7 +158,7 @@ repos:
         entry: pnpm lint:js
         language: system
         pass_filenames: false
-        files: ^(\.claude/.*|\.github/scripts/.*|tests/.*|eslint\.config)\.(js|mjs|cjs)$
+        files: ^(\.claude/.*|\.github/scripts/.*|\.github/actions/.*|tests/.*|eslint\.config)\.(js|mjs|cjs)$
 
       - id: validate-config
         name: validate Claude hook configuration

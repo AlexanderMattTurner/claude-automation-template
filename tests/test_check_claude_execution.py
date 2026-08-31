@@ -1,4 +1,4 @@
-""".github/scripts/check-claude-execution.sh — the claude-code-action execution gate.
+""".github/actions/claude-run/check-claude-execution.sh — the execution gate.
 
 Drives the script over synthetic execution logs and asserts the zero-cost
 credential-failure distinction: a green claude-code-action step is not proof
@@ -13,7 +13,7 @@ import subprocess
 
 from tests._helpers import REPO_ROOT
 
-_SCRIPT = REPO_ROOT / ".github" / "scripts" / "check-claude-execution.sh"
+_SCRIPT = REPO_ROOT / ".github" / "actions" / "claude-run" / "check-claude-execution.sh"
 
 
 def _run(execution: object | None, tmp_path, extra_env=None):
