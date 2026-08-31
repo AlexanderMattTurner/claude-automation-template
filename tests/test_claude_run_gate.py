@@ -60,9 +60,9 @@ def _claude_run_call_sites():
 
 
 def test_gate_script_path_resolves_from_the_action_directory() -> None:
-    """The gate's ${GITHUB_ACTION_PATH}-relative path must land on the real
-    script. RED if the script moves or the ../../ depth is wrong — a broken path
-    would fail every Claude run, or (worse) be 'fixed' by deleting the gate."""
+    """The gate's ${GITHUB_ACTION_PATH} reference must land on the real script.
+    RED if the script moves out of the action directory — a broken path would
+    fail every Claude run, or (worse) be 'fixed' by deleting the gate."""
     assert (ACTION_DIR / GATE_SCRIPT_REL).resolve().is_file()
 
 
