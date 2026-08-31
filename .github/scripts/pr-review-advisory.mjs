@@ -33,6 +33,7 @@ export const DEFAULT_PATHS = {
   securityPrefixes: [
     ".claude/hooks/",
     ".github/scripts/",
+    ".github/actions/",
     ".github/workflows/",
     "config/",
   ],
@@ -41,6 +42,7 @@ export const DEFAULT_PATHS = {
   highRiskPrefixes: [
     ".claude/hooks/",
     ".github/scripts/",
+    ".github/actions/",
     ".github/workflows/",
   ],
   highRiskConfigPrefix: "config/",

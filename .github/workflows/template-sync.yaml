@@ -29,6 +29,15 @@ name: Sync from Template
 #    the deletion holds on its own and needs no EXCLUDE_PATHS entry.
 # 5. A workflow that must never be introduced into a repo that has its own
 #    equivalent (the release flow) belongs in OPT_IN_PATHS.
+# 6. A file the template MOVED arrives at its new path while the old one stays
+#    local, because this sync reports deletions and never applies them. Delete
+#    the local copy and repoint whatever names it. The case that fails silently:
+#    each composite action now carries its own scripts and tests under
+#    .github/actions/<name>/, so a repo whose package.json still runs
+#    `node --test ".github/scripts/**/*.test.mjs"` tests the stale copy and
+#    reports green while the action runs the new one. package.json is outside
+#    SYNC_PATHS, so adding `.github/actions/**/*.test.mjs` there is the
+#    consumer's edit to make.
 # =============================================================================
 #
 # ROOT SCAFFOLDING A SYNCED WORKFLOW MAY ASSUME
