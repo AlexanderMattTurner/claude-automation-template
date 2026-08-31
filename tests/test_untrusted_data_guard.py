@@ -23,6 +23,7 @@ SCRIPT = ACTION_DIR / "compose-claude-prompt.sh"
 PREAMBLE = ACTION_DIR / "untrusted-data-preamble.md"
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 PROMPTS = REPO_ROOT / ".github" / "prompts"
+ACTIONS = REPO_ROOT / ".github" / "actions"
 
 # Phrasings that mean "a guard was written here by hand". The canonical file is
 # the only place any of them may appear.
@@ -177,12 +178,13 @@ def test_the_guard_is_not_re_worded_anywhere_else() -> None:
         prompt = str((step.get("with") or {}).get("prompt", ""))
         if prompt:
             model_facing[f"prompt at {step.get('name')}"] = prompt
-    # The canonical file ships with the claude-run action, outside PROMPTS, so
-    # every prompt doc here is a potential second copy.
-    for path in PROMPTS.rglob("*.md"):
-        model_facing[str(path.relative_to(REPO_ROOT))] = path.read_text(
-            encoding="utf-8"
-        )
+    # A second copy can land in either tree: the prompt docs, and the action
+    # directories, where an action's own model-facing data files now live.
+    for path in (*PROMPTS.rglob("*.md"), *ACTIONS.rglob("*.md")):
+        if path != PREAMBLE:
+            model_facing[str(path.relative_to(REPO_ROOT))] = path.read_text(
+                encoding="utf-8"
+            )
 
     offenders = [
         f"{where} ({phrase!r})"
