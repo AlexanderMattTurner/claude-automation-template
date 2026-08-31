@@ -3,8 +3,8 @@
 The guard against prompt injection used to be hand-written at each call site and
 again in each prompt doc, in several different phrasings — so the weakest wording
 was the real trust boundary wherever it happened to sit. It now lives once in
-.github/prompts/untrusted-data-preamble.md and is prepended by the shared
-claude-run action whenever a caller declares untrusted input files.
+.github/actions/claude-run/untrusted-data-preamble.md and is prepended by that
+shared action whenever a caller declares untrusted input files.
 
 Centralizing traded one failure mode for another: a prompt doc no longer carries
 its own guard, so the guard's presence now depends on the CALL SITE declaring
@@ -18,8 +18,9 @@ import yaml
 
 from tests._helpers import REPO_ROOT
 
-SCRIPT = REPO_ROOT / ".github" / "scripts" / "compose-claude-prompt.sh"
-PREAMBLE = REPO_ROOT / ".github" / "prompts" / "untrusted-data-preamble.md"
+ACTION_DIR = REPO_ROOT / ".github" / "actions" / "claude-run"
+SCRIPT = ACTION_DIR / "compose-claude-prompt.sh"
+PREAMBLE = ACTION_DIR / "untrusted-data-preamble.md"
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 PROMPTS = REPO_ROOT / ".github" / "prompts"
 
@@ -176,11 +177,12 @@ def test_the_guard_is_not_re_worded_anywhere_else() -> None:
         prompt = str((step.get("with") or {}).get("prompt", ""))
         if prompt:
             model_facing[f"prompt at {step.get('name')}"] = prompt
+    # The canonical file ships with the claude-run action, outside PROMPTS, so
+    # every prompt doc here is a potential second copy.
     for path in PROMPTS.rglob("*.md"):
-        if path != PREAMBLE:
-            model_facing[str(path.relative_to(REPO_ROOT))] = path.read_text(
-                encoding="utf-8"
-            )
+        model_facing[str(path.relative_to(REPO_ROOT))] = path.read_text(
+            encoding="utf-8"
+        )
 
     offenders = [
         f"{where} ({phrase!r})"

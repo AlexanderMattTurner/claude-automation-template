@@ -1,4 +1,4 @@
-"""Behavior tests for .github/scripts/claude-run-errored.sh — the retry-decision
+"""Behavior tests for .github/actions/claude-run/claude-run-errored.sh — the retry-decision
 helper that decides whether a claude-code-action attempt failed hard enough to
 retry on the next credential rung. It reads the execution log (the only signal,
 since the action exits 0 even on is_error) and writes errored=true/false plus
@@ -6,7 +6,7 @@ zero_cost=true/false to GITHUB_OUTPUT; it never fails the step.
 
 Drives the real script as a subprocess and asserts the GITHUB_OUTPUT values.
 
-# covers: .github/scripts/claude-run-errored.sh
+# covers: .github/actions/claude-run/claude-run-errored.sh
 """
 
 import json
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from tests._helpers import REPO_ROOT
 
-SCRIPT = REPO_ROOT / ".github" / "scripts" / "claude-run-errored.sh"
+SCRIPT = REPO_ROOT / ".github" / "actions" / "claude-run" / "claude-run-errored.sh"
 
 
 def run_decider(tmp_path: Path, **env_overrides: str) -> dict[str, str]:

@@ -14,7 +14,11 @@ from tests._helpers import REPO_ROOT
 
 ACTION_DIR = REPO_ROOT / ".github" / "actions" / "claude-run"
 ACTION = ACTION_DIR / "action.yaml"
-GATE_SCRIPT_REL = "../../scripts/check-claude-execution.sh"
+GATE_SCRIPT_REL = "check-claude-execution.sh"
+# The ${GITHUB_ACTION_PATH}-anchored form the gate step runs. Matching the bare
+# filename instead would make test_no_call_site_rehand_rolls_the_gate vacuous:
+# every mention of the script contains it, so no step could ever be flagged.
+GATE_RUN_REF = "${GITHUB_ACTION_PATH}/" + GATE_SCRIPT_REL
 
 
 def _load(path):
@@ -23,7 +27,7 @@ def _load(path):
 
 def _gate_step():
     steps = _load(ACTION)["runs"]["steps"]
-    gates = [s for s in steps if GATE_SCRIPT_REL in str(s.get("run", ""))]
+    gates = [s for s in steps if GATE_RUN_REF in str(s.get("run", ""))]
     assert len(gates) == 1, f"expected exactly one gate step, found {len(gates)}"
     return gates[0]
 
@@ -112,8 +116,8 @@ def test_no_call_site_rehand_rolls_the_gate() -> None:
     rehandrolled = [
         label
         for label, step in _all_steps()
-        if "check-claude-execution.sh" in str(step.get("run", ""))
-        and GATE_SCRIPT_REL not in str(step.get("run", ""))
+        if GATE_SCRIPT_REL in str(step.get("run", ""))
+        and GATE_RUN_REF not in str(step.get("run", ""))
         and label not in GATE_DIRECT_CALLERS
     ]
     assert rehandrolled == [], f"gate re-implemented at: {rehandrolled}"
