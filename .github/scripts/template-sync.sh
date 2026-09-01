@@ -179,14 +179,19 @@ main() {
     local -a range
     changed="$WORK_DIR/changed_here.txt"
     attributed="$WORK_DIR/attributed.txt"
+    # `sed`, not `grep -v`: an all-filtered list makes grep exit 1 and `set -e`
+    # would kill the run. `.template-version` is rewritten above and the template
+    # ships none, so no commit can ever explain it; `_template` is this script's
+    # own untracked checkout, which `--others` reports and `rm -rf` removes a few
+    # lines below. Both would land in the unexplained list on every single sync.
     {
       git diff --name-only
       git ls-files --others --exclude-standard
-    } | sort -u >"$changed"
+    } | sed -e '/^\.template-version$/d' -e '\#^_template/\?$#d' | sort -u >"$changed"
     [[ -s "$changed" ]] || return 0
     local changed_list
-    changed_list="$(cat "$changed")"
-    emit_multiline_output "changed_files" "$changed_list"
+    changed_list="$(tr '\n' ' ' <"$changed")"
+    echo "changed_files=$changed_list" >>"$GITHUB_OUTPUT"
 
     [[ -n "$PREV_SHA" && "$PREV_SHA" != "$TEMPLATE_SHA" ]] || return 0
     if git -C _template cat-file -e "$PREV_SHA" 2>/dev/null; then
@@ -218,7 +223,10 @@ main() {
         body+="  - \`${f}\`"$'\n'
         echo "$f" >>"$attributed"
       done <<<"$touched"
-    done < <(git -C _template log --format='%h%x09%s' "${range[@]}")
+      # --no-merges: `git show --name-only` prints nothing for a merge commit, so
+      # a merge would count as "touched nothing here" while being exactly the
+      # commit that carried the files. Its branch commits are already in range.
+    done < <(git -C _template log --no-merges --format='%h%x09%s' "${range[@]}")
 
     unexplained=$(comm -23 "$changed" <(sort -u "$attributed"))
     if [[ -n "$unexplained" ]]; then

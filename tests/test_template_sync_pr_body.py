@@ -32,13 +32,10 @@ def render(tmp_path: Path, **env: str) -> str:
     return out.read_text(encoding="utf-8")
 
 
-def test_a_newline_separated_file_list_is_counted_and_listed_whole(
-    tmp_path: Path,
-) -> None:
-    """CHANGED_FILES arrives newline-separated while every other list is
-    space-joined. A splitter that reads one line reports `1 file(s)` for a
-    twelve-file sync and silently drops eleven bullets."""
-    body = render(tmp_path, CHANGED_FILES="a.md\nb.md\nc.md")
+def test_a_multi_entry_list_is_counted_and_listed_whole(tmp_path: Path) -> None:
+    """A splitter that reads one entry reports `1 file(s)` for a twelve-file
+    sync and silently drops eleven bullets."""
+    body = render(tmp_path, CHANGED_FILES="a.md b.md c.md")
     assert "Syncs 3 file(s)" in body
     for name in ("a.md", "b.md", "c.md"):
         assert f"- `{name}`" in body
@@ -59,10 +56,32 @@ def test_the_explanation_leads_and_the_noise_is_folded(tmp_path: Path) -> None:
     assert "merged with no conflict" in body
 
 
+def test_each_section_renders_when_its_variable_is_set(tmp_path: Path) -> None:
+    """The absence test below passes just as well if a section can NEVER render,
+    so a typo'd env name would go unnoticed. Pin each one positively."""
+    for var, heading in (
+        ("DOWNGRADE_REPORT", "Adopter-ahead"),
+        ("CONFLICT_REPORT", "Conflicts needing a merge decision"),
+        ("DELETED_FILES", "Deleted in the template"),
+        ("DECLINED_FILES", "Declined"),
+        ("INERT_ENTRIES", "Inert EXCLUDE_PATHS"),
+        ("AUTO_MERGED_FILES", "merged with no conflict"),
+    ):
+        body = render(tmp_path, CHANGED_FILES="a.md", **{var: "z.md"})
+        assert heading in body, var
+        assert "z.md" in body, var
+
+
 def test_a_section_with_nothing_to_say_is_absent(tmp_path: Path) -> None:
     """An empty section costs the reader a scan and says nothing; the old body
     rendered several of them unconditionally."""
     body = render(tmp_path, CHANGED_FILES="a.md")
-    for heading in ("Adopter-ahead", "Declined", "Inert", "Deleted in the template"):
+    for heading in (
+        "Adopter-ahead",
+        "Declined",
+        "Inert",
+        "Deleted in the template",
+        "Conflicts",
+    ):
         assert heading not in body
     assert "None" not in body

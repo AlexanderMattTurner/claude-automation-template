@@ -800,3 +800,63 @@ def test_a_file_no_commit_in_range_explains_is_listed_apart(workdir: Path) -> No
 
     assert "no commit in that range" in changelog
     assert "- `config/new.txt`" in changelog
+
+
+def test_bookkeeping_paths_stay_out_of_the_unexplained_list(workdir: Path) -> None:
+    """`.template-version` is rewritten by this script and the template ships
+    none, so no commit can ever explain it; `_template` is the script's own
+    untracked checkout. Both would sit under "no commit in that range" on every
+    single sync, which is the noise the attributed changelog exists to remove."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "a.txt", "base\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / "a.txt", "base\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    write(template / "config" / "a.txt", "moved\n")
+    subprocess.run(
+        ["git", "commit", "-am", "feat(config): move the file"],
+        cwd=template,
+        check=True,
+        env={**os.environ, **GIT_IDENTITY_ENV},
+        capture_output=True,
+    )
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+    outputs = parse_outputs(output_file)
+
+    assert ".template-version" not in outputs["changelog"]
+    assert "_template" not in outputs["changelog"]
+    assert outputs["changed_files"].split() == ["config/a.txt"]
+
+
+def test_a_merge_commit_is_not_counted_as_touching_nothing(workdir: Path) -> None:
+    """`git show --name-only` prints no files for a merge, so a merge would land
+    in the "touched nothing this repo syncs" count while being exactly the commit
+    that carried the file. Its branch commits are already in range."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "a.txt", "base\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / "a.txt", "base\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+
+    env = {**os.environ, **GIT_IDENTITY_ENV}
+    run = lambda *a: subprocess.run(  # noqa: E731
+        a, cwd=template, check=True, env=env, capture_output=True
+    )
+    run("git", "switch", "-c", "feature")
+    write(template / "config" / "a.txt", "moved\n")
+    run("git", "commit", "-am", "feat(config): move the file")
+    run("git", "switch", "-")
+    run("git", "merge", "--no-ff", "-m", "Merge pull request #1", "feature")
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+    changelog = parse_outputs(output_file)["changelog"]
+
+    assert "feat(config): move the file" in changelog
+    assert "touched nothing this repo syncs" not in changelog

@@ -222,7 +222,11 @@ jobs:
       # The body is a script, not an inline `format()` chain: a chain that long
       # is invisible to shellcheck, cannot be tested, and grew a shape nobody
       # could read a conditional out of. It runs BEFORE create-pull-request,
-      # because that action wants the body as a value.
+      # because that action reads the body from a file.
+      # It runs a BASE_SHA copy for the same reason the marker gate does:
+      # `.github/scripts` is in SYNC_PATHS, so a sync can leave conflict markers
+      # in this very script, and bash dies on them before any PR exists to show
+      # them — no PR, so neither the resolver nor the marker gate can repair it.
       - name: Render the pull request body
         if: inputs.dry-run != true && (steps.sync.outputs.has_changes == 'true' || steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true')
         id: pr-body
@@ -238,7 +242,13 @@ jobs:
           DELETED_FILES: ${{ steps.sync.outputs.deleted_files }}
           CONFLICT_REPORT: ${{ steps.sync.outputs.conflict_report }}
           PR_BODY_PATH: ${{ runner.temp }}/template-sync-body.md
-        run: bash .github/scripts/template-sync-pr-body.sh
+          BASE_SHA: ${{ github.sha }}
+        run: |
+          set -o pipefail
+          body_dir="${RUNNER_TEMP}/pr-body-scripts"
+          mkdir -p "${body_dir}" # bare-mkdir-ok: the extraction below is the post-condition and fails loudly
+          timeout --kill-after=30 300 git archive "${BASE_SHA}" .github/scripts | tar -x -f - -C "${body_dir}"
+          bash "${body_dir}/.github/scripts/template-sync-pr-body.sh"
 
       - name: Create Pull Request
         if: inputs.dry-run != true && (steps.sync.outputs.has_changes == 'true' || steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true')

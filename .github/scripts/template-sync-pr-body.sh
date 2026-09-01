@@ -24,21 +24,17 @@ set -euo pipefail
 : "${TEMPLATE_SHA_SHORT:?TEMPLATE_SHA_SHORT required}"
 : "${PR_BODY_PATH:?PR_BODY_PATH required — the file to write the body to}"
 
-# The step outputs are lists, separated by spaces (the `tr`-joined ones) or by
-# newlines (CHANGED_FILES). Normalising to spaces lets one splitter read both:
-# `read -ra` stops at the first newline, and `for x in $list` would be
-# auto-quoted by shellharden, killing the split. No nameref and no `mapfile`,
-# so this still runs under the bash 3.2 a macOS contributor has.
-as_words() {
-  printf '%s' "${1:-}" | tr '\n' ' '
-}
+# Every step output is a space-joined list. `read -ra` splits one into an array,
+# the same way template-sync-automerge.sh reads CHANGED_PATHS — `for x in $list`
+# would be auto-quoted by shellharden, killing the split. No `mapfile`, so this
+# still runs under the bash 3.2 a macOS contributor has.
 
 # One bullet per entry. The old body pasted these lists inline, where forty
 # paths on one line read as noise.
 bullets() {
   local -a items
   local item
-  read -ra items <<<"$(as_words "$1")"
+  read -ra items <<<"${1:-}"
   for item in "${items[@]}"; do
     [[ -n "$item" ]] && printf -- '- `%s`\n' "$item"
   done
@@ -46,7 +42,7 @@ bullets() {
 
 count() {
   local -a items
-  read -ra items <<<"$(as_words "$1")"
+  read -ra items <<<"${1:-}"
   printf '%s' "${#items[@]}"
 }
 
@@ -73,7 +69,7 @@ EOF
   fi
 
   if [[ -n "${CONFLICT_REPORT:-}" ]]; then
-    printf '\n## Conflicts resolved in this run\n\nEach file below needed a real merge decision. Read the resolution, not just the diff.\n\n%s\n' \
+    printf '\n## Conflicts needing a merge decision\n\nEach file below needed a real merge decision. The resolver runs AFTER this body is written and nothing rewrites it, so check the branch: a file still carrying `<<<<<<<` is one resolution did not settle, and it is yours to finish.\n\n%s\n' \
       "$CONFLICT_REPORT"
   fi
 
