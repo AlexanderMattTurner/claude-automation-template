@@ -726,3 +726,77 @@ def test_benign_auto_merge_reports_no_downgrade(workdir: Path) -> None:
     merged = (child / "config" / "a.txt").read_text(encoding="utf-8")
     assert "LOCAL-ADD" in merged and "TEMPLATE-ADD" in merged
     assert outputs["has_downgrades"] == "false"
+
+
+def test_the_changelog_names_only_commits_that_moved_a_file_here(
+    workdir: Path,
+) -> None:
+    """The body's job is to say WHY the tree changed. A raw `git log` of the
+    template cannot: most of its commits touch paths a given adopter never
+    syncs. Each entry here names a commit and the files it moved in THIS repo,
+    and a commit that moved none is counted, not listed."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "synced.txt", "base\n")
+    write(template / "elsewhere" / "ignored.txt", "base\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / "synced.txt", "base\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+
+    # One commit the adopter feels, one it cannot: `elsewhere` is not synced.
+    write(template / "config" / "synced.txt", "moved\n")
+    subprocess.run(
+        ["git", "commit", "-am", "feat(config): move the synced file"],
+        cwd=template,
+        check=True,
+        env={**os.environ, **GIT_IDENTITY_ENV},
+        capture_output=True,
+    )
+    write(template / "elsewhere" / "ignored.txt", "moved\n")
+    subprocess.run(
+        ["git", "commit", "-am", "chore(elsewhere): move an unsynced file"],
+        cwd=template,
+        check=True,
+        env={**os.environ, **GIT_IDENTITY_ENV},
+        capture_output=True,
+    )
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+    changelog = parse_outputs(output_file)["changelog"]
+
+    assert "feat(config): move the synced file" in changelog
+    assert "- `config/synced.txt`" in changelog
+    # The unsynced commit is accounted for, never listed.
+    assert "chore(elsewhere)" not in changelog
+    assert "1 other template commit(s) in that range touched nothing" in changelog
+
+
+def test_a_file_no_commit_in_range_explains_is_listed_apart(workdir: Path) -> None:
+    """A path synced for the first time has no commit in `PREV_SHA..HEAD` that
+    touched it, and dropping it would make the body read as though nothing else
+    changed."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "old.txt", "base\n")
+    write(template / "config" / "new.txt", "arrives now\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / "old.txt", "base\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    write(template / "config" / "old.txt", "moved\n")
+    subprocess.run(
+        ["git", "commit", "-am", "feat(config): move the old file"],
+        cwd=template,
+        check=True,
+        env={**os.environ, **GIT_IDENTITY_ENV},
+        capture_output=True,
+    )
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+    changelog = parse_outputs(output_file)["changelog"]
+
+    assert "no commit in that range" in changelog
+    assert "- `config/new.txt`" in changelog
