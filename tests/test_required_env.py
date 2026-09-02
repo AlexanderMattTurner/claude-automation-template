@@ -29,8 +29,6 @@ CASES = [
     ("template-sync-marker-gate.sh", ["BASE_SHA", "GITHUB_TOKEN"]),
     # cancel-pr-runs.sh requires REPO, HEAD_REF, HEAD_SHA, GH_TOKEN
     ("cancel-pr-runs.sh", ["REPO", "HEAD_REF", "HEAD_SHA", "GH_TOKEN"]),
-    # label-merge-conflicts.sh requires GH_TOKEN and REPO
-    ("label-merge-conflicts.sh", ["GH_TOKEN", "REPO"]),
     # PR-review suite (claude-pr-review.yaml and friends)
     ("auto-approve-skipped-pr.sh", ["PR", "GH_REPO"]),
     # The resolve credential is no longer an input: it is picked from the
