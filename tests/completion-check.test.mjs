@@ -18,6 +18,7 @@ import {
   run,
   statePath,
 } from "../.claude/hooks/completion-check.mjs";
+import { readTranscriptTail } from "../.claude/hooks/lib-hook-io.mjs";
 
 /** A throwaway state directory, so no test reads another's record. */
 function stateDir() {
@@ -136,6 +137,25 @@ describe("readTurn", () => {
     );
   });
 
+  it("skips a subagent's lines when finding the turn", () => {
+    // A sidechain prompt would otherwise read as the main turn's boundary and hide
+    // the main thread's own tool call.
+    const side = (role, content) =>
+      JSON.stringify({ isSidechain: true, message: { role, content } });
+    const transcript = [
+      PROMPT,
+      TOOL_USE,
+      TOOL_RESULT,
+      side("user", [{ type: "text", text: "subagent brief" }]),
+      side("assistant", [{ type: "text", text: "subagent report" }]),
+      reply("main report"),
+    ].join("\n");
+    assert.deepEqual(readTurn(transcript), {
+      reply: "main report",
+      usedTools: true,
+    });
+  });
+
   it("skips a line it cannot parse", () => {
     assert.deepEqual(readTurn(`not json\n${workedTurn("ok")}\n{broken`), {
       reply: "ok",
@@ -228,6 +248,58 @@ describe("run", () => {
     assert.equal(run(payload, options), null);
     assert.equal(readState(path).done, true);
     assert.equal(run(payload, options), null);
+  });
+
+  it("takes a no-tool 'Yes.' as the answer once a question is outstanding", () => {
+    // The reply to the question usually calls no tool. Before this, the no-work
+    // exemption let that stop through without marking the check done.
+    const dir = stateDir();
+    const { path, payload } = armedSession(dir, workedTurn("Pushed."));
+    const options = { stateDir: dir, now: () => 10 };
+    assert.equal(run(payload, options)?.decision, "block");
+    writeFileSync(payload.transcript_path, [PROMPT, reply("Yes.")].join("\n"));
+    assert.equal(run(payload, options), null);
+    assert.equal(readState(path).done, true);
+    // And a no-tool reply that is NOT the answer is asked again, never let through.
+    const again = armedSession(dir, workedTurn("Pushed."), "t");
+    assert.equal(run(again.payload, options)?.decision, "block");
+    writeFileSync(
+      again.payload.transcript_path,
+      [PROMPT, reply("hm")].join("\n"),
+    );
+    assert.match(run(again.payload, options)?.reason ?? "", /check 2 of 3/);
+  });
+
+  it("falls back to the default ping cap for a non-integer COMPLETION_CHECK_MAX", () => {
+    const dir = stateDir();
+    const { payload } = armedSession(dir, workedTurn("nope"));
+    const options = { stateDir: dir, now: () => 10 };
+    for (const value of ["Infinity", "0", "-2", "1.5", "many"]) {
+      process.env.COMPLETION_CHECK_MAX = value;
+      try {
+        assert.match(run(payload, options)?.reason ?? "", /of 3\./, value);
+      } finally {
+        delete process.env.COMPLETION_CHECK_MAX;
+      }
+      writeFileSync(
+        armedSession(dir, workedTurn("nope")).path,
+        JSON.stringify({
+          pushedAt: 1,
+          deadlineMs: 2,
+          stopsLeft: 1,
+          pings: 0,
+          done: false,
+        }),
+      );
+    }
+  });
+
+  it("reads only a bounded tail of the transcript", () => {
+    const dir = stateDir();
+    const path = join(dir, "long.jsonl");
+    writeFileSync(path, `${"x".repeat(50)}\n${workedTurn("tail")}`);
+    const tail = readTranscriptTail(path, workedTurn("tail").length + 10);
+    assert.deepEqual(readTurn(tail), { reply: "tail", usedTools: true });
   });
 
   it("does not let an unasked 'Yes.' spend the one shot", () => {

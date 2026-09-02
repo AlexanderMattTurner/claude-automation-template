@@ -22,7 +22,12 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { isMain, readStdinJson, writeFileNoFollow } from "./lib-hook-io.mjs";
+import {
+  isMain,
+  readStdinJson,
+  readTranscriptTail,
+  writeFileNoFollow,
+} from "./lib-hook-io.mjs";
 
 /** The answer that ends the check. */
 export const AFFIRMATION = "Yes.";
@@ -114,8 +119,8 @@ function toolResultText(part) {
  * and stopped at the user prompt that opened it: the last assistant text ("" when
  * the turn produced none) and whether the turn called a tool worth certifying. A
  * tool result is itself a user-role entry, so only an entry with no `tool_result`
- * part counts as the prompt that opened the turn. Unparsable lines are skipped: a
- * line this hook cannot read is not a reason to hold the session open.
+ * part counts as the prompt that opened the turn. Subagent (sidechain) lines and
+ * unparsable lines are skipped: neither is a reason to hold the session open.
  * @param {string} transcript raw JSONL
  * @returns {{reply: string, usedTools: boolean}}
  */
@@ -126,12 +131,16 @@ export function readTurn(transcript) {
   /** @type {Map<unknown, string>} */
   const toolResults = new Map();
   for (const line of transcript.split("\n").reverse()) {
-    let message;
+    let entry;
     try {
-      message = JSON.parse(line)?.message;
+      entry = JSON.parse(line);
     } catch {
       continue;
     }
+    // A subagent's lines carry the parent's session and would read as the main
+    // thread's turn boundary, tool calls and reply.
+    if (entry?.isSidechain === true) continue;
+    const message = entry?.message;
     const parts = /** @type {TranscriptPart[]} */ (
       Array.isArray(message?.content) ? message.content : []
     );
@@ -265,9 +274,11 @@ export function run(payload, options = {}) {
   const path = statePath(payload?.session_id, dir);
   const transcript = payload?.transcript_path;
   if (path === null || typeof transcript !== "string") return null;
+  const envMax = Number(process.env.COMPLETION_CHECK_MAX);
+  // Only a finite positive integer bounds the pings; `Infinity` would never end them.
   const max =
     options.maxPings ??
-    (Number(process.env.COMPLETION_CHECK_MAX) || DEFAULT_MAX_PINGS);
+    (Number.isInteger(envMax) && envMax > 0 ? envMax : DEFAULT_MAX_PINGS);
   const now = options.now ?? Date.now;
   const random = options.random ?? Math.random;
 
@@ -282,22 +293,27 @@ export function run(payload, options = {}) {
       : state.stopsLeft;
   const armed = { ...state, deadlineMs, stopsLeft };
 
-  const { reply, usedTools } = readTurn(readFileSync(transcript, "utf8"));
-  // Nothing to certify neither counts toward the arming stop nor spends the one
-  // shot: the question is still owed on the next turn that does work.
-  if (!usedTools || reply === "") {
-    save(path, armed);
-    return null;
-  }
-  if (now() < deadlineMs && stopsLeft > 1) {
-    save(path, { ...armed, stopsLeft: stopsLeft - 1 });
+  const { reply, usedTools } = readTurn(readTranscriptTail(transcript));
+  if (state.pings === 0) {
+    // Nothing to certify neither counts toward the arming stop nor spends the one
+    // shot: the question is still owed on the next turn that does work.
+    if (!usedTools || reply === "") {
+      save(path, armed);
+      return null;
+    }
+    if (now() < deadlineMs && stopsLeft > 1) {
+      save(path, { ...armed, stopsLeft: stopsLeft - 1 });
+      return null;
+    }
+  } else if (isAffirmative(reply)) {
+    // A question is outstanding, so the reply answers IT — with or without a tool
+    // call. Before the first ping the reply answers the USER, so a turn that merely
+    // ends in "Yes." must not spend the one shot on a question never asked.
+    save(path, { ...armed, done: true });
     return null;
   }
   const ping = state.pings + 1;
-  // The affirmation ends the check only while the question is outstanding. Before
-  // the first ping the reply answers the USER, so a turn that merely ends in "Yes."
-  // would otherwise spend the one shot on a question this check never asked.
-  if ((state.pings > 0 && isAffirmative(reply)) || ping > max) {
+  if (ping > max) {
     save(path, { ...armed, done: true });
     return null;
   }
