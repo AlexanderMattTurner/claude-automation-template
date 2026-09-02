@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -42,9 +43,17 @@ console.log(SEGMENT_MS);
 """
 
 
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Session:
+    """The session id the wired runs use, and the two numbers the hook derives from it."""
+
+    name: str
+    offset_ms: int
+    segment_ms: int
+
+
 @pytest.fixture(scope="module")
-def session() -> tuple[str, int, int]:
-    """(session id, its segment 0 offset in ms, SEGMENT_MS), from the hook."""
+def session() -> Session:
     proc = subprocess.run(
         ["node", "--input-type=module", "-e", _SESSION_JS % HOOK.as_uri()],
         capture_output=True,
@@ -52,7 +61,7 @@ def session() -> tuple[str, int, int]:
         check=True,
     )
     name, offset, segment_ms = proc.stdout.split()
-    return name, int(offset), int(segment_ms)
+    return Session(name=name, offset_ms=int(offset), segment_ms=int(segment_ms))
 
 
 def _wired_command(event: str) -> str:
@@ -71,10 +80,8 @@ def _wired_command(event: str) -> str:
     return commands[0]
 
 
-def _run(
-    event: str, session: tuple[str, int, int], state: Path
-) -> subprocess.CompletedProcess:
-    payload = {"hook_event_name": event, "session_id": session[0]}
+def _run(event: str, session: Session, state: Path) -> subprocess.CompletedProcess:
+    payload = {"hook_event_name": event, "session_id": session.name}
     if event == "PostToolUse":
         payload["tool_name"] = "Bash"
     else:
@@ -92,9 +99,9 @@ def _run(
     )
 
 
-def _record(state: Path, session: tuple[str, int, int]) -> Path:
+def _record(state: Path, session: Session) -> Path:
     state.mkdir(exist_ok=True)
-    return state / f"{session[0]}.segment"
+    return state / f"{session.name}.segment"
 
 
 def _now_ms() -> int:
@@ -105,7 +112,7 @@ def _now_ms() -> int:
 def test_the_wired_command_delivers_the_question(event, tmp_path, session):
     # Anchored, nothing resolved yet, and the segment 0 moment five seconds
     # behind with the rest of the segment ahead.
-    anchor = _now_ms() - session[1] - 5_000
+    anchor = _now_ms() - session.offset_ms - 5_000
     path = _record(tmp_path, session)
     path.write_text(f"{anchor} -1", encoding="utf-8")
 
@@ -123,7 +130,7 @@ def test_the_wired_command_delivers_the_question(event, tmp_path, session):
 def test_the_wired_command_says_nothing_once_the_segment_is_spent(
     event, tmp_path, session
 ):
-    anchor = _now_ms() - session[1] - 5_000
+    anchor = _now_ms() - session.offset_ms - 5_000
     _record(tmp_path, session).write_text(f"{anchor} 0", encoding="utf-8")
 
     proc = _run(event, session, tmp_path)
@@ -137,7 +144,7 @@ def test_an_overdue_check_rides_the_tool_call_and_not_the_prompt(tmp_path, sessi
     the question at turn start, before any work exists to audit, so the prompt
     waits for the segment's own moment and the tool call takes the carry."""
     # Five seconds into segment 2, before its moment, with segment 1 never spent.
-    anchor = _now_ms() - 2 * session[2] - 5_000
+    anchor = _now_ms() - 2 * session.segment_ms - 5_000
     path = _record(tmp_path, session)
     path.write_text(f"{anchor} 0", encoding="utf-8")
 
