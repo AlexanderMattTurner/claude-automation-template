@@ -14,6 +14,27 @@ the prose from the release's commits.
 
 ### Added
 
+- `bullshit-check.mjs`, an advisory hook that once per twelve-minute window, at
+  a moment hashed from the session id, drops one of two short self-audit
+  questions into the agent's context: the evidence check ("name the command
+  whose output backs the claim you are about to make") or "are you taking the
+  principled solution?". It rides `PostToolUse` and `UserPromptSubmit`, both
+  events the agent already runs under, so an idle session is never woken; a
+  window missed while idle is carried to the next tool call, never to a prompt,
+  so the question lands after work exists to audit. Each line asks for an
+  artifact — a command, a file, a search — rather than a re-reading of the
+  agent's own reasoning.
+
+- `completion-check.mjs`, a Stop hook that asks once, after the session has
+  pushed, whether ALL the requested work is finished, and blocks the stop until
+  the agent answers `Yes.` as its last line or `**Resuming work**` as its first.
+  It arms at a moment drawn from the five minutes after the first push, or at a
+  stop drawn from the first three that did real work, so the moment is not
+  predictable; it asks at most three times (`COMPLETION_CHECK_MAX`) and
+  `COMPLETION_CHECK=0` disables it. The push is recorded by the same
+  `Bash(git push:*)` matcher `pre-push-check.sh` already trusts, on PreToolUse,
+  so no shell text is parsed.
+
 - `Automated review posted`, a **required** check that makes auto-merge wait for
   the automated reviewer. The cheap checks finish in about ninety seconds while
   an LLM review takes minutes, so a PR gated only on the cheap checks merged
