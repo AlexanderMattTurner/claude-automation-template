@@ -25,8 +25,10 @@ case "$1 $2" in
   "label create") exit 0 ;;
   "pr list") cat "$PR_ROWS" ;;
   "pr edit") exit 0 ;;
-  "api repos/o/r/git/ref/heads/main") echo "$BASE_TIP" ;;
-  "api repos/o/r/compare/"*) echo "$COMPARE_STATUS" ;;
+  # An empty value is how this stub spells an API fault: a non-zero exit, not a
+  # successful call that printed nothing.
+  "api repos/o/r/git/ref/heads/main") [[ -n "$BASE_TIP" ]] || exit 1; echo "$BASE_TIP" ;;
+  "api repos/o/r/compare/"*) [[ -n "$COMPARE_STATUS" ]] || exit 1; echo "$COMPARE_STATUS" ;;
   *) echo "fake gh: unhandled: $*" >&2; exit 1 ;;
 esac
 """
@@ -69,8 +71,8 @@ def run(
         "REPO": "o/r",
         "MAX_PASSES": "1",
         "RETRY_DELAY_SECS": "0",
-        # An empty tip or status is how this stub spells an API fault, and the
-        # retry lib would then sleep between attempts before the fallback runs.
+        # The stub exits non-zero on an empty tip or status, so one attempt is
+        # enough: more only sleeps before the same fallback runs.
         "RETRY_MAX": "1",
         "CALL_LOG": str(call_log),
         "PR_ROWS": str(rows),
@@ -92,6 +94,10 @@ def test_a_head_ahead_of_its_base_is_not_labelled(tmp_path: Path) -> None:
     result, calls = run(tmp_path, compare_status="ahead")
     assert "--add-label merge-conflict" not in calls
     assert "::notice::" in result.stdout
+    # The stub answers any compare URL, so only the logged one pins the
+    # direction: reversed, `ahead` would clear the label for a head that is
+    # merely behind its base.
+    assert "api repos/o/r/compare/basetip...headsha" in calls
 
 
 def test_a_head_identical_to_its_base_is_not_labelled(tmp_path: Path) -> None:
@@ -116,6 +122,13 @@ def test_a_head_behind_its_base_keeps_the_conflicting_verdict(tmp_path: Path) ->
 
 def test_a_diverged_head_keeps_the_conflicting_verdict(tmp_path: Path) -> None:
     _result, calls = run(tmp_path, compare_status="diverged")
+    assert "--add-label merge-conflict" in calls
+
+
+def test_an_unreadable_compare_keeps_the_conflicting_verdict(tmp_path: Path) -> None:
+    # The compare answers no verdict, so GitHub's stands. The script must not
+    # die here either: `set -e` mid-sweep would leave the labels half-synced.
+    _result, calls = run(tmp_path, compare_status="")
     assert "--add-label merge-conflict" in calls
 
 
