@@ -26,6 +26,7 @@ import {
   isMain,
   readStdinJson,
   readTranscriptTail,
+  sessionStatePath,
   writeFileNoFollow,
 } from "./lib-hook-io.mjs";
 
@@ -195,8 +196,7 @@ const FRESH = Object.freeze({
  * @returns {string|null}
  */
 export function statePath(sessionId, dir) {
-  if (typeof sessionId !== "string" || !/^[\w-]+$/.test(sessionId)) return null;
-  return join(dir, `${sessionId}.json`);
+  return sessionStatePath(sessionId, dir, ".json");
 }
 
 /**

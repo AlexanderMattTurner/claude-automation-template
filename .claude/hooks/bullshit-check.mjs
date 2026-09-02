@@ -32,13 +32,15 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-import { isMain, readStdinJson, writeFileNoFollow } from "./lib-hook-io.mjs";
+import {
+  isMain,
+  readStdinJson,
+  sessionStatePath,
+  writeFileNoFollow,
+} from "./lib-hook-io.mjs";
 
 /** The window each check falls in. One check per window, wherever in it the draw lands. */
 export const SEGMENT_MS = 12 * 60 * 1000;
-
-/** A session id is a path segment here, so it is validated rather than rewritten. */
-const SAFE_SESSION_RE = /^[\w-]+$/;
 
 /**
  * The questions. Each line asks for an ARTIFACT — a command, a file, a failure —
@@ -77,9 +79,7 @@ export function promptFor(sessionId, segment) {
 }
 
 /**
- * This session's state file, or null when the session id is not already a safe
- * filename. Refusing beats rewriting: a rewrite is many-to-one, so two sessions
- * could share one file and one session's check would suppress the other's.
+ * This session's state file, or null when the session id is not a safe filename.
  * @param {unknown} sessionId
  * @param {string} [dir]
  * @returns {string|null}
@@ -89,9 +89,7 @@ export function statePath(
   dir = process.env.BULLSHIT_CHECK_STATE_DIR ||
     join(tmpdir(), "claude-bullshit-check"),
 ) {
-  if (typeof sessionId !== "string" || !SAFE_SESSION_RE.test(sessionId))
-    return null;
-  return join(dir, `${sessionId}.segment`);
+  return sessionStatePath(sessionId, dir, ".segment");
 }
 
 /**

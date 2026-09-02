@@ -270,27 +270,24 @@ describe("run", () => {
     assert.match(run(again.payload, options)?.reason ?? "", /check 2 of 3/);
   });
 
-  it("falls back to the default ping cap for a non-integer COMPLETION_CHECK_MAX", () => {
+  it("honours COMPLETION_CHECK_MAX, and falls back for a non-integer", () => {
     const dir = stateDir();
-    const { payload } = armedSession(dir, workedTurn("nope"));
     const options = { stateDir: dir, now: () => 10 };
-    for (const value of ["Infinity", "0", "-2", "1.5", "many"]) {
+    for (const [value, expected] of [
+      ["2", /of 2\./],
+      ["Infinity", /of 3\./],
+      ["0", /of 3\./],
+      ["-2", /of 3\./],
+      ["1.5", /of 3\./],
+      ["many", /of 3\./],
+    ]) {
+      const { payload } = armedSession(dir, workedTurn("nope"));
       process.env.COMPLETION_CHECK_MAX = value;
       try {
-        assert.match(run(payload, options)?.reason ?? "", /of 3\./, value);
+        assert.match(run(payload, options)?.reason ?? "", expected, value);
       } finally {
         delete process.env.COMPLETION_CHECK_MAX;
       }
-      writeFileSync(
-        armedSession(dir, workedTurn("nope")).path,
-        JSON.stringify({
-          pushedAt: 1,
-          deadlineMs: 2,
-          stopsLeft: 1,
-          pings: 0,
-          done: false,
-        }),
-      );
     }
   });
 

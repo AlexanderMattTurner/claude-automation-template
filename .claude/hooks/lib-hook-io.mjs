@@ -8,6 +8,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 /**
@@ -153,4 +154,19 @@ export function readTranscriptTail(path, maxBytes = TRANSCRIPT_TAIL_BYTES) {
   } finally {
     closeSync(fd);
   }
+}
+
+/**
+ * The state file a hook keeps for one session, or null when the session id is not
+ * already a safe filename. The file sits in a shared `$TMPDIR`, so the id is a path
+ * segment here and is validated rather than rewritten: a rewrite is many-to-one, so
+ * two sessions could share one file and one session's state would drive the other's.
+ * @param {unknown} sessionId
+ * @param {string} dir
+ * @param {string} suffix the file extension, `.segment` or `.json`
+ * @returns {string|null}
+ */
+export function sessionStatePath(sessionId, dir, suffix) {
+  if (typeof sessionId !== "string" || !/^[\w-]+$/.test(sessionId)) return null;
+  return join(dir, `${sessionId}${suffix}`);
 }
