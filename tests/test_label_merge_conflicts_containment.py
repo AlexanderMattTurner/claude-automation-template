@@ -16,30 +16,18 @@ import subprocess
 from pathlib import Path
 
 from tests._helpers import REPO_ROOT
+from tests._label_merge_conflicts_gh import FAKE_GH
 
 SCRIPT = REPO_ROOT / ".github" / "scripts" / "label-merge-conflicts.sh"
-
-FAKE_GH = """#!/usr/bin/env bash
-echo "$*" >> "$CALL_LOG"
-case "$1 $2" in
-  "label create") exit 0 ;;
-  "pr list") cat "$PR_ROWS" ;;
-  "pr edit") exit 0 ;;
-  # An empty value is how this stub spells an API fault: a non-zero exit, not a
-  # successful call that printed nothing.
-  "api repos/o/r/git/ref/heads/main") [[ -n "$BASE_TIP" ]] || exit 1; echo "$BASE_TIP" ;;
-  "api repos/o/r/compare/"*) [[ -n "$COMPARE_STATUS" ]] || exit 1; echo "$COMPARE_STATUS" ;;
-  *) echo "fake gh: unhandled: $*" >&2; exit 1 ;;
-esac
-"""
 
 
 def run(
     tmp_path: Path,
     *,
     compare_status: str,
-    base_tip: str = "basetip",
+    base_ref: str = "main",
     labeled: bool = False,
+    pr_number: str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -56,7 +44,7 @@ def run(
                     "mergeable": "CONFLICTING",
                     "labels": [{"name": "merge-conflict"}] if labeled else [],
                     "headRefOid": "headsha",
-                    "baseRefName": "main",
+                    "baseRefName": base_ref,
                 }
             ]
         ),
@@ -71,14 +59,15 @@ def run(
         "REPO": "o/r",
         "MAX_PASSES": "1",
         "RETRY_DELAY_SECS": "0",
-        # The stub exits non-zero on an empty tip or status, so one attempt is
-        # enough: more only sleeps before the same fallback runs.
+        # The stub exits non-zero on an empty status, so one attempt is enough:
+        # more only sleeps before the same fallback runs.
         "RETRY_MAX": "1",
         "CALL_LOG": str(call_log),
         "PR_ROWS": str(rows),
-        "BASE_TIP": base_tip,
         "COMPARE_STATUS": compare_status,
     }
+    if pr_number is not None:
+        env["PR_NUMBER"] = pr_number
     result = subprocess.run(
         ["bash", str(SCRIPT)],
         capture_output=True,
@@ -97,7 +86,7 @@ def test_a_head_ahead_of_its_base_is_not_labelled(tmp_path: Path) -> None:
     # The stub answers any compare URL, so only the logged one pins the
     # direction: reversed, `ahead` would clear the label for a head that is
     # merely behind its base.
-    assert "api repos/o/r/compare/basetip...headsha" in calls
+    assert "api repos/o/r/compare/main...headsha" in calls
 
 
 def test_a_head_identical_to_its_base_is_not_labelled(tmp_path: Path) -> None:
@@ -110,6 +99,16 @@ def test_a_contained_head_that_is_already_labelled_is_cleared(tmp_path: Path) ->
     # existed would otherwise wear the label until a human removed it.
     _result, calls = run(tmp_path, compare_status="ahead", labeled=True)
     assert "--remove-label merge-conflict" in calls
+
+
+def test_a_pr_event_reaches_the_same_verdict(tmp_path: Path) -> None:
+    # PR_NUMBER routes the listing through `gh pr view`, a different call with a
+    # different JSON shape, and that is the event the stacked-chain case fires
+    # on. The two new fields must survive it.
+    _result, calls = run(tmp_path, compare_status="ahead", pr_number="7")
+    assert "pr view 7" in calls
+    assert "api repos/o/r/compare/main...headsha" in calls
+    assert "--add-label merge-conflict" not in calls
 
 
 def test_a_head_behind_its_base_keeps_the_conflicting_verdict(tmp_path: Path) -> None:
@@ -132,9 +131,14 @@ def test_an_unreadable_compare_keeps_the_conflicting_verdict(tmp_path: Path) -> 
     assert "--add-label merge-conflict" in calls
 
 
-def test_an_unreadable_base_tip_keeps_the_conflicting_verdict(tmp_path: Path) -> None:
-    # No tip means no containment answer; GitHub's verdict stands rather than a
-    # failed read silently clearing a real conflict.
-    _result, calls = run(tmp_path, compare_status="ahead", base_tip="")
-    assert "--add-label merge-conflict" in calls
-    assert "compare/" not in calls
+def test_a_base_name_carrying_a_url_delimiter_is_encoded(tmp_path: Path) -> None:
+    # `gh api` reads its endpoint as a URL, so an unencoded `#` would truncate
+    # the path and compare against the branch `release` instead.
+    _result, calls = run(tmp_path, compare_status="ahead", base_ref="release#2")
+    assert "api repos/o/r/compare/release%232...headsha" in calls
+
+
+def test_a_base_name_keeps_its_slashes(tmp_path: Path) -> None:
+    # GitHub takes `feature/x` as a path segment pair; `%2F` names no branch.
+    _result, calls = run(tmp_path, compare_status="ahead", base_ref="feature/x")
+    assert "api repos/o/r/compare/feature/x...headsha" in calls

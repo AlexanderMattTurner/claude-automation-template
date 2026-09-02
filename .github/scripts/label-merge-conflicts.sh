@@ -64,40 +64,31 @@ list_prs() {
   jq -r ".[] | $jq_row" <<<"$1"
 }
 
-declare -A base_tip_cache=()
-# Set the variable `_bt_target` names to the tip `_bt_ref` carries on the remote
-# right now, memoized for one pass. Empty when the branch is gone or the read
-# fails; the caller then leaves GitHub's verdict standing, since it has no tip to
-# judge it by. Assigning by name is what makes the memo work: a `$(base_tip ...)`
-# capture runs the call in a subshell, so the cache write never reaches this
-# shell and every row spends another read of the same ref.
-base_tip() {
-  local _bt_target="$1" _bt_ref="$2" _bt_tip=""
-  if [[ -z "${base_tip_cache[$_bt_ref]+set}" ]]; then
-    # A failed read reports through this same output, so drop it rather than
-    # cache an error message as a sha.
-    if ! _bt_tip="$(retry_stdout gh api "repos/$REPO/git/ref/heads/$_bt_ref" --jq .object.sha)"; then
-      _bt_tip=""
-    fi
-    base_tip_cache["$_bt_ref"]="$_bt_tip"
-  fi
-  printf -v "$_bt_target" '%s' "${base_tip_cache[$_bt_ref]}"
+# Percent-encode a branch name for a URL path. `gh api` takes the endpoint as a
+# URL, so a branch named `release#2` would truncate the path at the `#` and read
+# a different branch. The slashes go back in afterwards: GitHub's compare
+# endpoint takes `feature/x` as a path, and `%2F` is not the same ref to it.
+encode_ref() {
+  local encoded
+  encoded="$(jq -rn --arg s "$1" '$s|@uri')"
+  printf '%s' "${encoded//%2F//}"
 }
 
 # Whether `head_oid` already carries the tip `base_ref` has right now. Merging
 # such a head into its base is a fast-forward, so no conflict is possible and a
 # CONFLICTING verdict about it is wrong.
 #
-# An unreadable tip or compare answers "not contained", which leaves GitHub's
-# verdict standing. Both reads are retried first, so a transient API fault does
-# not label a contained head.
+# GitHub resolves the branch name inside the compare, so one call answers this
+# and reads the tip at the same instant a separate read could already be stale.
+# An unreadable compare answers "not contained", which leaves GitHub's verdict
+# standing. The read is retried first, so a transient API fault does not label a
+# contained head.
 head_contains_base() {
-  local head_oid="$1" base_ref="$2" tip="" status
-  [[ -n "$base_ref" ]] || return 1
-  base_tip tip "$base_ref"
-  [[ -n "$head_oid" && -n "$tip" ]] || return 1
-  status="$(retry_stdout gh api "repos/$REPO/compare/${tip}...${head_oid}" --jq .status)" ||
-    return 1
+  local head_oid="$1" base_ref="$2" encoded status
+  [[ -n "$head_oid" && -n "$base_ref" ]] || return 1
+  encoded="$(encode_ref "$base_ref")"
+  status="$(retry_stdout gh api \
+    "repos/$REPO/compare/${encoded}...${head_oid}" --jq .status)" || return 1
   [[ "$status" == "ahead" || "$status" == "identical" ]]
 }
 
@@ -107,9 +98,6 @@ unknown=""
 # forward, so the repo's single-command retry_cmd has no body to wrap here.
 for ((pass = 1; pass <= ${MAX_PASSES:-2}; pass++)); do
   [[ "$pass" == "1" ]] || sleep "${RETRY_DELAY_SECS:-10}"
-  # One pass is one snapshot of the remote: a memo kept across passes would
-  # judge a later pass against a tip the base branch has already moved off.
-  base_tip_cache=()
   unknown=""
   page="$(fetch_page)"
   # A full page means more open PRs may exist past the limit; say so rather

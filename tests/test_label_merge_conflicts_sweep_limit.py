@@ -13,25 +13,9 @@ import subprocess
 from pathlib import Path
 
 from tests._helpers import REPO_ROOT
+from tests._label_merge_conflicts_gh import FAKE_GH
 
 SCRIPT = REPO_ROOT / ".github" / "scripts" / "label-merge-conflicts.sh"
-
-FAKE_GH = """#!/usr/bin/env bash
-echo "$*" >> "$CALL_LOG"
-case "$1 $2" in
-  "label create") exit 0 ;;
-  "pr list") cat "$PR_ROWS" ;;
-  # Real `gh pr view` emits ONE PR object, then applies its own --jq (the
-  # script's last argument) to it — so a script that dropped --jq would get an
-  # object where list_prs() iterates an array.
-  "pr view")
-    obj="$(jq -c '.[0]' "$PR_ROWS")"
-    if [[ "$*" == *--jq* ]]; then jq -c "${@: -1}" <<<"$obj"; else echo "$obj"; fi
-    ;;
-  "pr edit") exit 0 ;;
-  *) echo "fake gh: unhandled: $*" >&2; exit 1 ;;
-esac
-"""
 
 
 def run(
