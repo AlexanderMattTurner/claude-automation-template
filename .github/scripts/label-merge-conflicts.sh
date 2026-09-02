@@ -1,29 +1,23 @@
 #!/usr/bin/env bash
 # Keep the `merge-conflict` label on every open PR whose GitHub-computed
 # mergeability is CONFLICTING, and clear it once the PR merges cleanly again.
-# Conflict cost scales with how long a branch sits behind a fast-moving base,
-# so surfacing the transition the moment it happens (instead of at merge time,
-# hundreds of commits later) is what keeps resolutions small enough to review
-# honestly. Event-driven with a cron backstop; API-only — it never pushes to a
-# PR branch and never triggers a CI run on one.
+# Surfacing the transition when it happens, not at merge time hundreds of
+# commits later, is what keeps a resolution small enough to review. API-only:
+# it never pushes to a PR branch and never starts a CI run on one.
 #
 # Scope: with PR_NUMBER set (a PR event) it syncs that one PR; unset (a base
-# push / schedule) it scans every open PR. A single-PR sync is what clears the
-# label seconds after a conflict is resolved.
+# push / schedule) it scans every open PR.
 #
-# GitHub computes mergeability lazily: querying a PR triggers the computation,
-# so a PR reporting UNKNOWN on the first pass usually resolves by a later one.
-# PRs still UNKNOWN after MAX_PASSES are named in a workflow warning — never
-# silently skipped — and the next event or scheduled run retries them anyway.
-# GitHub also serves a CONFLICTING verdict that cannot be true: a head that
-# already carries its base branch's tip merges as a fast-forward, so nothing can
-# conflict. That happens on a stacked chain whose parent was merged into the
-# child, and GitHub keeps serving it, so every scan re-labels the same PR.
-# head_contains_base below reads such a verdict as MERGEABLE.
+# GitHub answers lazily: querying a PR starts the computation, so a PR reporting
+# UNKNOWN on one pass usually resolves by a later one. PRs still UNKNOWN after
+# MAX_PASSES are named in a workflow warning, and the next run retries them.
+# GitHub also serves a CONFLICTING verdict that cannot be true: a head already
+# carrying its base branch's tip merges as a fast-forward. head_contains_base
+# below reads such a verdict as MERGEABLE.
 #
 # Env: GH_TOKEN, REPO; PR_NUMBER scopes to one PR; MAX_PASSES (default 2) caps
-# the retry loop; RETRY_DELAY_SECS overrides the between-pass wait; SWEEP_LIMIT
-# (default 100) caps how many open PRs one full-repo sweep lists.
+# the retry loop; RETRY_DELAY_SECS the between-pass wait; SWEEP_LIMIT (default
+# 100) the full-repo sweep listing.
 set -euo pipefail
 
 : "${GH_TOKEN:?}" "${REPO:?}"
