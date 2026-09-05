@@ -43,13 +43,10 @@ import {
 export const SEGMENT_MS = 12 * 60 * 1000;
 
 /**
- * The questions. Each line asks for an ARTIFACT — a command, a file, a failure —
- * rather than for a re-reading of the agent's own reasoning, which buys tokens
- * and no evidence. A clean answer costs one line; a dirty one names the fix.
- *
- * Each opens `**Bullshit check`, the prefix the wiring tests match, and they ask
- * about different failures: one about a claim that outruns its evidence, one
- * about a fix that treats the symptom.
+ * The questions. Each opens `**Bullshit check`, the prefix the wiring tests match.
+ * The first two ask for an ARTIFACT — a command, a file, a failure — rather than a
+ * re-reading of the agent's own reasoning, which buys tokens and no evidence. The
+ * third asks what the work can delete, and the change itself answers it.
  */
 export const PROMPTS = Object.freeze([
   `<!-- periodic bullshit check -->
@@ -64,6 +61,12 @@ Nothing to report? One sentence, then carry on.`,
 - Name what you took the shortcut on — a special case, a retry, a widened exception, a narrowed assertion, a number you guessed instead of deriving — and either take the principled fix now or say what forbids it.
 - Name the search (a grep, a test run) that found the other sites that break the same way. Fix them, or say which ones you left and why.
 Already principled? One sentence, then carry on.`,
+  `<!-- periodic bullshit check -->
+**Bullshit check — is any of this unnecessary?** Think from first principles about what the work is trying to achieve. Interrogate what you built before calling it done:
+- Is anything here unnecessary, overly complicated, or based on a weak assumption? Challenge them.
+- What can you delete entirely? Name it by file.
+- What can you simplify now that the unnecessary pieces are gone?
+Then make the changes. Prefer deleting over simplifying, simplifying over optimizing, and optimizing over automating. It might be done already: you do NOT have to change anything. If it is good, leave it alone.`,
 ]);
 
 /**

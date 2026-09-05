@@ -15,10 +15,11 @@ the prose from the release's commits.
 ### Added
 
 - `bullshit-check.mjs`, an advisory hook that once per twelve-minute window, at
-  a moment hashed from the session id, drops one of two short self-audit
-  questions into the agent's context: the evidence check ("name the command
-  whose output backs the claim you are about to make") or "are you taking the
-  principled solution?". It rides `PostToolUse` and `UserPromptSubmit`, both
+  a moment hashed from the session id, drops one short self-audit question into
+  the agent's context: the evidence check ("name the command whose output backs
+  the claim you are about to make"), "are you taking the principled solution?",
+  or "is any of this unnecessary?", which asks what the work can delete before
+  it is called done. It rides `PostToolUse` and `UserPromptSubmit`, both
   events the agent already runs under, so an idle session is never woken; a
   window missed while idle is carried to the next tool call, never to a prompt,
   so the question lands after work exists to audit. Each line asks for an
