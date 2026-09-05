@@ -61,7 +61,7 @@ After each tool call, `parallelism-nudge.mjs` measures from the session transcri
 
 **Posture: advisory.** It never blocks (`additionalContext` only), fails open on any internal error, and nudges at most once per user-turn segment, so a long turn is not re-narrated on every call.
 
-`bullshit-check.mjs` also runs here, and on `UserPromptSubmit`. Once per twelve-minute window, at a moment hashed from the session id, it drops one of two short self-audit questions into the agent's context: the evidence check ("name the command whose output backs the claim you are about to make") or "are you taking the principled solution?". Both events already run the agent, so an idle session is never woken; a window missed while idle is carried to the next tool call, never to a prompt, so the question lands after work exists to audit. State lives under `$TMPDIR/claude-bullshit-check/` (`BULLSHIT_CHECK_STATE_DIR` overrides it).
+`bullshit-check.mjs` also runs here, and on `UserPromptSubmit`. Once per twelve-minute window, at a moment hashed from the session id, it drops one short self-audit question into the agent's context: the evidence check ("name the command whose output backs the claim you are about to make"), "are you taking the principled solution?", or "is any of this unnecessary?", which asks what the work can delete before it is called done. Both events already run the agent, so an idle session is never woken; a window missed while idle is carried to the next tool call, never to a prompt, so the question lands after work exists to audit. State lives under `$TMPDIR/claude-bullshit-check/` (`BULLSHIT_CHECK_STATE_DIR` overrides it).
 
 **Posture: advisory.** `additionalContext` only, one question per window across both events, and every fault exits silently.
 
