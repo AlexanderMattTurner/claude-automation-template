@@ -22,7 +22,7 @@ set -euo pipefail
 : "${PR:?PR number required}"
 : "${PR_INPUT_DIR:?PR_INPUT_DIR required}"
 
-mkdir -p "$PR_INPUT_DIR"
+mkdir -p "$PR_INPUT_DIR" # bare-mkdir-ok: post-condition verified on the next line
 [[ -d "$PR_INPUT_DIR" ]] || {
   echo "::error::could not create PR_INPUT_DIR ($PR_INPUT_DIR)" >&2
   exit 1
