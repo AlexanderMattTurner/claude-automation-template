@@ -47,8 +47,10 @@ name: Sync from Template
 # 8. A file the adopter GENERATES belongs in EXCLUDE_PATHS. The sync line-merges,
 #    so the template's block lands beside the generated one and the generator
 #    reverts it on the next run — the same pull request reopens every week. In
-#    JSON that merge can also produce a DUPLICATE object key, which every parser
-#    reads last-wins, so the adopter's own block silently stops taking effect.
+#    JSON that merge can also produce a DUPLICATE member name. RFC 8259 leaves
+#    that case to the parser: jq, Python and JavaScript each keep the LAST one,
+#    so the adopter's own block silently stops taking effect, while another
+#    parser may keep the first or refuse the file outright.
 # =============================================================================
 #
 # ROOT SCAFFOLDING A SYNCED WORKFLOW MAY ASSUME
