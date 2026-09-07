@@ -22,7 +22,16 @@ def write(path: Path, content: str) -> None:
 
 
 def parse_outputs(github_output: Path) -> dict[str, str]:
-    """Parse a GITHUB_OUTPUT file. Supports both key=value and key<<EOF blocks."""
+    """Parse a GITHUB_OUTPUT file, rejecting what the real runner rejects.
+
+    The runner reads `key=value` one line at a time, so a value that spans lines
+    leaves its continuation sitting on its own; finding no `=` there, the runner
+    aborts the whole step with `Unable to process file command 'output'
+    successfully. Invalid format`. A parser that skipped such a line would call a
+    file green that kills the sync in production, and multi-line values are
+    exactly what `cap_body_field` produces the moment a cap fires — so the strict
+    read is what makes any capping test mean anything at all.
+    """
     text = github_output.read_text(encoding="utf-8")
     result: dict[str, str] = {}
     lines = text.splitlines()
@@ -40,6 +49,11 @@ def parse_outputs(github_output: Path) -> dict[str, str]:
         elif "=" in line:
             key, value = line.split("=", 1)
             result[key] = value
+        elif line.strip():
+            raise AssertionError(
+                f"line {i + 1} of GITHUB_OUTPUT is neither a key=value nor a "
+                f"heredoc header, so the runner would abort the step: {line!r}"
+            )
         i += 1
     return result
 
@@ -139,7 +153,6 @@ def test_3way_merge_outcomes(
     else:
         assert "<<<<<<<" in body and ">>>>>>>" in body
         assert "config/a.txt" in outputs["conflict_files"]
-        assert (child / ".template-sync-conflicts").exists()
 
 
 def test_adds_new_file_from_template(workdir: Path) -> None:
@@ -217,12 +230,14 @@ def test_no_base_conflict_when_local_differs_without_prev_sha(workdir: Path) -> 
     outputs = parse_outputs(output_file)
     assert outputs["has_conflicts"] == "true"
     assert "config/a.txt" in outputs["conflict_files"]
-    # The script overwrites the local file with the template version and
-    # emits a diff in conflict_report for human review — the report content
-    # is load-bearing for the downstream PR template.
-    assert (child / "config" / "a.txt").read_text(
-        encoding="utf-8"
-    ) == "template version\n"
+    # Both versions survive as conflict markers. The sync used to `cp` the
+    # template over the local file and tell the reader to restore whatever it
+    # had just destroyed; a first sync is exactly when the adopter's own
+    # content is least recoverable, so nothing here overwrites it.
+    merged = (child / "config" / "a.txt").read_text(encoding="utf-8")
+    assert "local version" in merged
+    assert "template version" in merged
+    assert "<<<<<<<" in merged and ">>>>>>>" in merged
     assert "local version" in outputs["conflict_report"]
     assert "template version" in outputs["conflict_report"]
 
@@ -231,8 +246,8 @@ def test_conflict_report_is_capped_for_many_no_base_files(workdir: Path) -> None
     """Many no-merge-base files must not produce an unbounded PR body. The report
     becomes the create-pull-request body (passed through the environment); an
     oversized body aborts PR creation with E2BIG ("Argument list too long"). The
-    report is capped, and the full file list still lands in
-    .template-sync-conflicts so nothing load-bearing is lost."""
+    report is capped, and the branch itself carries the complete record: every
+    conflicted file holds markers, so nothing load-bearing is lost."""
     child = workdir / "child"
     template = workdir / "template"
     big_local = "".join(f"local line {i}\n" for i in range(700))
@@ -253,11 +268,12 @@ def test_conflict_report_is_capped_for_many_no_base_files(workdir: Path) -> None
     # Uncapped this would be ~120 KB (12 files x head -500 of the per-file diff).
     assert len(report.encode()) <= 62000, len(report.encode())
     assert "truncated" in report
-    assert ".template-sync-conflicts" in report
-    # The complete conflicted-file list is preserved out-of-band.
-    listed = (child / ".template-sync-conflicts").read_text(encoding="utf-8")
+    # The note's own words, not a marker: every per-file explanation quotes
+    # `<<<<<<<` verbatim, so asserting the marker passes with no note at all.
+    assert "exceeded the PR-body size limit" in report
     for n in range(12):
-        assert f"config/f{n}.txt" in listed
+        merged = (child / "config" / f"f{n}.txt").read_text(encoding="utf-8")
+        assert "<<<<<<<" in merged and ">>>>>>>" in merged
 
 
 def test_detects_deleted_files(workdir: Path) -> None:
@@ -472,10 +488,13 @@ def test_opt_in_path_present_locally_is_updated(workdir: Path) -> None:
     """Opting in is creating the file once — after that it syncs like any other."""
     child = workdir / "child"
     template = workdir / "template"
+    write(template / "config" / "opt-in.txt", "v1 adopted earlier\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / "opt-in.txt", "v1 adopted earlier\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
     write(template / "config" / "opt-in.txt", "v2 from template\n")
     commit_all(template)
-    write(child / "config" / "opt-in.txt", "v1 adopted earlier\n")
-    commit_all(child)
 
     result, _ = run_sync(
         child,
@@ -860,3 +879,246 @@ def test_a_merge_commit_is_not_counted_as_touching_nothing(workdir: Path) -> Non
 
     assert "feat(config): move the file" in changelog
     assert "touched nothing this repo syncs" not in changelog
+
+
+@pytest.mark.parametrize("with_merge_base", [True, False], ids=["3way", "no-base"])
+@pytest.mark.parametrize(
+    "ci_path",
+    [
+        ".github/workflows/ci.yaml",
+        ".github/actions/report/action.yaml",
+        ".github/scripts/lib-decide-range.sh",
+    ],
+    ids=["workflow", "composite-action", "step-script"],
+)
+def test_a_ci_loaded_conflict_keeps_the_local_file_free_of_markers(
+    workdir: Path, with_merge_base: bool, ci_path: str
+) -> None:
+    """GitHub parses these files, so a conflict marker in one makes it
+    unparseable: the run starts with zero jobs and a red that names no cause.
+    The sync keeps the local file whole and reports the template's version."""
+    child = workdir / "child"
+    template = workdir / "template"
+    local_text = "local-side\n"
+
+    if with_merge_base:
+        write(template / ci_path, "base-side\n")
+        prev_sha = commit_all(template)
+        (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    write(child / ci_path, local_text)
+    commit_all(child)
+    write(template / ci_path, "template-side\n")
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths=".github")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_conflicts"] == "true"
+    assert ci_path in outputs["markerless_files"]
+    # Never in conflict_files: that output is template-sync-resolve.sh's input, documented as
+    # marker-bearing paths. mergiraf hands a marker-free file back unchanged, the resolver scores
+    # that DETERMINISTIC, and auto-merge then lands a sync whose body says to port it by hand.
+    assert ci_path not in outputs.get("conflict_files", "")
+    # The local file is untouched, so CI can still load it.
+    assert (child / ci_path).read_text(encoding="utf-8") == local_text
+    # The template's version still reaches the reviewer.
+    assert "template-side" in outputs["conflict_report"]
+    assert "NOT applied" in outputs["conflict_report"]
+
+
+def test_a_marker_conflict_is_not_listed_as_markerless(workdir: Path) -> None:
+    child = workdir / "child"
+    template = workdir / "template"
+
+    write(template / "config" / "a.txt", "shared\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / "a.txt", "LOCAL change\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    write(template / "config" / "a.txt", "TEMPLATE change\n")
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_conflicts"] == "true"
+    assert "config/a.txt" in outputs["conflict_files"]
+    assert "markerless_files" not in outputs
+    body = (child / "config" / "a.txt").read_text(encoding="utf-8")
+    assert "<<<<<<< local" in body
+    # `||||||| base`, from `git merge-file --diff3`. mergiraf re-merges from that section, so
+    # without it template-sync-resolve.sh's structural tier resolves nothing and every conflict
+    # falls to the model tier — with no check going red to say so.
+    assert "||||||| base" in body
+
+
+def test_template_adopting_a_downstream_file_does_not_clobber_it(workdir: Path) -> None:
+    child = workdir / "child"
+    template = workdir / "template"
+
+    # Last synced state: the template does not carry config/a.txt at all.
+    write(template / "unrelated.txt", "seed\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / "a.txt", "shared\nlocal work since the port\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+
+    # The template later adopts the file, at the state it had when ported.
+    write(template / "config" / "a.txt", "shared\n")
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_conflicts"] == "true"
+    assert "config/a.txt" in outputs["conflict_files"]
+    body = (child / "config" / "a.txt").read_text(encoding="utf-8")
+    assert "local work since the port" in body
+    assert "<<<<<<< local" in body and ">>>>>>> template" in body
+    assert "||||||| base" in body
+
+
+def test_a_merge_that_could_not_run_fails_the_sync(workdir: Path) -> None:
+    child = workdir / "child"
+    template = workdir / "template"
+
+    (template / "config").mkdir(parents=True)
+    (template / "config" / "a.bin").write_bytes(b"base\x00\n")
+    prev_sha = commit_all(template)
+    (child / "config").mkdir(parents=True)
+    (child / "config" / "a.bin").write_bytes(b"local\x00\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    (template / "config" / "a.bin").write_bytes(b"template\x00\n")
+    commit_all(template)
+
+    result, _ = run_sync(child, template, sync_paths="config")
+    assert result.returncode != 0
+    assert "git merge-file failed on" in result.stderr
+    # The local file is left exactly as it was — a failed merge writes nothing.
+    assert (child / "config" / "a.bin").read_bytes() == b"local\x00\n"
+
+
+def test_an_empty_side_on_a_first_sync_is_reported_markerless(workdir: Path) -> None:
+    """An empty local file merges CLEAN against the empty base, so no markers land.
+
+    Taking that merge would replace the adopter's file with the template's and leave nothing in
+    the tree to show a merge was skipped, which is the same loss the no-base path exists to stop.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "a.txt", "template version\n")
+    commit_all(template)
+    write(child / "config" / "a.txt", "")
+    commit_all(child)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_conflicts"] == "true"
+    assert "config/a.txt" in outputs["markerless_files"]
+    assert "config/a.txt" not in outputs.get("conflict_files", "")
+    assert (child / "config" / "a.txt").read_text(encoding="utf-8") == ""
+    assert "template version" in outputs["conflict_report"]
+
+
+def test_the_conflict_path_list_is_never_capped(workdir: Path) -> None:
+    """conflict_files feeds template-sync-resolve.sh, not the PR body.
+
+    A cap would both drop paths the resolver must see and append prose the resolver would split
+    as whitespace-separated paths, which template-sync-push.sh then hands to `git add`.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+    # Long enough that the space-joined list clears the 8000-byte cap the other lists take,
+    # so a cap re-applied here would actually fire and this case would go red.
+    names = [f"{'deliberately-long-path-segment-' * 7}{n}.txt" for n in range(40)]
+    for name in names:
+        write(template / "config" / name, "shared\n")
+    prev_sha = commit_all(template)
+    for name in names:
+        write(child / "config" / name, "LOCAL change\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    for name in names:
+        write(template / "config" / name, "TEMPLATE change\n")
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    listed = outputs["conflict_files"].split()
+    assert sorted(listed) == sorted(f"config/{name}" for name in names)
+    assert "truncated" not in outputs["conflict_files"]
+
+
+def test_a_truncated_path_list_keeps_its_notice_in_the_body(workdir: Path) -> None:
+    """The PR body renders a capped list with `read -ra`, which reads one line.
+
+    cap_body_field puts its notice after a blank line, so a renderer that stops at the first line
+    drops the notice and presents the shortened list as the complete one.
+    """
+    body_script = REPO_ROOT / ".github" / "scripts" / "template-sync-pr-body.sh"
+    out = workdir / "body.md"
+    truncated = "config/a.txt config/b.txt\n\n… list truncated; the sync log names every deleted file."
+    subprocess.run(
+        ["bash", str(body_script)],
+        check=True,
+        env={
+            **os.environ,
+            "TEMPLATE_REPO": "o/r",
+            "TEMPLATE_SHA_SHORT": "abc1234",
+            "PR_BODY_PATH": str(out),
+            "DELETED_FILES": truncated,
+        },
+        capture_output=True,
+        text=True,
+    )
+    rendered = out.read_text(encoding="utf-8")
+    assert "- `config/a.txt`" in rendered
+    assert "- `config/b.txt`" in rendered
+    assert "list truncated" in rendered
+    # The notice is prose, not one bullet per word.
+    assert "- `truncated;`" not in rendered
+
+
+def test_a_markerless_entry_survives_the_report_cap(workdir: Path) -> None:
+    """The report is the ONLY copy of a markerless conflict's template-side change.
+
+    A marker-bearing file keeps its content on the branch, so losing its report entry costs
+    nothing. A markerless one loses the change for good: the sync still advances
+    `.template-version`, so the next run sees the template file as unchanged and never reports it.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+    # Enough marker-bearing conflicts to blow the 40 KB report cap on their own.
+    filler = "x" * 300
+    for n in range(20):
+        write(
+            child / "config" / f"f{n}.txt",
+            "".join(f"L{i} {filler}\n" for i in range(60)),
+        )
+        write(
+            template / "config" / f"f{n}.txt",
+            "".join(f"T{i} {filler}\n" for i in range(60)),
+        )
+    write(child / ".github" / "workflows" / "ci.yaml", "local-side\n")
+    write(template / ".github" / "workflows" / "ci.yaml", "template-side\n")
+    commit_all(child)
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config .github")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    report = outputs["conflict_report"]
+    assert "truncated" in report, "the cap must fire, or this case proves nothing"
+    assert ".github/workflows/ci.yaml" in outputs["markerless_files"]
+    # The entry's own heading and its diff line, not a phrase the cap note also carries.
+    assert "### `.github/workflows/ci.yaml`" in report
+    assert "+template-side" in report

@@ -249,6 +249,7 @@ jobs:
           TEMPLATE_REPO: ${{ env.TEMPLATE_REPO }}
           TEMPLATE_SHA_SHORT: ${{ steps.sync.outputs.template_sha_short }}
           CHANGED_FILES: ${{ steps.sync.outputs.changed_files }}
+          CHANGED_COUNT: ${{ steps.sync.outputs.changed_count }}
           CHANGELOG: ${{ steps.sync.outputs.changelog }}
           DOWNGRADE_REPORT: ${{ steps.sync.outputs.downgrade_report }}
           AUTO_MERGED_FILES: ${{ steps.sync.outputs.auto_merged_files }}
@@ -256,6 +257,7 @@ jobs:
           INERT_ENTRIES: ${{ steps.sync.outputs.inert_entries }}
           DELETED_FILES: ${{ steps.sync.outputs.deleted_files }}
           CONFLICT_REPORT: ${{ steps.sync.outputs.conflict_report }}
+          MARKERLESS_FILES: ${{ steps.sync.outputs.markerless_files }}
           PR_BODY_PATH: ${{ runner.temp }}/template-sync-body.md
           BASE_SHA: ${{ github.sha }}
         run: |

@@ -13,7 +13,8 @@
 # Env, all optional except the first three, and all from template-sync.sh's
 # step outputs: TEMPLATE_REPO, TEMPLATE_SHA_SHORT, PR_BODY_PATH; then
 # CHANGED_FILES, CHANGELOG, DOWNGRADE_REPORT, AUTO_MERGED_FILES,
-# DECLINED_FILES, INERT_ENTRIES, DELETED_FILES, CONFLICT_REPORT.
+# DECLINED_FILES, INERT_ENTRIES, DELETED_FILES, CONFLICT_REPORT, MARKERLESS_FILES,
+# CHANGED_COUNT.
 #
 # This script's output is markdown, so a backtick in a single-quoted format
 # string is a code span, never a command substitution.
@@ -32,12 +33,21 @@ set -euo pipefail
 # One bullet per entry. The old body pasted these lists inline, where forty
 # paths on one line read as noise.
 bullets() {
+  local list="${1:-}" note=""
+  # cap_body_field puts its truncation note after a blank line, and `read -ra` below consumes only
+  # the first line. Split the note off first: otherwise the note vanishes and the shortened list
+  # reads as complete, which is the one thing a truncation notice exists to prevent.
+  if [[ "$list" == *$'\n\n'* ]]; then
+    note="${list#*$'\n\n'}"
+    list="${list%%$'\n\n'*}"
+  fi
   local -a items
   local item
-  read -ra items <<<"${1:-}"
+  read -ra items <<<"$list"
   for item in "${items[@]}"; do
     [[ -n "$item" ]] && printf -- '- `%s`\n' "$item"
   done
+  [[ -n "$note" ]] && printf '\n_%s_\n' "$note"
 }
 
 count() {
@@ -47,8 +57,10 @@ count() {
 }
 
 {
+  # CHANGED_COUNT, not a count of CHANGED_FILES: that list takes the truncation cap, so counting it
+  # would report the cap's size as the number of files this sync changed.
   printf 'Syncs %s file(s) from [%s](https://github.com/%s) at `%s`.\n' \
-    "$(count "${CHANGED_FILES:-}")" "$TEMPLATE_REPO" "$TEMPLATE_REPO" "$TEMPLATE_SHA_SHORT"
+    "${CHANGED_COUNT:-$(count "${CHANGED_FILES:-}")}" "$TEMPLATE_REPO" "$TEMPLATE_REPO" "$TEMPLATE_SHA_SHORT"
 
   if [[ -n "${CHANGELOG:-}" ]]; then
     printf '\n## What changed, and why\n\n%s\n' "$CHANGELOG"
@@ -66,6 +78,13 @@ A "clean" 3-way auto-merge dropped lines that existed in this repo's local copy.
 
 $DOWNGRADE_REPORT
 EOF
+  fi
+
+  # These files carry no markers, so nothing on the branch shows a decision is outstanding.
+  # The per-file entry in the conflict report says why each one was kept.
+  if [[ -n "${MARKERLESS_FILES:-}" ]]; then
+    printf '\n## Kept local, no markers on the branch\n\nThe sync kept this repo'"'"'s version of these files and applied no template change. Port each one by hand from its entry in the conflict report below.\n\n%s\n' \
+      "$(bullets "$MARKERLESS_FILES")"
   fi
 
   if [[ -n "${CONFLICT_REPORT:-}" ]]; then
