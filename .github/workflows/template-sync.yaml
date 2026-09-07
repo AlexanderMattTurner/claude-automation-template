@@ -256,6 +256,7 @@ jobs:
           INERT_ENTRIES: ${{ steps.sync.outputs.inert_entries }}
           DELETED_FILES: ${{ steps.sync.outputs.deleted_files }}
           CONFLICT_REPORT: ${{ steps.sync.outputs.conflict_report }}
+          MARKERLESS_FILES: ${{ steps.sync.outputs.markerless_files }}
           PR_BODY_PATH: ${{ runner.temp }}/template-sync-body.md
           BASE_SHA: ${{ github.sha }}
         run: |

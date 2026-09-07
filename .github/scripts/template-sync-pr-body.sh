@@ -13,7 +13,7 @@
 # Env, all optional except the first three, and all from template-sync.sh's
 # step outputs: TEMPLATE_REPO, TEMPLATE_SHA_SHORT, PR_BODY_PATH; then
 # CHANGED_FILES, CHANGELOG, DOWNGRADE_REPORT, AUTO_MERGED_FILES,
-# DECLINED_FILES, INERT_ENTRIES, DELETED_FILES, CONFLICT_REPORT.
+# DECLINED_FILES, INERT_ENTRIES, DELETED_FILES, CONFLICT_REPORT, MARKERLESS_FILES.
 #
 # This script's output is markdown, so a backtick in a single-quoted format
 # string is a code span, never a command substitution.
@@ -66,6 +66,13 @@ A "clean" 3-way auto-merge dropped lines that existed in this repo's local copy.
 
 $DOWNGRADE_REPORT
 EOF
+  fi
+
+  # Before the marker conflicts: a file GitHub parses carries no markers, so nothing
+  # on the branch shows the reader that a decision is outstanding.
+  if [[ -n "${MARKERLESS_FILES:-}" ]]; then
+    printf '\n## Kept local, no markers on the branch\n\nGitHub parses these files, and a conflict marker in one leaves it unparseable — a workflow with markers starts a run with zero jobs and a red that names no cause. So the sync kept this repo'"'"'s version and wrote no markers. The template'"'"'s change is NOT applied: port it by hand from the conflict report below.\n\n%s\n' \
+      "$(bullets "$MARKERLESS_FILES")"
   fi
 
   if [[ -n "${CONFLICT_REPORT:-}" ]]; then
