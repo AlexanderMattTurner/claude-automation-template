@@ -172,7 +172,7 @@ is_ci_loaded() {
 # One conflict-report entry: the path, EXPLANATION, and the local→template diff.
 # The diff must be taken before any caller overwrites the local file.
 record_diff_conflict() {
-  local rel_path="$1" template_file="$2" explanation="$3"
+  local rel_path="$1" template_file="$2" explanation="$3" diff_rc=0
   echo "$rel_path" >>"$CONFLICT_FILES"
   {
     echo "### \`$rel_path\`"
@@ -183,7 +183,15 @@ record_diff_conflict() {
     echo "<summary>Diff (local → template)</summary>"
     echo ""
     echo '```diff'
-    diff -u "$rel_path" "$template_file" | head -500 || true
+    # `awk`, not `head -500`: head stops reading at its limit, so a still-writing diff takes SIGPIPE
+    # and the pipeline exits 141 under `set -o pipefail`. diff exits 1 when the files differ, which
+    # is every call here; anything above that is a real fault and must not reach the report as an
+    # empty diff block.
+    diff -u "$rel_path" "$template_file" | awk 'NR <= 500' || diff_rc=$?
+    if ((diff_rc > 1)); then
+      echo "::error::template-sync: diff failed on $rel_path (exit $diff_rc)." >&2
+      exit 1
+    fi
     echo '```'
     echo "</details>"
     echo ""
@@ -430,6 +438,8 @@ Resolve them: keep local customizations, adopt template improvements."
   local empty_base="$WORK_DIR/empty_base" merge_result="$WORK_DIR/no_base_result"
   : >"$empty_base"
   cp "$rel_path" "$merge_result"
+  # allow-exit-suppress: non-zero here means "conflicted", which the empty base guarantees and
+  # this path wants. merge_file_clean exits the script itself on a real merge-file fault (255).
   merge_file_clean "$merge_result" "$empty_base" "$template_file" || true
   cp "$merge_result" "$rel_path"
   rm -f "$empty_base" "$merge_result"

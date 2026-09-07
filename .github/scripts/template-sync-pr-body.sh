@@ -68,10 +68,10 @@ $DOWNGRADE_REPORT
 EOF
   fi
 
-  # Before the marker conflicts: a file GitHub parses carries no markers, so nothing
-  # on the branch shows the reader that a decision is outstanding.
+  # These files carry no markers, so nothing on the branch shows a decision is outstanding.
+  # The per-file entry in the conflict report says why each one was kept.
   if [[ -n "${MARKERLESS_FILES:-}" ]]; then
-    printf '\n## Kept local, no markers on the branch\n\nGitHub parses these files, and a conflict marker in one leaves it unparseable — a workflow with markers starts a run with zero jobs and a red that names no cause. So the sync kept this repo'"'"'s version and wrote no markers. The template'"'"'s change is NOT applied: port it by hand from the conflict report below.\n\n%s\n' \
+    printf '\n## Kept local, no markers on the branch\n\nThe sync kept this repo'"'"'s version of these files and applied no template change. Port each one by hand from its entry in the conflict report below.\n\n%s\n' \
       "$(bullets "$MARKERLESS_FILES")"
   fi
 
