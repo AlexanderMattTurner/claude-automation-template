@@ -7,19 +7,22 @@ name: CI failure notify
 #
 # `workflow_run` has no wildcard, so `workflows:` below must name every
 # workflow in this repo with a `push:` or `schedule:` trigger (matched by the
-# workflow's `name:`). A ci-truth-serum hook (check-failure-notifier-coverage)
-# keeps this list in sync with the tree. Binding is by NAME, not filename: a
-# repo that keeps its own release workflow instead of the template's
-# auto-version.yaml must give it the name listed here or add its own.
+# workflow's `name:`). .github/scripts/gen_failure_notify_listener.py derives
+# that list from the tree and owns the marked region below; a ci-truth-serum
+# hook (check-failure-notifier-coverage) holds the committed region to the same
+# predicate. Binding is by NAME, not filename: a repo that keeps its own release
+# workflow instead of the template's auto-version.yaml must give it the name
+# listed here or add its own.
 # The dangerous-triggers finding targets workflows that check out or execute
 # the triggering ref's code with write credentials; this one checks out only
 # the default branch (credential-less) and gates on default-branch runs.
 on: # zizmor: ignore[dangerous-triggers]
   workflow_run:
     types: [completed]
+    # BEGIN GENERATED: watched workflow names (.github/scripts/gen_failure_notify_listener.py) — do not edit by hand
     workflows:
-      - Auto-resolve merge conflicts
       - Auto version bump and publish
+      - Auto-resolve merge conflicts
       - CI failure-rate report
       - Claude reviewer-hold sweeper
       - Format check
@@ -30,11 +33,12 @@ on: # zizmor: ignore[dangerous-triggers]
       - PR meta (privileged)
       - pre-commit
       - Release canary
-      - Weekly Security & Dependency Remediation
-      - Sync required status checks
       - Sync from Template
+      - Sync required status checks
       - Validate config
+      - Weekly Security & Dependency Remediation
       - zizmor
+    # END GENERATED: watched workflow names
     # This notifier only alerts on a push/schedule failure of the default
     # branch (see the job's own `if:` below); narrowing the trigger itself
     # stops a PR-branch completion of a shared workflow (pre-commit, zizmor,
