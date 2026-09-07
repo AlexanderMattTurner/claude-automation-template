@@ -38,6 +38,17 @@ name: Sync from Template
 #    reports green while the action runs the new one. package.json is outside
 #    SYNC_PATHS, so adding `.github/actions/**/*.test.mjs` there is the
 #    consumer's edit to make.
+# 7. That same move breaks an EXCLUDE_PATHS entry naming the OLD path: the entry
+#    matches nothing, and the file arrives at the new path. The sync reports
+#    every entry that names nothing in the template, so read the inert-entry
+#    section of the sync pull request body. Exclude a composite action as the
+#    DIRECTORY `.github/actions/<name>`, never as `<name>/action.yaml` alone,
+#    so the action's scripts are covered too.
+# 8. A file the adopter GENERATES belongs in EXCLUDE_PATHS. The sync line-merges,
+#    so the template's block lands beside the generated one and the generator
+#    reverts it on the next run — the same pull request reopens every week. In
+#    JSON that merge can also produce a DUPLICATE object key, which every parser
+#    reads last-wins, so the adopter's own block silently stops taking effect.
 # =============================================================================
 #
 # ROOT SCAFFOLDING A SYNCED WORKFLOW MAY ASSUME
