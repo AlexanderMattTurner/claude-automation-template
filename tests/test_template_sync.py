@@ -268,10 +268,9 @@ def test_conflict_report_is_capped_for_many_no_base_files(workdir: Path) -> None
     # Uncapped this would be ~120 KB (12 files x head -500 of the per-file diff).
     assert len(report.encode()) <= 62000, len(report.encode())
     assert "truncated" in report
-    # The cap note sends the reader to the markers, which is where the complete
-    # record lives: every conflicted file carries them, however little of the
-    # report fits.
-    assert "<<<<<<<" in report
+    # The note's own words, not a marker: every per-file explanation quotes
+    # `<<<<<<<` verbatim, so asserting the marker passes with no note at all.
+    assert "exceeded the PR-body size limit" in report
     for n in range(12):
         merged = (child / "config" / f"f{n}.txt").read_text(encoding="utf-8")
         assert "<<<<<<<" in merged and ">>>>>>>" in merged

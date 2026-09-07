@@ -69,10 +69,10 @@ emit_attributed_changelog() {
   changed="$WORK_DIR/changed_here.txt"
   attributed="$WORK_DIR/attributed.txt"
   # `sed`, not `grep -v`: an all-filtered list makes grep exit 1 and `set -e`
-  # would kill the run. `.template-version` is rewritten above and the template
-  # ships none, so no commit can ever explain it; `_template` is this script's
-  # own untracked checkout, which `--others` reports and `rm -rf` removes a few
-  # lines below. Both would land in the unexplained list on every single sync.
+  # would kill the run. main() rewrites `.template-version` before it calls this
+  # and the template ships none, so no commit can ever explain it; `_template` is
+  # this script's own untracked checkout, which `--others` reports and main()
+  # removes next. Both would land in the unexplained list on every single sync.
   {
     git diff --name-only
     git ls-files --others --exclude-standard
@@ -83,9 +83,11 @@ emit_attributed_changelog() {
   # changed_count is emitted UNCAPPED beside the capped list, because the body leads with "Syncs N
   # file(s)" and counting the truncated list would report the cap's size as the sync's size.
   echo "changed_count=$(wc -l <"$changed" | tr -d ' ')" >>"$GITHUB_OUTPUT"
-  emit_multiline_output "changed_files" "$(cap_body_field "$changed_list" \
+  local capped_changed
+  capped_changed="$(cap_body_field "$changed_list" \
     "${CONFLICT_FILES_MAX_BYTES:-8000}" \
     "… list truncated; the sync log names every changed file.")"
+  emit_multiline_output "changed_files" "$capped_changed"
 
   [[ -n "$PREV_SHA" && "$PREV_SHA" != "$TEMPLATE_SHA" ]] || return 0
   if git -C _template cat-file -e "$PREV_SHA" 2>/dev/null; then
@@ -97,7 +99,7 @@ emit_attributed_changelog() {
   fi
 
   : >"$attributed"
-  local sha subject touched
+  local sha subject touched f
   while IFS=$'\t' read -r sha subject; do
     [[ -n "$sha" ]] || continue
     # Files this commit touched that this sync also rewrote here. `comm -12`
@@ -194,7 +196,7 @@ record_diff_conflict() {
     # empty diff block.
     diff -u "$rel_path" "$template_file" | awk 'NR <= 500' || diff_rc=$?
     if ((diff_rc > 1)); then
-      echo "::error::template-sync: diff failed on $rel_path (exit $diff_rc)." >&2
+      echo "::error::template-sync: the diff of $rel_path failed (exit $diff_rc)." >&2
       exit 1
     fi
     echo '```'
@@ -636,7 +638,8 @@ main() {
     # appends an English note — whose words template-sync-resolve.sh would split as paths and
     # template-sync-push.sh would hand to `git add`.
     if [[ -s "$CONFLICT_FILES" ]]; then
-      emit_multiline_output "conflict_files" "$(tr '\n' ' ' <"$CONFLICT_FILES")"
+      conflicts=$(tr '\n' ' ' <"$CONFLICT_FILES")
+      emit_multiline_output "conflict_files" "$conflicts"
     fi
     if [[ -s "$MARKERLESS_FILES" ]]; then
       markerless=$(tr '\n' ' ' <"$MARKERLESS_FILES")
