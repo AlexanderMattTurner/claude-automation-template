@@ -80,7 +80,12 @@ emit_attributed_changelog() {
   [[ -s "$changed" ]] || return 0
   local changed_list
   changed_list="$(tr '\n' ' ' <"$changed")"
-  echo "changed_files=$changed_list" >>"$GITHUB_OUTPUT"
+  # changed_count is emitted UNCAPPED beside the capped list, because the body leads with "Syncs N
+  # file(s)" and counting the truncated list would report the cap's size as the sync's size.
+  echo "changed_count=$(wc -l <"$changed" | tr -d ' ')" >>"$GITHUB_OUTPUT"
+  emit_multiline_output "changed_files" "$(cap_body_field "$changed_list" \
+    "${CONFLICT_FILES_MAX_BYTES:-8000}" \
+    "… list truncated; the sync log names every changed file.")"
 
   [[ -n "$PREV_SHA" && "$PREV_SHA" != "$TEMPLATE_SHA" ]] || return 0
   if git -C _template cat-file -e "$PREV_SHA" 2>/dev/null; then
@@ -170,10 +175,10 @@ is_ci_loaded() {
 }
 
 # One conflict-report entry: the path, EXPLANATION, and the local→template diff.
-# The diff must be taken before any caller overwrites the local file.
+# The diff must be taken before any caller overwrites the local file. This writes the REPORT only;
+# each caller decides whether the path also joins CONFLICT_FILES or MARKERLESS_FILES.
 record_diff_conflict() {
   local rel_path="$1" template_file="$2" explanation="$3" diff_rc=0
-  echo "$rel_path" >>"$CONFLICT_FILES"
   {
     echo "### \`$rel_path\`"
     echo ""
@@ -202,11 +207,20 @@ record_diff_conflict() {
 # PR body prints ahead of the report. Every other conflict leaves markers in the tree; this one
 # writes nothing, so the report is its ONLY record, and the template's version reaches the reviewer
 # as a diff.
+# INVARIANT — a markerless path never joins CONFLICT_FILES. That output is the resolver's input,
+# and template-sync-resolve.sh documents it as marker-bearing paths. A marker-free file handed to
+# mergiraf comes back unchanged, which the resolver scores DETERMINISTIC, which arms auto-merge on a
+# sync whose own PR body says to port the file by hand.
+record_markerless_conflict() {
+  local rel_path="$1" template_file="$2" explanation="$3"
+  echo "$rel_path" >>"$MARKERLESS_FILES"
+  record_diff_conflict "$rel_path" "$template_file" "$explanation"
+}
+
 record_ci_loaded_conflict() {
   local rel_path="$1" template_file="$2"
   echo "CONFLICT (local kept, CI loads this file): $rel_path"
-  echo "$rel_path" >>"$MARKERLESS_FILES"
-  record_diff_conflict "$rel_path" "$template_file" \
+  record_markerless_conflict "$rel_path" "$template_file" \
     "**The template change is NOT applied.** CI loads this file off the branch.
 A conflict marker in it makes the workflow unloadable, or the step a bash syntax error.
 GitHub then reports a failure that names no cause. The sync keeps the local file unchanged.
@@ -271,9 +285,15 @@ emit_multiline_output() {
 # real failure such as an unreadable path or binary input, so treating "non-zero" as "conflicted"
 # would commit a merge that never ran as a merge that conflicted. 255 is separated out and kills the
 # sync.
+#
+# --diff3 is load-bearing, not cosmetic: it writes the `||||||| base` section mergiraf needs to
+# re-merge structurally. install-mergiraf.sh proves that contract with a probe carrying that exact
+# marker. Without the flag every conflict falls through tier 1 of template-sync-resolve.sh to the
+# paid model tier, `all_deterministic` never holds, and no sync auto-merges again — with no red
+# anywhere to say so.
 merge_file_clean() {
   local rc=0
-  git merge-file -L "local" -L "base" -L "template" "$1" "$2" "$3" >/dev/null 2>&1 || rc=$?
+  git merge-file --diff3 -L "local" -L "base" -L "template" "$1" "$2" "$3" >/dev/null 2>&1 || rc=$?
   if ((rc == 255)); then
     echo "::error::template-sync: git merge-file failed on $1 — refusing to guess at the merge." >&2
     exit 1
@@ -430,18 +450,27 @@ record_no_base_conflict() {
     record_ci_loaded_conflict "$rel_path" "$template_file"
     return
   fi
+  local empty_base="$WORK_DIR/empty_base" merge_result="$WORK_DIR/no_base_result"
+  : >"$empty_base"
+  cp "$rel_path" "$merge_result"
+  if merge_file_clean "$merge_result" "$empty_base" "$template_file"; then
+    # One side matches the empty base — an empty local file, or an empty template file — so the
+    # merge is clean and writes no markers. Taking the result would replace the local file unseen.
+    rm -f "$empty_base" "$merge_result"
+    echo "CONFLICT (no base, local kept, no markers possible): $rel_path"
+    record_markerless_conflict "$rel_path" "$template_file" \
+      "**The template change is NOT applied.** One side of this first-sync collision is empty, so a
+merge against an empty base is clean and writes no conflict markers. Taking it would replace the
+local file with nothing to show a merge was skipped. Port the template's change by hand."
+    return
+  fi
   echo "CONFLICT (no base): $rel_path"
   record_diff_conflict "$rel_path" "$template_file" \
     "No merge base available (first sync, or the template added this path after the last sync).
 Both versions are kept as **conflict markers** (\`<<<<<<<\`/\`=======\`/\`>>>>>>>\`).
 Resolve them: keep local customizations, adopt template improvements."
-  local empty_base="$WORK_DIR/empty_base" merge_result="$WORK_DIR/no_base_result"
-  : >"$empty_base"
-  cp "$rel_path" "$merge_result"
-  # allow-exit-suppress: non-zero here means "conflicted", which the empty base guarantees and
-  # this path wants. merge_file_clean exits the script itself on a real merge-file fault (255).
-  merge_file_clean "$merge_result" "$empty_base" "$template_file" || true
   cp "$merge_result" "$rel_path"
+  echo "$rel_path" >>"$CONFLICT_FILES"
   rm -f "$empty_base" "$merge_result"
 }
 
@@ -511,7 +540,9 @@ main() {
   # A path counts as deleted only if it existed at PREV_SHA but not at template
   # HEAD — avoids flagging project-specific files that were never in the template.
   if [[ "$PREV_SHA" != "" ]]; then
-    git -C _template ls-tree -r --name-only "$PREV_SHA" 2>/dev/null >"$PREV_TEMPLATE_FILES" || true
+    if ! git -C _template ls-tree -r --name-only "$PREV_SHA" 2>/dev/null >"$PREV_TEMPLATE_FILES"; then
+      : >"$PREV_TEMPLATE_FILES" # PREV_SHA not in template history; treat as no prior files
+    fi
   fi
 
   for path in "${SYNC_PATHS[@]}"; do
@@ -552,8 +583,8 @@ main() {
   # Set outputs
   #############################################
 
-  # Capped per the cap_body_field invariant; the largest list, so the likeliest to
-  # push the body past MAX_ARG_STRLEN.
+  # Capped per the cap_body_field invariant. Every path list the PR body prints takes the cap,
+  # because the body reaches create-pull-request as ONE environment string against one execve limit.
   if [[ -s "$AUTO_MERGED_FILES" ]]; then
     auto_merged=$(tr '\n' ' ' <"$AUTO_MERGED_FILES")
     capped_auto_merged="$(cap_body_field "$auto_merged" \
@@ -598,18 +629,15 @@ main() {
     emit_multiline_output "declined_files" "$capped_declined"
   fi
 
-  if [[ -s "$CONFLICT_FILES" ]]; then
-    conflicts=$(tr '\n' ' ' <"$CONFLICT_FILES")
+  if [[ -s "$CONFLICT_FILES" || -s "$MARKERLESS_FILES" ]]; then
     echo "has_conflicts=true" >>"$GITHUB_OUTPUT"
-    # A capped field goes through emit_multiline_output, never `echo k=v`: cap_body_field puts a
-    # blank line before its note, so the instant a cap fires the value spans lines and the
-    # single-line GITHUB_OUTPUT form makes the runner reject the file with "Invalid format" and kill
-    # the step. The note carries no backticks: the workflow interpolates these values inside `{0}`,
-    # where a nested backtick renders as broken inline code.
-    capped_conflicts="$(cap_body_field "$conflicts" \
-      "${CONFLICT_FILES_MAX_BYTES:-8000}" \
-      "… list truncated; the full set is the conflicted files on the template-sync branch.")"
-    emit_multiline_output "conflict_files" "$capped_conflicts"
+    # UNCAPPED, unlike every list above: conflict_files never reaches the PR body, so no execve
+    # limit applies to it. It is the resolver's input, and cap_body_field both drops paths and
+    # appends an English note — whose words template-sync-resolve.sh would split as paths and
+    # template-sync-push.sh would hand to `git add`.
+    if [[ -s "$CONFLICT_FILES" ]]; then
+      emit_multiline_output "conflict_files" "$(tr '\n' ' ' <"$CONFLICT_FILES")"
+    fi
     if [[ -s "$MARKERLESS_FILES" ]]; then
       markerless=$(tr '\n' ' ' <"$MARKERLESS_FILES")
       capped_markerless="$(cap_body_field "$markerless" \
@@ -625,6 +653,9 @@ main() {
   else
     echo "has_conflicts=false" >>"$GITHUB_OUTPUT"
   fi
+  # The retired .template-sync-conflicts sidecar: an earlier sync committed it into adopters that
+  # conflicted, and nothing writes or removes it any more. The branch's own markers are the record.
+  rm -f .template-sync-conflicts
 
   # Capped per the cap_body_field invariant; has_deletions stays a single-line flag.
   if [[ -s "$DELETED_FILES" ]]; then
