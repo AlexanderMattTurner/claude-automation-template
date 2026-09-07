@@ -206,7 +206,7 @@ jobs:
       issues: write # `gh label create` for auto-resolve-blocked rides the issues API
       statuses: write # the per-head attempt mark is a commit status
       actions: write # `land` re-dispatches the resolver after a lost race
-    uses: AlexanderMattTurner/agent-resolve-merge-conflicts/.github/workflows/auto-resolve.yaml@6e8ef6110fd27a4402a964d4c65c596a0ce7e938 # v1.13.5
+    uses: AlexanderMattTurner/agent-resolve-merge-conflicts/.github/workflows/auto-resolve.yaml@50053f778a05d5ff1e7a676142d3ba2435b8009f # v1.13.8
     with:
       pr: ${{ matrix.pr.number }}
       # The literals from this file's `env:` block, repeated because a reusable
