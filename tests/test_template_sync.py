@@ -1085,3 +1085,40 @@ def test_a_truncated_path_list_keeps_its_notice_in_the_body(workdir: Path) -> No
     assert "list truncated" in rendered
     # The notice is prose, not one bullet per word.
     assert "- `truncated;`" not in rendered
+
+
+def test_a_markerless_entry_survives_the_report_cap(workdir: Path) -> None:
+    """The report is the ONLY copy of a markerless conflict's template-side change.
+
+    A marker-bearing file keeps its content on the branch, so losing its report entry costs
+    nothing. A markerless one loses the change for good: the sync still advances
+    `.template-version`, so the next run sees the template file as unchanged and never reports it.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+    # Enough marker-bearing conflicts to blow the 40 KB report cap on their own.
+    filler = "x" * 300
+    for n in range(20):
+        write(
+            child / "config" / f"f{n}.txt",
+            "".join(f"L{i} {filler}\n" for i in range(60)),
+        )
+        write(
+            template / "config" / f"f{n}.txt",
+            "".join(f"T{i} {filler}\n" for i in range(60)),
+        )
+    write(child / ".github" / "workflows" / "ci.yaml", "local-side\n")
+    write(template / ".github" / "workflows" / "ci.yaml", "template-side\n")
+    commit_all(child)
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config .github")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    report = outputs["conflict_report"]
+    assert "truncated" in report, "the cap must fire, or this case proves nothing"
+    assert ".github/workflows/ci.yaml" in outputs["markerless_files"]
+    # The entry's own heading and its diff line, not a phrase the cap note also carries.
+    assert "### `.github/workflows/ci.yaml`" in report
+    assert "+template-side" in report

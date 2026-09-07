@@ -180,7 +180,7 @@ is_ci_loaded() {
 # The diff must be taken before any caller overwrites the local file. This writes the REPORT only;
 # each caller decides whether the path also joins CONFLICT_FILES or MARKERLESS_FILES.
 record_diff_conflict() {
-  local rel_path="$1" template_file="$2" explanation="$3" diff_rc=0
+  local rel_path="$1" template_file="$2" explanation="$3" report="${4:-$CONFLICT_REPORT}" diff_rc=0
   {
     echo "### \`$rel_path\`"
     echo ""
@@ -202,7 +202,7 @@ record_diff_conflict() {
     echo '```'
     echo "</details>"
     echo ""
-  } >>"$CONFLICT_REPORT"
+  } >>"$report"
 }
 
 # A conflict in a file CI loads writes nothing and joins MARKERLESS_FILES, the short path list the
@@ -213,10 +213,14 @@ record_diff_conflict() {
 # and template-sync-resolve.sh documents it as marker-bearing paths. A marker-free file handed to
 # mergiraf comes back unchanged, which the resolver scores DETERMINISTIC, which arms auto-merge on a
 # sync whose own PR body says to port the file by hand.
+# A markerless entry goes in its OWN report file, which the emit step puts FIRST. The report takes a
+# byte cap, and a marker-bearing file loses nothing when its entry is cut — its content is on the
+# branch. A markerless file's entry is the only copy of the template's change anywhere, and the sync
+# still advances .template-version, so the next run sees no change and never reports it again.
 record_markerless_conflict() {
   local rel_path="$1" template_file="$2" explanation="$3"
   echo "$rel_path" >>"$MARKERLESS_FILES"
-  record_diff_conflict "$rel_path" "$template_file" "$explanation"
+  record_diff_conflict "$rel_path" "$template_file" "$explanation" "$MARKERLESS_REPORT"
 }
 
 record_ci_loaded_conflict() {
@@ -491,6 +495,7 @@ main() {
   WORK_DIR="${TEMPLATE_SYNC_WORK_DIR:-/tmp}"
   CONFLICT_FILES="$WORK_DIR/conflict_files.txt"
   CONFLICT_REPORT="$WORK_DIR/conflict_report.md"
+  MARKERLESS_REPORT="$WORK_DIR/markerless_report.md"
   MARKERLESS_FILES="$WORK_DIR/markerless_files.txt"
   DELETED_FILES="$WORK_DIR/deleted_files.txt"
   AUTO_MERGED_FILES="$WORK_DIR/auto_merged_files.txt"
@@ -502,6 +507,7 @@ main() {
 
   : >"$CONFLICT_FILES"
   : >"$CONFLICT_REPORT"
+  : >"$MARKERLESS_REPORT"
   : >"$MARKERLESS_FILES"
   : >"$DELETED_FILES"
   : >"$AUTO_MERGED_FILES"
@@ -648,10 +654,10 @@ main() {
         "… list truncated; see the report below.")"
       emit_multiline_output "markerless_files" "$capped_markerless"
     fi
-    conflict_report="$(cat "$CONFLICT_REPORT")"
+    conflict_report="$(cat "$MARKERLESS_REPORT" "$CONFLICT_REPORT")"
     capped_conflict_report="$(cap_body_field "$conflict_report" \
       "${CONFLICT_REPORT_MAX_BYTES:-40000}" \
-      "_Conflict report truncated (the full report exceeded the PR-body size limit). Every file under **Conflicted files** above carries \`<<<<<<<\`/\`=======\`/\`>>>>>>>\` markers on the \`template-sync\` branch — resolve the remaining ones from those. The exception is any file under **Kept local**, if this body carries that list: those carry no markers, and their template-side change survives only in the part of this report that fits._")"
+      "_Conflict report truncated (the full report exceeded the PR-body size limit). Every entry cut from the end is a file carrying \`<<<<<<<\`/\`=======\`/\`>>>>>>>\` markers on the \`template-sync\` branch — resolve those from the markers. Every **Kept local** entry is printed first, because the report is the only copy of what those files would have received._")"
     emit_multiline_output "conflict_report" "$capped_conflict_report"
   else
     echo "has_conflicts=false" >>"$GITHUB_OUTPUT"
