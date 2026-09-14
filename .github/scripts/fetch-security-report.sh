@@ -37,17 +37,17 @@ gh_api_section() {
   } >>"$REPORT_PATH"
   # echo-fallback-ok: best-effort aggregator, see the function-level comment above.
   # gh api has no --arg flag; pass $REPO as a jq variable by piping through jq.
-  gh api "$endpoint" \
-    | jq -r --arg repo "$REPO" "$jq_expr" \
-    >>"$REPORT_PATH" 2>&1 || echo "$fallback" >>"$REPORT_PATH"
+  gh api "$endpoint" |
+    jq -r --arg repo "$REPO" "$jq_expr" \
+      >>"$REPORT_PATH" 2>&1 || echo "$fallback" >>"$REPORT_PATH"
 }
 
 echo "## Dependabot Alerts" >"$REPORT_PATH"
 # echo-fallback-ok: same best-effort-section reasoning as gh_api_section above.
-gh api "repos/${REPO}/dependabot/alerts?state=open&per_page=100" \
-  | jq -r --arg repo "$REPO" \
-      '.[] | "- **\(.security_advisory.severity | ascii_upcase)**: [\(.security_advisory.summary)](https://github.com/\($repo)/security/dependabot/\(.number)) in `\(.dependency.package.name)` (\(.dependency.package.ecosystem))"' \
-  >>"$REPORT_PATH" 2>&1 || echo "_Could not fetch Dependabot alerts (check repo permissions)._" >>"$REPORT_PATH"
+gh api "repos/${REPO}/dependabot/alerts?state=open&per_page=100" |
+  jq -r --arg repo "$REPO" \
+    '.[] | "- **\(.security_advisory.severity | ascii_upcase)**: [\(.security_advisory.summary)](https://github.com/\($repo)/security/dependabot/\(.number)) in `\(.dependency.package.name)` (\(.dependency.package.ecosystem))"' \
+    >>"$REPORT_PATH" 2>&1 || echo "_Could not fetch Dependabot alerts (check repo permissions)._" >>"$REPORT_PATH"
 
 gh_api_section \
   "## Code Scanning Alerts" \
