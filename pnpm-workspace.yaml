@@ -11,3 +11,9 @@ minimumReleaseAge: 4320
 # packages published from this repo's own GitHub owner.
 minimumReleaseAgeExclude:
   - agent-control-plane-core
+
+# smol-toml <=1.7.0 has a DoS via malformed TOML (GHSA-7w5x-hrqm-74c2).
+# The fixed version is 1.7.1. This override pins the transitive dep that
+# markdownlint-cli2 pulls in.
+overrides:
+  smol-toml: ">=1.7.1"
