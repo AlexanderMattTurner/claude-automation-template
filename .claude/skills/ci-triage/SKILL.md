@@ -42,11 +42,18 @@ you leave in place is a red check you decided to tolerate, which is forbidden �
 even when it is pre-existing and unrelated to your change (fix it in its own
 `fix(test):`/`fix(ci):` commit; "it was already flaky" is not an exemption).
 
-**One passing sample does not confirm a fix for an intermittent failure.** When
-the failure lands on a different shard, half, or worker each run, a single green
-says only that you drew the good half. Read the run history for which side it
-landed on, then take enough samples that a pass discriminates — and name the count
-in the claim ("5 consecutive passes on shard 3"), never "re-ran, green now".
+**One passing sample does not confirm a fix for an intermittent failure.** When the
+failure lands on a different shard, half, or worker each run, a single green says
+only that you drew the good half. This is not a licence to re-run: the samples come
+after the root-cause fix, and locally under the same parallelism, not from
+re-dispatching the red job. Name the count in the claim ("fix pushed; 20 local runs
+at `-n 4`, 0 failures"), never "re-ran, green now".
+
+**A performance claim names the path it measured, because a harness that warms
+that path cannot measure a change to it.** A benchmark whose earlier step already
+started the process under test prices a warm round trip, not the cold start a user
+pays, so a real saving reads as "no movement". Say which conditions the saving
+holds under, and treat a flat result from a warm harness as no measurement.
 
 **Never just re-run a failure — root-cause it, then fix it.** A re-run is not a
 resolution and is forbidden as the response to a red check, even for a failure

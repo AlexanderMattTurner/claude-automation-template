@@ -57,20 +57,17 @@ observed side effect; reserve stubs for genuine external dependencies. Where a
 real substitution can't run, pin the duplicated contract with a drift guard —
 and name it as one (below).
 
-**A test of a collaborator is not a test of the wiring that reaches it.** A suite
-that calls a production function directly keeps passing after the last real call
-site is deleted, so the behaviour it guards has silently moved into the caller
-while every assertion stays green. Two symptoms name this shape: a dead-code
-check reporting a function the suite still exercises, and a refactor that removes
-a call with no test going red. The fix is to point the harness at the live entry
-point, never to exempt the orphan.
-
-**Behaviour gated on the environment must be driven through real collection.** A
-test that calls the function directly cannot see an env key the suite's own
-`conftest` strips, or a marker the collector applies, so it reports an inert fix
-as working. Run the real entry point — a `pytest` subprocess over a fixture
-directory, the CLI, the collector — and assert the gate's observable effect (the
-skip and its reason, the emitted argv).
+**A test of a collaborator is not a test of the wiring that reaches it.** Calling a
+production function directly skips everything between the entry point and that
+function, so the suite stays green through two distinct failures. The call site
+can vanish: the behaviour moves into the caller, no assertion goes red, and a
+dead-code check then reports a function the suite still exercises. Or the
+environment can differ: the direct call never sees an env key the suite's
+`conftest` strips or a marker the collector applies, so an inert fix reports as
+working. Both fixes are one fix — drive the live entry point (a `pytest`
+subprocess over a fixture directory, the CLI, the collector) and assert its
+observable effect: the skip and its reason, the emitted argv. Never exempt the
+orphan instead.
 
 ## Drift guards are a smell to NAME, not launder
 
@@ -117,7 +114,7 @@ defense; widen the check.
 ## Stubs
 
 - **Don't write a stub. Drive the real thing.** A stub encodes your reading of a dependency; the real dependency encodes its own — and the two drift the moment the real tool changes a flag, an exit code, or an error format. The stub then silently greens invocations the real tool would reject. Use the real binary against a fixture directory, a recorded interaction, or a container image pinned in CI. **A stub is licensed only when the real thing genuinely cannot run in the test** (a paid API, hardware, a wall-clock boundary you cannot fake) — and the stub definition site says which of those applies. "Faster to write" is not a reason.
-- **A stub sits on BOTH sides of the test, so no assertion over it can refute the reading it encodes — and every suite resting on that stub goes green together.** Two suites for one masker each stubbed the tool under test; both stubs left the separator character alone, the shipped tool did not, and a masker that withheld every diagnostic on every real install passed everywhere. Count the suites a stub carries: that is the blast radius of one wrong belief.
+- **A stub sits on BOTH sides of the test, so no assertion over it can refute the reading it encodes.** It supplies the input and it defines the expected output, so the test agrees with your belief about the dependency however wrong that belief is. Count the suites resting on one stub: that is how many go green together on one wrong belief.
 - **When a stub is licensed, it must reject what the real tool rejects and consume what it consumes.** A stub that accepts every flag pair certifies only your reading of the interface; one that exits without draining stdin under `set -o pipefail` causes the writer's `write()` to get EPIPE (rc 141) intermittently, independent of pipe-buffer size. Reproduce the argv/stdin/env behavior the caller depends on, and add `cat >/dev/null` in the body when it stands in for a pipe consumer.
 
 ## Python test idioms
@@ -134,10 +131,10 @@ defense; widen the check.
   to later tests on the same worker. Snapshot and restore the environment around
   such `exec()` calls, or pre-register every mutated key with `monkeypatch` first.
 - **A test that drops a package from `sys.modules` must put the original back.**
-  Python keys class identity to the module object, so a process left holding two
-  generations of one package answers False to every `issubclass` across the split.
-  The failure then surfaces in an unrelated test, on whichever `pytest-xdist`
-  worker happened to run both — restore the entry in a fixture's teardown.
+  The re-import re-executes the module and builds a SECOND set of class objects,
+  so an instance or subclass held from the first generation answers False to every
+  `issubclass` against the second. The failure then surfaces in an unrelated test,
+  on whichever `pytest-xdist` worker ran both — restore the entry in a teardown.
 - **Keep a platform-only import inside the test body, not at module top.** A
   collector or push gate that imports every module carrying a marker runs on every
   platform, so a guest-only or Linux-only top-level import refuses the whole run
