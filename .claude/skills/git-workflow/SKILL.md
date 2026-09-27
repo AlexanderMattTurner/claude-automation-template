@@ -32,6 +32,8 @@ The merge-resolution delta is the one channel that can introduce content present
 
 **Exception: when the target branch differs from HEAD in the files the live session loads hooks from (`.claude/settings.json`, `.claude/hooks/`, and the `core.hooksPath` dir), never switch the primary checkout** — the swap puts that branch's hooks in charge of THIS session mid-flight. Work in a worktree instead: `git worktree add /tmp/claude/<name> <branch>`, then commit and push from there.
 
+**Splitting a change out of a PR inherits the BASE branch's defects, not the PR's fixes.** A branch cut from the shared parent to carry one piece of a larger PR starts from the parent's code, so every fix the original PR made — a refusal it softened, a guard it widened — is absent, and the split re-ships the old behaviour under a new number. Cut the split branch from the PR's head and drop what does not belong, or cherry-pick the fixes the split depends on and name them in its body.
+
 **Never move a branch ref another worktree has checked out** — `git checkout -B <b>`, `git switch -C <b>`, and `git update-ref refs/heads/<b>` all exit 0 there, and they leave the holding worktree's HEAD on a commit its files do not match, which `git status` reports as a whole tree of staged changes. Do the move inside the holding worktree, remove that worktree first (`git worktree remove <path>`), or use a name no worktree holds.
 
 ## Brace the variable before any `:` — `"${sha}:refs/heads/x"`, never `"$sha:refs/heads/x"`

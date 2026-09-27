@@ -25,6 +25,8 @@ test, run it against the code as it was before the fix and show it red, then
 green after. When that is awkward, invert the branch the fix added and confirm a
 test goes red.
 
+**A mutation harness must assert its edit LANDED before it runs the test.** A `sed` or patch whose anchor no longer matches edits nothing, the suite passes on unmodified code, and the harness reports `SURVIVED` — which reads as a test gap and sends you auditing tests that were fine. Any refactor that moves a line (a `dataclass` conversion, a rename) silently no-ops every mutant anchored on it. Diff the file after the edit, or fail the harness when the substitution count is zero.
+
 **A fix's own comment is the spec its test must be driven from.** Treat any
 generality claim in a fix's comment ("matched on the phrase, not the exact
 wording", "handles any of these retryable phrasings") as the behavior under test,
@@ -54,6 +56,21 @@ component actually executed, or stubbed? Drive the real component and assert an
 observed side effect; reserve stubs for genuine external dependencies. Where a
 real substitution can't run, pin the duplicated contract with a drift guard —
 and name it as one (below).
+
+**A test of a collaborator is not a test of the wiring that reaches it.** A suite
+that calls a production function directly keeps passing after the last real call
+site is deleted, so the behaviour it guards has silently moved into the caller
+while every assertion stays green. Two symptoms name this shape: a dead-code
+check reporting a function the suite still exercises, and a refactor that removes
+a call with no test going red. The fix is to point the harness at the live entry
+point, never to exempt the orphan.
+
+**Behaviour gated on the environment must be driven through real collection.** A
+test that calls the function directly cannot see an env key the suite's own
+`conftest` strips, or a marker the collector applies, so it reports an inert fix
+as working. Run the real entry point — a `pytest` subprocess over a fixture
+directory, the CLI, the collector — and assert the gate's observable effect (the
+skip and its reason, the emitted argv).
 
 ## Drift guards are a smell to NAME, not launder
 
@@ -100,6 +117,7 @@ defense; widen the check.
 ## Stubs
 
 - **Don't write a stub. Drive the real thing.** A stub encodes your reading of a dependency; the real dependency encodes its own — and the two drift the moment the real tool changes a flag, an exit code, or an error format. The stub then silently greens invocations the real tool would reject. Use the real binary against a fixture directory, a recorded interaction, or a container image pinned in CI. **A stub is licensed only when the real thing genuinely cannot run in the test** (a paid API, hardware, a wall-clock boundary you cannot fake) — and the stub definition site says which of those applies. "Faster to write" is not a reason.
+- **A stub sits on BOTH sides of the test, so no assertion over it can refute the reading it encodes — and every suite resting on that stub goes green together.** Two suites for one masker each stubbed the tool under test; both stubs left the separator character alone, the shipped tool did not, and a masker that withheld every diagnostic on every real install passed everywhere. Count the suites a stub carries: that is the blast radius of one wrong belief.
 - **When a stub is licensed, it must reject what the real tool rejects and consume what it consumes.** A stub that accepts every flag pair certifies only your reading of the interface; one that exits without draining stdin under `set -o pipefail` causes the writer's `write()` to get EPIPE (rc 141) intermittently, independent of pipe-buffer size. Reproduce the argv/stdin/env behavior the caller depends on, and add `cat >/dev/null` in the body when it stands in for a pipe consumer.
 
 ## Python test idioms
@@ -115,5 +133,19 @@ defense; widen the check.
   recorded and therefore never restores. Under `pytest-xdist` those mutations leak
   to later tests on the same worker. Snapshot and restore the environment around
   such `exec()` calls, or pre-register every mutated key with `monkeypatch` first.
+- **A test that drops a package from `sys.modules` must put the original back.**
+  Python keys class identity to the module object, so a process left holding two
+  generations of one package answers False to every `issubclass` across the split.
+  The failure then surfaces in an unrelated test, on whichever `pytest-xdist`
+  worker happened to run both — restore the entry in a fixture's teardown.
+- **Keep a platform-only import inside the test body, not at module top.** A
+  collector or push gate that imports every module carrying a marker runs on every
+  platform, so a guest-only or Linux-only top-level import refuses the whole run
+  rather than skipping one test. Import it under the `skipif` it belongs to.
+- **Stage a fixture you must `chmod` outside the shared temp root.** Widening
+  permissions on a directory the test does not own — pytest's `basetemp`, a
+  worker's tmp dir — to let another uid reach a path is a shared-state bug, not a
+  filesystem quirk: every other test under that root inherits the change. Make
+  your own directory and grant on that.
 - Parametrize for compactness; prefer exact-equality assertions over
   `in`/truthiness, which pass for the wrong reason.
