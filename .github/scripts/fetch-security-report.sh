@@ -36,27 +36,26 @@ gh_api_section() {
     echo "$heading"
   } >>"$REPORT_PATH"
   # echo-fallback-ok: best-effort aggregator, see the function-level comment above.
-  gh api "$endpoint" --arg repo "$REPO" --jq "$jq_expr" \
+  gh api "$endpoint" --jq "$jq_expr" \
     >>"$REPORT_PATH" 2>&1 || echo "$fallback" >>"$REPORT_PATH"
 }
 
 echo "## Dependabot Alerts" >"$REPORT_PATH"
 # echo-fallback-ok: same best-effort-section reasoning as gh_api_section above.
 gh api "repos/${REPO}/dependabot/alerts?state=open&per_page=100" \
-  --arg repo "$REPO" \
-  --jq '.[] | "- **\(.security_advisory.severity | ascii_upcase)**: [\(.security_advisory.summary)](https://github.com/\($repo)/security/dependabot/\(.number)) in `\(.dependency.package.name)` (\(.dependency.package.ecosystem))"' \
+  --jq '.[] | "- **\(.security_advisory.severity | ascii_upcase)**: [\(.security_advisory.summary)](https://github.com/\($ENV.REPO)/security/dependabot/\(.number)) in `\(.dependency.package.name)` (\(.dependency.package.ecosystem))"' \
   >>"$REPORT_PATH" 2>&1 || echo "_Could not fetch Dependabot alerts (check repo permissions)._" >>"$REPORT_PATH"
 
 gh_api_section \
   "## Code Scanning Alerts" \
   "repos/${REPO}/code-scanning/alerts?state=open&per_page=100" \
-  '.[] | "- **\(.rule.severity // .rule.security_severity_level | ascii_upcase)**: [\(.rule.description)](https://github.com/\($repo)/security/code-scanning/\(.number)) at `\(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line)`"' \
+  '.[] | "- **\(.rule.severity // .rule.security_severity_level | ascii_upcase)**: [\(.rule.description)](https://github.com/\($ENV.REPO)/security/code-scanning/\(.number)) at `\(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line)`"' \
   "_No code scanning alerts or code scanning not enabled._"
 
 gh_api_section \
   "## Secret Scanning Alerts" \
   "repos/${REPO}/secret-scanning/alerts?state=open&per_page=100" \
-  '.[] | "- **\(.state | ascii_upcase)**: \(.secret_type_display_name) — [Alert #\(.number)](https://github.com/\($repo)/security/secret-scanning/\(.number))"' \
+  '.[] | "- **\(.state | ascii_upcase)**: \(.secret_type_display_name) — [Alert #\(.number)](https://github.com/\($ENV.REPO)/security/secret-scanning/\(.number))"' \
   "_No secret scanning alerts or secret scanning not enabled._"
 
 {
