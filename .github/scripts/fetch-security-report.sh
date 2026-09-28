@@ -20,9 +20,7 @@ set -uo pipefail
 GITHUB_ENV="${GITHUB_ENV:-/dev/null}"
 REPORT_PATH="${REPORT_PATH:-/tmp/security-report.md}"
 
-# Append a section heading + `gh api` result to the report. Passes $REPO into
-# jq via `--arg repo` (not string interpolation) to keep jq parsing safe even
-# if the repo name later contains special characters.
+# Append a section heading + `gh api` result to the report.
 # echo-fallback-ok: this is a best-effort, per-section aggregator — one alert
 # source failing must not abort the whole report. The fallback text names the
 # failure explicitly ("could not fetch ... check repo permissions") rather than
