@@ -154,6 +154,41 @@ test("install-claude-cli refuses naming both pins when neither exists", () => {
   }
 });
 
+test("install-claude-cli refuses a range instead of an exact version", () => {
+  const root = consumerTree();
+  try {
+    mkdirSync(join(root, dirname(CLI_OVERRIDE)), { recursive: true });
+    writeFileSync(
+      join(root, CLI_OVERRIDE),
+      JSON.stringify({
+        dependencies: { "@anthropic-ai/claude-code": "^9.8.7" },
+      }),
+    );
+    const run = runInstaller(root, "install-claude-cli.sh", CLI_STUBS);
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /claude-cli\/package\.json/);
+    assert.doesNotMatch(run.stderr, /REACHED-INSTALL/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Dependabot rewrites these pins unattended: a range or a malformed file must
+// turn CI red here, before the installer meets it on a runner.
+test("every Claude CLI pin in the repo is an exact version", () => {
+  const present = [CLI_OVERRIDE, CLI_DEFAULT].filter((path) =>
+    existsSync(join(REPO_ROOT, path)),
+  );
+  assert.ok(present.length > 0, "neither Claude CLI pin file exists");
+  for (const path of present) {
+    assert.match(
+      pinnedVersion(join(REPO_ROOT, path)),
+      /^\d+\.\d+\.\d+$/,
+      `${path} must pin @anthropic-ai/claude-code to one exact version`,
+    );
+  }
+});
+
 // The commit-msg hook passes this path to commitlint with no fallback, and the
 // hook runs under `set -euo pipefail`. Undelivered, every commit in the consumer
 // fails with a commitlint ENOENT rather than a message about the hook.

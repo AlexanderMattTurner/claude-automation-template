@@ -27,6 +27,10 @@ else
   echo "no Claude CLI pin: neither ${override} nor ${default} exists." >&2
   exit 1
 fi
+command -v jq >/dev/null 2>&1 || {
+  echo "jq is required to read ${pin_file}" >&2
+  exit 1
+}
 if ! version="$(jq -r '.dependencies["@anthropic-ai/claude-code"]' "$pin_file")"; then
   echo "jq could not read ${pin_file}." >&2
   exit 1
