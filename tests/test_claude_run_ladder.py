@@ -156,7 +156,7 @@ def test_an_empty_model_is_refused(model: str) -> None:
     assert "model input is empty" in proc.stderr
 
 
-@pytest.mark.parametrize("model", ["claude-opus-5", "claude-haiku-4-5"])
+@pytest.mark.parametrize("model", ["opus", "haiku"])
 def test_a_pinned_model_passes(model: str) -> None:
     """The non-vacuity pair: the guard must not red every caller, or it would be
     disabled rather than obeyed."""
@@ -282,7 +282,7 @@ def _simulate(
     for rung in configured:
         inputs[TOKEN_INPUTS[rung - 1]] = f"token-{rung}"
     inputs |= {
-        "model": "claude-sonnet-5",
+        "model": "sonnet",
         "prompt": "p",
         "claude_args": "",
         "github_token": "t",

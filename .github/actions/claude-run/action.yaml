@@ -59,9 +59,10 @@ inputs:
     default: ""
   model:
     description: >-
-      Model slug (e.g. claude-sonnet-5). Rendered into the action's --model flag
-      here, ahead of claude_args, so every attempt pins the tier explicitly and
-      the action never rides its own default; keep the slug OUT of claude_args.
+      Model alias (opus, sonnet or haiku), which follows the newest model of
+      that tier. Rendered into the action's --model flag here, ahead of
+      claude_args, so every attempt pins the tier explicitly and the action
+      never rides its own default; keep the alias OUT of claude_args.
     required: true
   prompt:
     description: "Prompt for the agent. Empty runs the action in its event-driven (tag) mode."
