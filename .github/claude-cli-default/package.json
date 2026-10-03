@@ -1,5 +1,5 @@
 {
-  "name": "claude-cli-pin",
+  "name": "claude-cli-default",
   "private": true,
   "dependencies": {
     "@anthropic-ai/claude-code": "2.1.286"

@@ -22,12 +22,13 @@ updates:
     cooldown:
       default-days: 7
 
-  # The Claude CLI pin that .github/scripts/install-claude-cli.sh installs.
+  # The synced default Claude CLI pin that .github/scripts/install-claude-cli.sh
+  # installs when a repo carries no .github/claude-cli/package.json override.
   - package-ecosystem: "npm"
-    directory: "/.github/claude-cli"
+    directory: "/.github/claude-cli-default"
     schedule:
       interval: "weekly"
     allow:
       - dependency-name: "@anthropic-ai/claude-code"
     cooldown:
-      default-days: 2 # zizmor: ignore[dependabot-cooldown] — Anthropic publishes this CLI, and a new model needs its release fast
+      default-days: 7
