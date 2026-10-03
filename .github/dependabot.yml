@@ -30,4 +30,4 @@ updates:
     allow:
       - dependency-name: "@anthropic-ai/claude-code"
     cooldown:
-      default-days: 2
+      default-days: 2 # zizmor: ignore[dependabot-cooldown] — Anthropic publishes this CLI, and a new model needs its release fast

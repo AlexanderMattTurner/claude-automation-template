@@ -19,6 +19,7 @@ source "$SCRIPT_DIR/lib/retry.bash"
 # allow-unsynced: .github/claude-cli/package.json — consumer-owned; each repo's Dependabot bumps it.
 pin_file="${SCRIPT_DIR}/../claude-cli/package.json"
 # jq's own error (missing file, bad JSON) lands in $version so the refusal shows it.
+# allow-exit-suppress: the regex check below rejects any $version that is not x.y.z, jq's error text included.
 version="$(jq -r '.dependencies["@anthropic-ai/claude-code"]' "$pin_file" 2>&1)" || true
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "could not read an exact @anthropic-ai/claude-code version from .dependencies in ${pin_file}, got '${version}'." >&2
