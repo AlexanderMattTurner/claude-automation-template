@@ -90,7 +90,7 @@ jobs:
           fallback_oauth_token_4: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_5 }}
           fallback_oauth_token_5: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK_6 }}
           fallback_oauth_token_6: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          model: claude-haiku-4-5
+          model: haiku
           claude_args: >-
             --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr edit:*)"
           prompt: |

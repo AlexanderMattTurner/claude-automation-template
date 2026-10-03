@@ -156,13 +156,27 @@ def test_an_empty_model_is_refused(model: str) -> None:
     assert "model input is empty" in proc.stderr
 
 
-@pytest.mark.parametrize("model", ["claude-opus-5", "claude-haiku-4-5"])
+@pytest.mark.parametrize("model", ["opus", "haiku"])
 def test_a_pinned_model_passes(model: str) -> None:
     """The non-vacuity pair: the guard must not red every caller, or it would be
     disabled rather than obeyed."""
     proc = _run_guard(model)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert proc.stderr == ""
+
+
+def test_every_caller_names_its_model_by_alias() -> None:
+    """An alias follows the newest model of its tier; a dated slug stays old."""
+    models = {
+        f"{wf.name}: {step.get('name', '?')}": (step.get("with") or {}).get("model")
+        for wf in sorted((REPO_ROOT / ".github" / "workflows").glob("*.yaml"))
+        for job in yaml.safe_load(wf.read_text(encoding="utf-8"))["jobs"].values()
+        for step in job.get("steps") or []
+        if step.get("uses") == "./.github/actions/claude-run"
+    }
+    assert models, "no workflow step calls the claude-run composite"
+    off = {k: v for k, v in models.items() if v not in {"opus", "sonnet", "haiku"}}
+    assert not off, f"name the model as opus, sonnet or haiku: {off}"
 
 
 # --- The ladder ------------------------------------------------------------
@@ -282,7 +296,7 @@ def _simulate(
     for rung in configured:
         inputs[TOKEN_INPUTS[rung - 1]] = f"token-{rung}"
     inputs |= {
-        "model": "claude-sonnet-5",
+        "model": "sonnet",
         "prompt": "p",
         "claude_args": "",
         "github_token": "t",

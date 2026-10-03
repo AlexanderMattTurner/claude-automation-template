@@ -97,11 +97,14 @@ env:
   # script that reads such a file arrives downstream without it and dies on the
   # read, so each one a synced file names by a fixed path is listed here:
   #   .github/tool-versions.sh                 <- .github/scripts/install-mergiraf.sh
-  #   .github/claude-cli-version               <- .github/scripts/install-claude-cli.sh
+  #   .github/claude-cli-default               <- .github/scripts/install-claude-cli.sh
   #   config/javascript/commitlint.config.js   <- .hooks/commit-msg
+  # install-claude-cli.sh prefers .github/claude-cli/package.json, which is NOT
+  # synced: a repo that wants its own CLI version keeps it there, and its own
+  # Dependabot bumps it.
   # A consumer that maintains its own richer copy of one of these (extra tools
   # pinned for its own CI) keeps it by adding that path to EXCLUDE_PATHS.
-  SYNC_PATHS: ".claude .hooks .github/actions .github/scripts .github/workflows .github/prompts .github/tool-versions.sh .github/claude-cli-version config/javascript/commitlint.config.js"
+  SYNC_PATHS: ".claude .hooks .github/actions .github/scripts .github/workflows .github/prompts .github/tool-versions.sh .github/claude-cli-default config/javascript/commitlint.config.js"
   # Paths to exclude from syncing. An entry names one file or one directory, and
   # a directory entry covers every file under it.
   #
