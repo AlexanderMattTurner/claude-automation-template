@@ -10,7 +10,9 @@ version: 2
 
 updates:
   - package-ecosystem: "github-actions"
-    directory: "/"
+    # "/" scans .github/workflows; the glob reaches the composite actions,
+    # whose claude-code-action pin bundles the Claude CLI it runs.
+    directories: ["/", "/.github/actions/*"]
     schedule:
       interval: "monthly"
     groups:
@@ -19,3 +21,13 @@ updates:
           - "*"
     cooldown:
       default-days: 7
+
+  # The Claude CLI pin that .github/scripts/install-claude-cli.sh installs.
+  - package-ecosystem: "npm"
+    directory: "/.github/claude-cli"
+    schedule:
+      interval: "weekly"
+    allow:
+      - dependency-name: "@anthropic-ai/claude-code"
+    cooldown:
+      default-days: 2

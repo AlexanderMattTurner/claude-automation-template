@@ -1,26 +1,28 @@
 #!/usr/bin/env bash
 # Install @anthropic-ai/claude-code globally, pinned to the version
-# .github/claude-cli-version names — one file, so every job that reaches for the
-# CLI runs the same build.
+# .github/claude-cli/package.json names — one file, so every job that reaches
+# for the CLI runs the same build, and Dependabot's npm updater bumps it.
 #
-# The pin is its own file rather than a package.json devDependency because
-# nothing here imports the CLI: it is invoked as a binary. Listing it as a
-# dependency makes `pnpm install` refuse the whole workspace over the package's
-# unapproved install scripts (ERR_PNPM_IGNORED_BUILDS), which fails every job
-# that installs node dependencies for unrelated reasons.
+# That package.json is not a pnpm workspace member: nothing here imports the
+# CLI, and listing it in the root package.json makes `pnpm install` refuse the
+# whole workspace over its unapproved install scripts (ERR_PNPM_IGNORED_BUILDS).
 #
-# Reads the pin relative to this script, so it does not depend on the caller's
-# current directory.
+# The pin is consumer-owned: template-sync does not deliver it, because each
+# repo's own Dependabot bumps it. Reads it relative to this script, so the
+# caller's current directory does not matter.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/retry.bash disable=SC1091
 source "$SCRIPT_DIR/lib/retry.bash"
 
-pin_file="${SCRIPT_DIR}/../claude-cli-version"
-version="$(tr -d '[:space:]' <"$pin_file")"
+# allow-unsynced: .github/claude-cli/package.json — consumer-owned; each repo's Dependabot bumps it.
+pin_file="${SCRIPT_DIR}/../claude-cli/package.json"
+# jq's own error (missing file, bad JSON) lands in $version so the refusal shows it.
+version="$(jq -r '.dependencies["@anthropic-ai/claude-code"]' "$pin_file" 2>&1)" || true
 if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "could not read a pinned @anthropic-ai/claude-code version from ${pin_file}, got '${version}'" >&2
+  echo "could not read an exact @anthropic-ai/claude-code version from .dependencies in ${pin_file}, got '${version}'." >&2
+  echo "Each repo owns that file: create it as {\"private\":true,\"dependencies\":{\"@anthropic-ai/claude-code\":\"x.y.z\"}}." >&2
   exit 1
 fi
 echo "Installing @anthropic-ai/claude-code@${version}"

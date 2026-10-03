@@ -81,19 +81,46 @@ test("template-sync delivers the mergiraf pin install-mergiraf reads", () => {
   }
 });
 
-test("template-sync delivers the CLI pin install-claude-cli reads", () => {
+// The CLI pin is consumer-owned: each repo's Dependabot bumps it, so the sync
+// must not deliver it. The installer reads the copy the consumer supplies, and
+// refuses by name when there is none.
+const CLI_PIN = join(".github", "claude-cli", "package.json");
+const CLI_STUBS = {
+  npm: 'echo "REACHED-INSTALL $*" >&2\nexit 0',
+  claude: 'echo "2.0.0"',
+};
+
+test("install-claude-cli installs the version the consumer's pin names", () => {
   const root = consumerTree();
   try {
-    const run = runInstaller(root, "install-claude-cli.sh", {
-      npm: 'echo "REACHED-INSTALL $*" >&2\nexit 0',
-      claude: 'echo "2.0.0"',
-    });
-    assert.doesNotMatch(run.stderr, /No such file or directory/);
-    assert.match(
+    mkdirSync(join(root, dirname(CLI_PIN)), { recursive: true });
+    cpSync(join(REPO_ROOT, CLI_PIN), join(root, CLI_PIN));
+    const pinned = JSON.parse(readFileSync(join(REPO_ROOT, CLI_PIN), "utf8"))
+      .dependencies["@anthropic-ai/claude-code"];
+    const run = runInstaller(root, "install-claude-cli.sh", CLI_STUBS);
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(
+      run.stderr.includes(
+        `REACHED-INSTALL install -g @anthropic-ai/claude-code@${pinned}\n`,
+      ),
       run.stderr,
-      /REACHED-INSTALL .*@anthropic-ai\/claude-code@\d+\.\d+\.\d+/,
     );
-    assert.equal(run.status, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("install-claude-cli refuses by name when the consumer has no pin", () => {
+  const root = consumerTree();
+  try {
+    assert.ok(
+      !existsSync(join(root, CLI_PIN)),
+      "template-sync delivers no CLI pin",
+    );
+    const run = runInstaller(root, "install-claude-cli.sh", CLI_STUBS);
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /claude-cli\/package\.json/);
+    assert.doesNotMatch(run.stderr, /REACHED-INSTALL/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
