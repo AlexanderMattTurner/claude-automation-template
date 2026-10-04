@@ -72,6 +72,7 @@ def run(
     *,
     threads: list[dict],
     reviews: list[dict],
+    reviews_late: list[dict] | None = None,
     approve_error: str | None = None,
     dismiss_error: str | None = None,
     rungs: dict[str, str] | None = None,
@@ -81,13 +82,18 @@ def run(
 
     `rungs` maps ladder env var -> credential; `quotas` maps credential ->
     requests remaining, where a negative value makes the probe itself fail (a
-    revoked token) rather than report zero.
+    revoked token) rather than report zero. `reviews_late` is the review set the
+    SECOND and later review queries answer with, which is how a review arriving
+    mid-run is expressed: a run that reads reviews once cannot see it.
     """
     rungs = {"GH_TOKEN_ACTIONS": ACTIONS_TOKEN} if rungs is None else rungs
     quotas = {ACTIONS_TOKEN: 5000} if quotas is None else quotas
     threads_json, reviews_json = graphql_payloads(threads, reviews)
     (tmp_path / "threads.json").write_text(threads_json, encoding="utf-8")
     (tmp_path / "reviews.json").write_text(reviews_json, encoding="utf-8")
+    if reviews_late is not None:
+        _, late_json = graphql_payloads(threads, reviews_late)
+        (tmp_path / "reviews-late.json").write_text(late_json, encoding="utf-8")
     (tmp_path / "quotas.json").write_text(json.dumps(quotas), encoding="utf-8")
     log = tmp_path / "gh-calls.txt"
 
@@ -135,7 +141,17 @@ if [[ "$1" == "api" && "$2" == "graphql" ]]; then
       *) shift ;;
     esac
   done
-  if [[ "$query" == *reviewThreads* ]]; then src="{tmp_path}/threads.json"; else src="{tmp_path}/reviews.json"; fi
+  if [[ "$query" == *reviewThreads* ]]; then
+    src="{tmp_path}/threads.json"
+  else
+    # Count the review reads so a second one can answer with a later state.
+    n=$(( $(cat "{tmp_path}/reviews-calls" 2>/dev/null || echo 0) + 1 ))
+    printf '%s' "$n" > "{tmp_path}/reviews-calls"
+    src="{tmp_path}/reviews.json"
+    if [[ "$n" -gt 1 && -f "{tmp_path}/reviews-late.json" ]]; then
+      src="{tmp_path}/reviews-late.json"
+    fi
+  fi
   jq -r "$filter" "$src"
   exit 0
 fi
@@ -296,6 +312,28 @@ def test_the_newest_bot_changes_requested_is_the_one_dismissed(tmp_path: Path):
     assert res.returncode == 0, res.stderr
     assert "/reviews/33/dismissals" in calls
     assert "/reviews/11/dismissals" not in calls
+
+
+def test_a_hold_submitted_after_the_clearance_evidence_survives(tmp_path: Path):
+    """THE scoping case. A resolved-thread snapshot is what licenses the
+    dismissal, so the dismissal may only reach a hold that snapshot covered. A
+    CHANGES_REQUESTED the reviewer submits while this run works postdates that
+    evidence: nothing here has cleared it, so it must keep blocking the merge."""
+    res, calls = run(
+        tmp_path,
+        threads=[thread(resolved=True)],
+        reviews=[review("CHANGES_REQUESTED", at="2026-01-01T00:00:00Z", rid=11)],
+        reviews_late=[
+            review("CHANGES_REQUESTED", at="2026-01-01T00:00:00Z", rid=11),
+            review("CHANGES_REQUESTED", at="2026-01-05T00:00:00Z", rid=99),
+        ],
+        approve_error=SELF_APPROVAL,
+    )
+    assert res.returncode == 0, res.stderr
+    assert "/reviews/11/dismissals" in calls, "the hold the evidence covered clears"
+    assert "/reviews/99/dismissals" not in calls, (
+        "a hold submitted after the clearance evidence must survive this run"
+    )
 
 
 def test_a_failing_dismissal_exits_non_zero(tmp_path: Path):

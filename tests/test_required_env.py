@@ -27,8 +27,8 @@ CASES = [
     ("template-sync.sh", ["GITHUB_OUTPUT"]),
     # template-sync-marker-gate.sh requires BASE_SHA and GITHUB_TOKEN
     ("template-sync-marker-gate.sh", ["BASE_SHA", "GITHUB_TOKEN"]),
-    # cancel-pr-runs.sh requires REPO, HEAD_REF, HEAD_SHA, GH_TOKEN
-    ("cancel-pr-runs.sh", ["REPO", "HEAD_REF", "HEAD_SHA", "GH_TOKEN"]),
+    # cancel-pr-runs.sh requires REPO, HEAD_REF, HEAD_SHA, CLOSED_AT, GH_TOKEN
+    ("cancel-pr-runs.sh", ["REPO", "HEAD_REF", "HEAD_SHA", "CLOSED_AT", "GH_TOKEN"]),
     # PR-review suite (claude-pr-review.yaml and friends)
     ("auto-approve-skipped-pr.sh", ["PR", "GH_REPO"]),
     # The resolve credential is no longer an input: it is picked from the
