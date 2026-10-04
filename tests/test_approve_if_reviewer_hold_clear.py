@@ -82,9 +82,10 @@ def run(
 
     `rungs` maps ladder env var -> credential; `quotas` maps credential ->
     requests remaining, where a negative value makes the probe itself fail (a
-    revoked token) rather than report zero. `reviews_late` is the review set the
-    SECOND and later review queries answer with, which is how a review arriving
-    mid-run is expressed: a run that reads reviews once cannot see it.
+    revoked token) rather than report zero. `reviews_late` is the review set any
+    review query made AFTER the thread read answers with, which is how a review
+    arriving mid-run is expressed: a run that reads reviews above the thread
+    evidence cannot see it, whichever order or count of reads it uses.
     """
     rungs = {"GH_TOKEN_ACTIONS": ACTIONS_TOKEN} if rungs is None else rungs
     quotas = {ACTIONS_TOKEN: 5000} if quotas is None else quotas
@@ -143,12 +144,12 @@ if [[ "$1" == "api" && "$2" == "graphql" ]]; then
   done
   if [[ "$query" == *reviewThreads* ]]; then
     src="{tmp_path}/threads.json"
+    # The thread snapshot is the evidence that licenses a dismissal, so any
+    # review served after this point is one that evidence does not cover.
+    : > "{tmp_path}/threads-read"
   else
-    # Count the review reads so a second one can answer with a later state.
-    n=$(( $(cat "{tmp_path}/reviews-calls" 2>/dev/null || echo 0) + 1 ))
-    printf '%s' "$n" > "{tmp_path}/reviews-calls"
     src="{tmp_path}/reviews.json"
-    if [[ "$n" -gt 1 && -f "{tmp_path}/reviews-late.json" ]]; then
+    if [[ -f "{tmp_path}/threads-read" && -f "{tmp_path}/reviews-late.json" ]]; then
       src="{tmp_path}/reviews-late.json"
     fi
   fi
