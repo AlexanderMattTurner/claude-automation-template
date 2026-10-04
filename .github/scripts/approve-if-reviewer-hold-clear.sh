@@ -6,21 +6,16 @@
 # review-required ruleset."
 #
 # It is deliberately state-based and idempotent: it reads thread and review state
-# via the API and decides from that alone, never from who resolved what. A thread
-# resolved any way at all — a human clicking Resolve, an agent, the resolver bot —
-# therefore clears the hold. Runs on a periodic sweep of open PRs
-# (claude-reviewer-hold-clear.yaml), so a resolution that fires no workflow event
-# cannot leave the hold stranded.
+# via the API and decides from that alone, never from who resolved what. It runs
+# on a periodic sweep of open PRs (claude-reviewer-hold-clear.yaml), so a
+# resolution that fires no workflow event cannot leave the hold stranded.
 #
-# Approves ONLY when the reviewer's LATEST review is a live hold or comment —
-# CHANGES_REQUESTED or COMMENTED (any other latest state means nothing to clear:
-# APPROVED already through, DISMISSED, or "" the reviewer never reviewed this PR —
-# so an unrelated thread-resolved event mints no approval; this allowlist is
-# stricter than "!= APPROVED" on purpose) — AND one of two resolution signals holds:
-#   the reviewer opened at least one thread (root comment authored by
-#   REVIEWER_LOGIN) and none is still unresolved. A hold whose concern lived only
-#   in the review body opens no thread, so it clears on the reviewer's own
-#   re-review instead.
+# Approves ONLY when the reviewer's LATEST review is CHANGES_REQUESTED or
+# COMMENTED (any other latest state means nothing to clear: APPROVED already
+# through, DISMISSED, or "" it never reviewed this PR; the allowlist is stricter
+# than "!= APPROVED" on purpose), AND the reviewer opened at least one thread
+# with none still unresolved. A hold whose concern lived only in the review body
+# opens no thread, so it clears on the reviewer's own re-review instead.
 #
 # Env: the GH_TOKEN_* ladder rungs (see lib/github-token-ladder.bash), GH_REPO
 # (owner/name), PR; REVIEWER_LOGIN optional.
@@ -114,11 +109,9 @@ remaining_query='query($owner: String!, $name: String!, $pr: Int!, $endCursor: S
 }'
 # A thread hold is "demonstrably cleared" only when the reviewer opened at least
 # one thread AND none remain unresolved. A CHANGES_REQUESTED / COMMENTED review
-# that opened ZERO threads carries no THREAD resolution signal; it is cleared only
-# by the BODY signal below (the model judged the review's summary finding
-# addressed), never on thread state alone — auto-clearing a thread-less hold on
-# "unresolved == 0" (trivially true with no threads) would merge the reviewer's
-# concern unaddressed.
+# that opened ZERO threads carries no thread resolution signal, so the `total`
+# guard below exits on it: auto-clearing a thread-less hold on "unresolved == 0"
+# (trivially true with no threads) would merge the reviewer's concern unaddressed.
 # shellcheck disable=SC2016 # jq program is literal, not shell ($p is a jq var)
 counts="$(gh api graphql --paginate \
   -f query="$remaining_query" -f owner="$owner" -f name="$name" -F pr="$PR" \
@@ -158,19 +151,26 @@ cleared_by="every review conversation from the automated reviewer has been resol
 # and still needs that human. Dismissing is also idempotent — a dismissed review's
 # state stops being CHANGES_REQUESTED, so a re-run finds nothing and says so.
 dismiss_stale_hold() {
-  local reason="$1" review_id="$blocking_review_id" dismiss_err
+  local reason="$1" review_id="$blocking_review_id" dismiss_err now_state
 
   if [[ -z "$review_id" ]]; then
-    echo "no active CHANGES_REQUESTED from ${REVIEWER_LOGIN} to dismiss — its hold was a COMMENTED review, which does not block a merge." >&2
+    echo "${REVIEWER_LOGIN} has no active CHANGES_REQUESTED, so it has none to dismiss: its hold was a COMMENTED review, or it never filed one. A hold from any other reviewer still blocks the merge." >&2
     return 0
   fi
 
-  # Unlike the approval refusals above, a failed dismissal is NOT structural:
-  # nothing about this PR makes it permanently impossible, so it is a real error
-  # and must be seen rather than logged past.
+  # Unlike the approval refusals above, a failed dismissal is NOT structural, so
+  # it is a real error. One case is not: the pinned hold can be dismissed by a
+  # human or another sweep between the pin above and this call, and GitHub then
+  # refuses the PUT. Re-read the review to tell those apart — an unreadable state
+  # falls through to the loud failure, so a real fault is never swallowed.
   if ! dismiss_err="$(gh api --method PUT \
     "repos/${GH_REPO}/pulls/${PR}/reviews/${review_id}/dismissals" \
     -f message="$reason" -f event=DISMISS 2>&1)"; then
+    if now_state="$(gh api "repos/${GH_REPO}/pulls/${PR}/reviews/${review_id}" \
+      --jq '.state')" && [[ "$now_state" != "CHANGES_REQUESTED" ]]; then
+      echo "review ${review_id} is now '${now_state}', so its hold was cleared by someone else while this run worked; nothing to dismiss." >&2
+      return 0
+    fi
     echo "failed to dismiss the reviewer's stale hold (review ${review_id}): ${dismiss_err}" >&2
     return 1
   fi

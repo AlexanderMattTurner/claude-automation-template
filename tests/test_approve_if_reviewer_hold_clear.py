@@ -75,6 +75,7 @@ def run(
     reviews_late: list[dict] | None = None,
     approve_error: str | None = None,
     dismiss_error: str | None = None,
+    review_state: str = "CHANGES_REQUESTED",
     rungs: dict[str, str] | None = None,
     quotas: dict[str, int] | None = None,
 ):
@@ -86,6 +87,8 @@ def run(
     review query made AFTER the thread read answers with, which is how a review
     arriving mid-run is expressed: a run that reads reviews above the thread
     evidence cannot see it, whichever order or count of reads it uses.
+    `review_state` is what a single-review GET answers with, which the script
+    reads only after a dismissal fails.
     """
     rungs = {"GH_TOKEN_ACTIONS": ACTIONS_TOKEN} if rungs is None else rungs
     quotas = {ACTIONS_TOKEN: 5000} if quotas is None else quotas
@@ -162,7 +165,14 @@ fi
 if [[ "$1" == "api" && "$2" == "--method" && "$3" == "PUT" ]]; then
   {dismiss_arm}
 fi
-exit 0
+# The single-review GET the script reads after a failed dismissal, to tell a hold
+# someone else already cleared from a real fault.
+if [[ "$1" == "api" && "$2" == repos/*/reviews/* ]]; then
+  printf '%s\\n' "{review_state}"
+  exit 0
+fi
+echo "fake gh: unhandled: $*" >&2
+exit 1
 """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -280,7 +290,9 @@ def test_a_humans_changes_requested_is_never_dismissed(tmp_path: Path):
     assert not dismissed(calls), (
         "a review this bot did not write must never be dismissed"
     )
-    assert "no active CHANGES_REQUESTED" in res.stderr
+    assert "A hold from any other reviewer still blocks the merge" in res.stderr, (
+        "the stand-down must not read as though nothing blocks this PR"
+    )
 
 
 def test_a_comment_only_hold_dismisses_nothing(tmp_path: Path):
@@ -293,7 +305,7 @@ def test_a_comment_only_hold_dismisses_nothing(tmp_path: Path):
     )
     assert res.returncode == 0, res.stderr
     assert not dismissed(calls)
-    assert "does not block a merge" in res.stderr
+    assert "has none to dismiss" in res.stderr
 
 
 def test_the_newest_bot_changes_requested_is_the_one_dismissed(tmp_path: Path):
@@ -348,6 +360,21 @@ def test_a_failing_dismissal_exits_non_zero(tmp_path: Path):
     )
     assert res.returncode != 0
     assert "failed to dismiss" in res.stderr
+
+
+def test_a_hold_cleared_by_someone_else_mid_run_is_not_an_error(tmp_path: Path):
+    # Pinning the hold before the evidence read widens the window in which a human
+    # or a second sweep can dismiss it first. GitHub then refuses the PUT, which
+    # must not red a sweep whose only subject is already clear.
+    res, _ = run(
+        tmp_path,
+        **CLEARED,
+        approve_error=SELF_APPROVAL,
+        dismiss_error="HTTP 422: Unprocessable Entity",
+        review_state="DISMISSED",
+    )
+    assert res.returncode == 0, res.stderr
+    assert "cleared by someone else" in res.stderr
 
 
 def test_an_unresolved_thread_blocks_both_approval_and_dismissal(tmp_path: Path):

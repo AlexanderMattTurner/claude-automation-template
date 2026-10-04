@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Cancel the queued/in-progress Actions runs still executing on a closed PR's
 # head SHA. Invoked by pr-meta-privileged.yaml's cancel job with REPO, HEAD_REF,
-# HEAD_SHA, CLOSED_AT, GH_TOKEN in the environment; RUN_SWEEP_LIMIT (default 100)
+# HEAD_SHA, CLOSED_AT, GH_TOKEN in the environment, plus the runner's own
+# GITHUB_RUN_ID; RUN_SWEEP_LIMIT (default 100)
 # caps how many runs on that branch one call lists. Reclaims runner slots a
 # merge/close would otherwise leave held — GitHub cancels superseded runs only
 # when a newer push arrives, never on close. Only runs created before CLOSED_AT
@@ -33,7 +34,9 @@ fi
 # INVARIANT — `.createdAt < $closed` is what keeps the sweep off the runs the
 # close event itself dispatched, which carry this same headSha and can hold a
 # durable side effect (phone-home files an issue). Both timestamps are ISO-8601
-# UTC, so string order is time order. The run id check spares this very run.
+# UTC, so string order is time order. That predicate is the guard; the run id
+# check behind it spares this very run a second way, so an absent GITHUB_RUN_ID
+# costs nothing.
 ids=()
 while IFS= read -r id; do
   [[ -n "$id" ]] && ids+=("$id")
