@@ -120,26 +120,21 @@
   },
   "enabledPlugins": {
     "precis@precis": true,
-    "codex@codex-plugin-cc": true,
     "tldr@alignment-hive": true
   },
   "extraKnownMarketplaces": {
     "precis": {
       "source": {
         "source": "github",
-        "repo": "Crazytieguy/precis"
-      }
-    },
-    "codex-plugin-cc": {
-      "source": {
-        "source": "github",
-        "repo": "Crazytieguy/codex-plugin-cc"
+        "repo": "Crazytieguy/precis",
+        "ref": "v0.2.0"
       }
     },
     "alignment-hive": {
       "source": {
         "source": "github",
-        "repo": "Crazytieguy/alignment-hive"
+        "repo": "Crazytieguy/alignment-hive",
+        "ref": "remote-kernels-v0.3.3"
       }
     }
   }
