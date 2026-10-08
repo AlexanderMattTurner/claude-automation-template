@@ -666,7 +666,8 @@ main() {
       "$((report_cap > kept_local_bytes ? report_cap - kept_local_bytes : 0))" \
       "_Conflict report truncated (the full report exceeded the PR-body size limit). Every entry cut from the end is a file carrying \`<<<<<<<\`/\`=======\`/\`>>>>>>>\` markers on the \`template-sync\` branch — resolve those from the markers._")"
     if [[ -n "$capped_kept_local" && -n "$capped_marked" ]]; then
-      capped_conflict_report="${capped_kept_local}"$'\n'"${capped_marked}"
+      # A blank line ends the kept-local report's closing </details> HTML block.
+      capped_conflict_report="${capped_kept_local}"$'\n\n'"${capped_marked}"
     else
       capped_conflict_report="${capped_kept_local}${capped_marked}"
     fi

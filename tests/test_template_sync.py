@@ -1122,6 +1122,10 @@ def test_a_markerless_entry_survives_the_report_cap(workdir: Path) -> None:
     # The entry's own heading and its diff line, not a phrase the cap note also carries.
     assert "### `.github/workflows/ci.yaml`" in report
     assert "+template-side" in report
+    # The marker-bearing section must start after a blank line, or the kept-local section's
+    # closing </details> swallows its first heading into the HTML block.
+    first_marked = report.index("### `config/")
+    assert report[first_marked - 2 : first_marked] == "\n\n"
 
 
 def test_kept_local_entries_take_the_report_cap_before_marked_ones(
