@@ -70,3 +70,20 @@ def test_every_condition_compares_the_input_to_a_boolean():
         "these conditions compare a boolean input to a string, which never "
         f"matches: {quoted}"
     )
+
+
+def test_the_resolver_steps_run_only_when_a_conflict_carries_markers():
+    # A kept-local conflict sets has_conflicts but emits no conflict_files, and
+    # template-sync-resolve.sh refuses an empty list, so gating these steps on
+    # has_conflicts turned every kept-local-only sync red.
+    steps = [
+        step
+        for job in _workflow()["jobs"].values()
+        for step in job.get("steps", [])
+        if step.get("id") == "resolve"
+        or str(step.get("name", "")).startswith("Install mergiraf")
+    ]
+    assert len(steps) == 2, f"found {len(steps)} resolver steps, expected 2"
+    for step in steps:
+        assert "steps.sync.outputs.conflict_files != ''" in step["if"], step["name"]
+        assert "has_conflicts" not in step["if"], step["name"]

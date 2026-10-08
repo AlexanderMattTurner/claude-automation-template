@@ -22,6 +22,9 @@
 #      and workflows. Letting those merge unattended is the supervision stack
 #      approving changes to itself. Reuses AUTO_RESOLVE_PROTECTED_RE so there is
 #      one definition of "a human should look at this", not two.
+#   5. NO KEPT-LOCAL CONFLICT. The sync keeps this repo's copy of a file it cannot
+#      mark (one CI loads, or one side empty) and asks for a hand port. The branch
+#      does not change that file, so CHANGED_PATHS never names it.
 #
 # Any clause failing is not an error — the PR is simply left for a human, which
 # is exactly today's behavior. Set the repository variable
@@ -51,10 +54,8 @@ if [[ "${HAS_CONFLICTS:-false}" == "true" && "${ALL_DETERMINISTIC:-}" != "true" 
   refuse "at least one conflict needed a model, or is still unresolved."
 fi
 
-# A kept-local conflict changed nothing on the branch, so CHANGED_PATHS never names it and the
-# resolver never sees it. Its template change still waits for a hand port the PR body asks for.
 [[ -z "${MARKERLESS_FILES:-}" ]] ||
-  refuse "a template change was kept out of a file CI loads; it needs a hand port."
+  refuse "the sync kept this repo's copy of a file and applied no template change; it needs a hand port."
 
 [[ "${HAS_DOWNGRADES:-false}" != "true" ]] ||
   refuse "the sync dropped lines this repo had locally (adopter-ahead)."

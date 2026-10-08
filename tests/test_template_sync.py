@@ -1165,5 +1165,7 @@ def test_kept_local_entries_take_the_report_cap_before_marked_ones(
     assert len(outputs["markerless_files"].split()) == 4
     assert "Kept-local entries truncated" in report
     assert template_sha in report
+    # The kept-local entries took the cap, so the template side of one is still here.
+    assert "+tmpl " in report
     assert "### `config/a.txt`" not in report
     assert len(report.encode()) <= 3000 + 600
