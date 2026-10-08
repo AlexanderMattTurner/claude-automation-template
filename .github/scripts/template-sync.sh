@@ -657,10 +657,12 @@ main() {
     # The kept-local entries take the cap first and the marker-bearing ones get what is left,
     # so a cut never drops a kept-local entry while a marker-bearing one survives.
     report_cap="${CONFLICT_REPORT_MAX_BYTES:-40000}"
-    capped_kept_local="$(cap_body_field "$(cat "$MARKERLESS_REPORT")" "$report_cap" \
+    kept_local_report="$(cat "$MARKERLESS_REPORT")"
+    marked_report="$(cat "$CONFLICT_REPORT")"
+    capped_kept_local="$(cap_body_field "$kept_local_report" "$report_cap" \
       "_Kept-local entries truncated (they alone exceeded the PR-body size limit). Every path in the kept-local list keeps its local copy, so diff each one against the template at \`${TEMPLATE_SHA}\` and port the change by hand._")"
     kept_local_bytes=$(printf '%s' "$capped_kept_local" | wc -c)
-    capped_marked="$(cap_body_field "$(cat "$CONFLICT_REPORT")" \
+    capped_marked="$(cap_body_field "$marked_report" \
       "$((report_cap > kept_local_bytes ? report_cap - kept_local_bytes : 0))" \
       "_Conflict report truncated (the full report exceeded the PR-body size limit). Every entry cut from the end is a file carrying \`<<<<<<<\`/\`=======\`/\`>>>>>>>\` markers on the \`template-sync\` branch — resolve those from the markers._")"
     if [[ -n "$capped_kept_local" && -n "$capped_marked" ]]; then
