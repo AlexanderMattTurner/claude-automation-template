@@ -654,10 +654,23 @@ main() {
         "… list truncated; see the report below.")"
       emit_multiline_output "markerless_files" "$capped_markerless"
     fi
-    conflict_report="$(cat "$MARKERLESS_REPORT" "$CONFLICT_REPORT")"
-    capped_conflict_report="$(cap_body_field "$conflict_report" \
-      "${CONFLICT_REPORT_MAX_BYTES:-40000}" \
-      "_Conflict report truncated (the full report exceeded the PR-body size limit). Every entry cut from the end is a file carrying \`<<<<<<<\`/\`=======\`/\`>>>>>>>\` markers on the \`template-sync\` branch — resolve those from the markers. Every **Kept local** entry is printed first, because the report is the only copy of what those files would have received._")"
+    # The kept-local entries take the cap first and the marker-bearing ones get what is left,
+    # so a cut never drops a kept-local entry while a marker-bearing one survives.
+    report_cap="${CONFLICT_REPORT_MAX_BYTES:-40000}"
+    kept_local_report="$(cat "$MARKERLESS_REPORT")"
+    marked_report="$(cat "$CONFLICT_REPORT")"
+    capped_kept_local="$(cap_body_field "$kept_local_report" "$report_cap" \
+      "_Kept-local entries truncated (they alone exceeded the PR-body size limit). Every path in the kept-local list keeps its local copy, so diff each one against the template at \`${TEMPLATE_SHA}\` and port the change by hand._")"
+    kept_local_bytes=$(printf '%s' "$capped_kept_local" | wc -c)
+    capped_marked="$(cap_body_field "$marked_report" \
+      "$((report_cap > kept_local_bytes ? report_cap - kept_local_bytes : 0))" \
+      "_Conflict report truncated (the full report exceeded the PR-body size limit). Every entry cut from the end is a file carrying \`<<<<<<<\`/\`=======\`/\`>>>>>>>\` markers on the \`template-sync\` branch — resolve those from the markers._")"
+    if [[ -n "$capped_kept_local" && -n "$capped_marked" ]]; then
+      # A blank line ends the kept-local report's closing </details> HTML block.
+      capped_conflict_report="${capped_kept_local}"$'\n\n'"${capped_marked}"
+    else
+      capped_conflict_report="${capped_kept_local}${capped_marked}"
+    fi
     emit_multiline_output "conflict_report" "$capped_conflict_report"
   else
     echo "has_conflicts=false" >>"$GITHUB_OUTPUT"

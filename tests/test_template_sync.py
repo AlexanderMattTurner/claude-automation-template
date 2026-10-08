@@ -1122,3 +1122,50 @@ def test_a_markerless_entry_survives_the_report_cap(workdir: Path) -> None:
     # The entry's own heading and its diff line, not a phrase the cap note also carries.
     assert "### `.github/workflows/ci.yaml`" in report
     assert "+template-side" in report
+    # The marker-bearing section must start after a blank line, or the kept-local section's
+    # closing </details> swallows its first heading into the HTML block.
+    first_marked = report.index("### `config/")
+    assert report[first_marked - 2 : first_marked] == "\n\n"
+
+
+def test_kept_local_entries_take_the_report_cap_before_marked_ones(
+    workdir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kept-local entries that alone exceed the cap are cut with a note naming the template SHA
+    to diff against, and no marker-bearing entry survives in their place."""
+    monkeypatch.setenv("CONFLICT_REPORT_MAX_BYTES", "3000")
+    child = workdir / "child"
+    template = workdir / "template"
+    filler = "x" * 100
+    for n in range(4):
+        write(
+            child / ".github" / "workflows" / f"w{n}.yaml", f"local {n} {filler}\n" * 10
+        )
+        write(
+            template / ".github" / "workflows" / f"w{n}.yaml",
+            f"tmpl {n} {filler}\n" * 10,
+        )
+    write(child / "config" / "a.txt", "local a\n")
+    write(template / "config" / "a.txt", "template a\n")
+    commit_all(child)
+    commit_all(template)
+    template_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=template,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    result, output_file = run_sync(child, template, sync_paths="config .github")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    report = outputs["conflict_report"]
+    assert len(outputs["markerless_files"].split()) == 4
+    assert "Kept-local entries truncated" in report
+    assert template_sha in report
+    # The kept-local entries took the cap, so the template side of one is still here.
+    assert "+tmpl " in report
+    assert "### `config/a.txt`" not in report
+    assert len(report.encode()) <= 3000 + 600
