@@ -29,7 +29,7 @@
 # `if:` reads it), with no code change and nothing to re-sync from the template.
 #
 # Env: PR_NUMBER, GH_TOKEN, GH_REPO; HAS_CONFLICTS, HAS_DELETIONS,
-# HAS_DOWNGRADES, ALL_DETERMINISTIC, CHANGED_PATHS from the sync + resolve steps.
+# HAS_DOWNGRADES, ALL_DETERMINISTIC, CHANGED_PATHS, MARKERLESS_FILES from the sync + resolve steps.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,6 +50,11 @@ refuse() {
 if [[ "${HAS_CONFLICTS:-false}" == "true" && "${ALL_DETERMINISTIC:-}" != "true" ]]; then
   refuse "at least one conflict needed a model, or is still unresolved."
 fi
+
+# A kept-local conflict changed nothing on the branch, so CHANGED_PATHS never names it and the
+# resolver never sees it. Its template change still waits for a hand port the PR body asks for.
+[[ -z "${MARKERLESS_FILES:-}" ]] ||
+  refuse "a template change was kept out of a file CI loads; it needs a hand port."
 
 [[ "${HAS_DOWNGRADES:-false}" != "true" ]] ||
   refuse "the sync dropped lines this repo had locally (adopter-ahead)."

@@ -296,13 +296,15 @@ jobs:
       #
       # After create-pull-request the workspace is back on the base ref and the
       # markers live on the sync branch, so switch to it before resolving.
+      # Both steps need a marker-bearing file: a kept-local conflict emits no
+      # conflict_files, and template-sync-resolve.sh refuses an empty list.
       - name: Install mergiraf (pinned, digest-verified)
-        if: inputs.dry-run != true && steps.sync.outputs.has_conflicts == 'true' && steps.create-pr.outputs.pull-request-number
+        if: inputs.dry-run != true && steps.sync.outputs.conflict_files != '' && steps.create-pr.outputs.pull-request-number
         run: bash .github/scripts/install-mergiraf.sh
 
       - name: Resolve the sync conflicts
         id: resolve
-        if: inputs.dry-run != true && steps.sync.outputs.has_conflicts == 'true' && steps.create-pr.outputs.pull-request-number
+        if: inputs.dry-run != true && steps.sync.outputs.conflict_files != '' && steps.create-pr.outputs.pull-request-number
         env:
           CONFLICT_FILES: ${{ steps.sync.outputs.conflict_files }}
           PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
@@ -374,6 +376,7 @@ jobs:
           HAS_DOWNGRADES: ${{ steps.sync.outputs.has_downgrades }}
           ALL_DETERMINISTIC: ${{ steps.resolve.outputs.all_deterministic }}
           CHANGED_PATHS: ${{ steps.sync.outputs.changed_paths }}
+          MARKERLESS_FILES: ${{ steps.sync.outputs.markerless_files }}
         run: |
           set -o pipefail
           automerge_dir="${RUNNER_TEMP}/marker-gate-automerge"
