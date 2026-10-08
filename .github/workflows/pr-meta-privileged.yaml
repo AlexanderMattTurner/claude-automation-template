@@ -65,6 +65,7 @@ jobs:
           REPO: ${{ github.repository }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CLOSED_AT: ${{ github.event.pull_request.closed_at }}
         run: bash .github/scripts/cancel-pr-runs.sh
 
   # ── Merge-conflict labeler ─────────────────────────────────────────────────────────────────────────────────────────

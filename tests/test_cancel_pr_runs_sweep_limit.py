@@ -41,7 +41,7 @@ def run(
     runs.write_text(
         "["
         + ",".join(
-            f'{{"databaseId": {i}, "status": "completed", "headSha": "dead"}}'
+            f'{{"databaseId": {i}, "status": "completed", "headSha": "dead", "createdAt": "2026-01-01T00:00:00Z"}}'
             for i in range(1, run_count + 1)
         )
         + "]",
@@ -56,6 +56,7 @@ def run(
         "REPO": "o/r",
         "HEAD_REF": "feature",
         "HEAD_SHA": "beefdead",
+        "CLOSED_AT": "2026-01-02T00:00:00Z",
         "RUN_SWEEP_LIMIT": str(sweep_limit),
         "RUNS_JSON": str(runs),
         "CALL_LOG": str(call_log),
