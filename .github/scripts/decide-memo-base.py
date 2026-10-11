@@ -108,13 +108,11 @@ def verified_head(repository: str, run_id: int, anchor_jobs: re.Pattern[str]) ->
     """True when a job whose name matches `anchor_jobs` ran in this run and passed.
 
     PROBLEM CLASS — a run whose gate skipped every expensive job still
-    concludes success through its always() reporter, so `conclusion ==
-    "success"` at the RUN level cannot say the tree was verified. Reading the
-    JOB is what separates "this tree was tested" from "this tree inherited
-    someone else's green", and every reader of a run conclusion owes the
-    check. `ci-failure-notify.js` asks it in JavaScript, against the jobs an
-    issue records, because it reads every workflow in its own list and so
-    knows no anchor-job name.
+    concludes success through its always() reporter, so a RUN-level conclusion
+    cannot say the tree was verified. Every reader of one owes the job check:
+    `ci-failure-notify.js` asks it in JavaScript, against the jobs an issue
+    records, because it reads every workflow in its own list and so knows no
+    anchor-job name.
     """
     # A failed fetch reads as "not verified", which keeps today's base — the same
     # direction every other doubt in this module takes.

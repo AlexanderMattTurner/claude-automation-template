@@ -191,11 +191,10 @@ module.exports = async ({ github, context }) => {
       );
       return;
     }
-    // The run's own conclusion cannot stand in for this: a path-gated workflow
-    // concludes `success` through its always() reporter when the decide gate
-    // skipped the work job. Closing on that is a vacuous green, so each job the
-    // issue waits on has to pass in this run. `verified_head` in
-    // decide-memo-base.py answers the same question for the memo base.
+    // A path-gated workflow concludes `success` through its always() reporter
+    // when its decide gate skipped the work job, so the run's own conclusion
+    // cannot say the tree was verified. `verified_head` in decide-memo-base.py
+    // answers the same question for the memo base.
     const jobs = await runJobs(github, context, run.id);
     const waiting = mergeJobs(record.jobs, jobs);
 

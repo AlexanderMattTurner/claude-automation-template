@@ -501,6 +501,32 @@ describe("ci-failure-notify", () => {
     assert.equal(github.calls.update.length, 0);
   });
 
+  // Every member of the script's failing-run set must file an issue. Exercising
+  // `failure` alone would let a dropped member through: the script would then
+  // throw inside github-script, and no workflow watches the notifier itself.
+  for (const conclusion of [
+    "action_required",
+    "failure",
+    "startup_failure",
+    "timed_out",
+  ]) {
+    it(`files an issue for a ${conclusion} run`, async () => {
+      const github = fakeGithub({
+        existingIssues: [],
+        runJobs: [{ name: "lint", conclusion: "failure" }],
+      });
+      const context = workflowRunContext({ conclusion });
+
+      await notify({ github, context });
+
+      assert.equal(github.calls.create.length, 1);
+      assert.match(
+        github.calls.create[0].body,
+        new RegExp(`\\*\\*Conclusion:\\*\\* ${conclusion}$`, "m"),
+      );
+    });
+  }
+
   it("closes a startup failure once the workflow runs and passes", async () => {
     // A run that fails before any job starts reports no failing job, so the
     // claim is only "this run could not start". A later run that started and
