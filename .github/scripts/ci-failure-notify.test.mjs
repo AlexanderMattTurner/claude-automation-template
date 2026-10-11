@@ -1,9 +1,9 @@
 // Behavior tests for the CI-failure tracking-issue filer: does a failed
 // post-merge/scheduled workflow_run produce (or update) the right tracking
-// issue, and does a later green run close it? Drives the real module (no
-// re-implementation) and asserts the observable calls made against a fake
-// Octokit-shaped `github` client — the real dependency is the GitHub API,
-// which no test can reach.
+// issue, and does a later run that passes the jobs it recorded close it?
+// Drives the real module (no re-implementation) and asserts the observable
+// calls made against a fake Octokit-shaped `github` client — the real
+// dependency is the GitHub API, which no test can reach.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -12,17 +12,19 @@ const require = createRequire(import.meta.url);
 const notify = require("./ci-failure-notify.js");
 
 const REPO = { owner: "owner", repo: "downstream-repo" };
+const FILED_AT = "2026-01-01T00:00:00Z";
+const LATER = "2026-01-02T00:00:00Z";
 
-/** A run whose every job ran and passed — what licenses closing an issue. */
-const VERIFIED_JOBS = [
-  { name: "lint", conclusion: "success" },
-  { name: "lint-passed", conclusion: "success" },
-];
+/** An open tracking issue, as `issues.listForRepo` returns one. */
+function openIssue({ number = 42, title = "CI failure: CI", body = "" } = {}) {
+  return { number, title, body, updated_at: FILED_AT, pull_request: undefined };
+}
 
 /** Build a fake Octokit-shaped `github` client that records every call. */
 function fakeGithub({
   createLabelError,
   existingIssues = [],
+  issueComments = [],
   runJobs = [],
 } = {}) {
   const calls = {
@@ -52,16 +54,20 @@ function fakeGithub({
         async update(params) {
           calls.update.push(params);
         },
-        // Referenced only as a paginate() argument; the fake paginate below
-        // dispatches on which lister it was handed.
+        // These two are referenced only as paginate() arguments; the fake
+        // paginate below dispatches on which lister it was handed.
         listForRepo() {},
+        listComments() {},
       },
       actions: { listJobsForWorkflowRun() {} },
     },
     async paginate(lister, params) {
       calls.paginate.push(params);
-      return lister === github.rest.actions.listJobsForWorkflowRun
-        ? runJobs
+      if (lister === github.rest.actions.listJobsForWorkflowRun) {
+        return runJobs;
+      }
+      return lister === github.rest.issues.listComments
+        ? issueComments
         : existingIssues;
     },
   };
@@ -80,6 +86,7 @@ function workflowRunContext(overrides = {}) {
         head_sha: "deadbeef",
         event: "push",
         head_branch: "main",
+        run_started_at: LATER,
         ...overrides,
       },
     },
@@ -87,8 +94,15 @@ function workflowRunContext(overrides = {}) {
 }
 
 describe("ci-failure-notify", () => {
-  it("creates a new labeled issue when no matching open issue exists", async () => {
-    const github = fakeGithub({ existingIssues: [] });
+  it("creates a new labeled issue naming the jobs that failed", async () => {
+    const github = fakeGithub({
+      existingIssues: [],
+      runJobs: [
+        { name: "decide", conclusion: "success" },
+        { name: "lint", conclusion: "failure" },
+        { name: "docs", conclusion: "skipped" },
+      ],
+    });
     const context = workflowRunContext();
 
     await notify({ github, context });
@@ -110,6 +124,9 @@ describe("ci-failure-notify", () => {
     assert.match(created.body, /deadbeef/);
     assert.match(created.body, /push/);
     assert.match(created.body, /main/);
+    // Only the job that failed is recorded: a skipped job may be skipped by
+    // design on every run, and demanding it pass would never close the issue.
+    assert.match(created.body, /\*\*Jobs that failed:\*\* `lint`$/m);
   });
 
   it("swallows an 'already_exists' 422 from createLabel and proceeds", async () => {
@@ -159,9 +176,8 @@ describe("ci-failure-notify", () => {
 
   it("comments on an existing open matching issue instead of creating one", async () => {
     const github = fakeGithub({
-      existingIssues: [
-        { number: 42, title: "CI failure: CI", pull_request: undefined },
-      ],
+      existingIssues: [openIssue()],
+      runJobs: [{ name: "lint", conclusion: "failure" }],
     });
     const context = workflowRunContext();
 
@@ -177,7 +193,7 @@ describe("ci-failure-notify", () => {
     assert.equal(comment.repo, REPO.repo);
     assert.match(comment.body, /Failed again/);
     assert.match(comment.body, /deadbeef/);
-    assert.match(comment.body, /failure/);
+    assert.match(comment.body, /\*\*Jobs that failed:\*\* `lint`$/m);
 
     // The label filter and the open-state filter are what make this issue the
     // bot's own tracker rather than any same-titled issue in the repo.
@@ -208,18 +224,22 @@ describe("ci-failure-notify", () => {
     assert.equal(github.calls.create[0].title, "CI failure: CI");
   });
 
-  it("closes the matching open issue when the workflow goes green", async () => {
+  it("closes the issue when every recorded job passes, past a by-design skip", async () => {
     const github = fakeGithub({
-      existingIssues: [
-        { number: 42, title: "CI failure: CI", pull_request: undefined },
+      existingIssues: [openIssue({ body: "**Jobs that failed:** `label`\n" })],
+      // The shape of a healthy `PR meta (privileged)` or `Sync from Template`
+      // run: the job that failed passes, and a second job is skipped on every
+      // run this notifier sees.
+      runJobs: [
+        { name: "label", conclusion: "success" },
+        { name: "cancel", conclusion: "skipped" },
       ],
-      runJobs: VERIFIED_JOBS,
     });
     const context = workflowRunContext({ conclusion: "success" });
 
     await notify({ github, context });
 
-    assert.deepEqual(github.calls.paginate[1], {
+    assert.deepEqual(github.calls.paginate[2], {
       ...REPO,
       run_id: 12345,
       per_page: 100,
@@ -237,14 +257,15 @@ describe("ci-failure-notify", () => {
     assert.equal(github.calls.createComment.length, 1);
     const comment = github.calls.createComment[0];
     assert.equal(comment.issue_number, 42);
-    assert.match(comment.body, /Green again/);
-    assert.match(comment.body, /deadbeef/);
+    assert.match(comment.body, /Green again — label passed/);
   });
 
-  it("leaves the issue open when the green run skipped a job", async () => {
+  it("leaves the issue open when a recorded job was skipped in the green run", async () => {
     const github = fakeGithub({
       existingIssues: [
-        { number: 42, title: "CI failure: CI", pull_request: undefined },
+        openIssue({
+          body: "**Jobs that failed:** `hook-lifecycle`, `hook-lifecycle-passed`\n",
+        }),
       ],
       // The shape a path-gated workflow produces on an unrelated push: the
       // decide gate and the always() reporter pass, the work job never runs,
@@ -264,12 +285,30 @@ describe("ci-failure-notify", () => {
     assert.equal(github.calls.create.length, 0);
   });
 
-  it("leaves the issue open when the green run reports no jobs", async () => {
+  it("takes the newest recorded job list, not the issue body's", async () => {
     const github = fakeGithub({
       existingIssues: [
-        { number: 42, title: "CI failure: CI", pull_request: undefined },
+        openIssue({ body: "**Jobs that failed:** `old-job`\n" }),
       ],
-      runJobs: [],
+      issueComments: [
+        { body: "Failed again.\n**Jobs that failed:** `new-job`\n" },
+      ],
+      runJobs: [{ name: "new-job", conclusion: "success" }],
+    });
+    const context = workflowRunContext({ conclusion: "success" });
+
+    await notify({ github, context });
+
+    assert.equal(github.calls.update.length, 1);
+    assert.match(github.calls.createComment[0].body, /new-job passed/);
+  });
+
+  it("leaves the issue open when it records no failing job", async () => {
+    const github = fakeGithub({
+      existingIssues: [
+        openIssue({ body: "**Jobs that failed:** none reported\n" }),
+      ],
+      runJobs: [{ name: "lint", conclusion: "success" }],
     });
     const context = workflowRunContext({ conclusion: "success" });
 
@@ -279,12 +318,30 @@ describe("ci-failure-notify", () => {
     assert.equal(github.calls.createComment.length, 0);
   });
 
+  it("leaves the issue open when the green run predates its last notice", async () => {
+    const github = fakeGithub({
+      existingIssues: [openIssue({ body: "**Jobs that failed:** `lint`\n" })],
+      runJobs: [{ name: "lint", conclusion: "success" }],
+    });
+    const context = workflowRunContext({
+      conclusion: "success",
+      run_started_at: "2025-12-31T00:00:00Z",
+    });
+
+    await notify({ github, context });
+
+    assert.equal(github.calls.update.length, 0);
+    assert.equal(github.calls.createComment.length, 0);
+    // The refusal costs no job or comment call: only the issue lookup ran.
+    assert.equal(github.calls.paginate.length, 1);
+  });
+
   it("leaves another workflow's issue open when this one goes green", async () => {
     const github = fakeGithub({
       existingIssues: [
-        { number: 42, title: "CI failure: Lint", pull_request: undefined },
+        openIssue({ number: 42, title: "CI failure: Lint", body: "" }),
       ],
-      runJobs: VERIFIED_JOBS,
+      runJobs: [{ name: "lint", conclusion: "success" }],
     });
     const context = workflowRunContext({ conclusion: "success" });
 
@@ -297,7 +354,7 @@ describe("ci-failure-notify", () => {
   });
 
   it("files nothing when a green run finds no open issue", async () => {
-    const github = fakeGithub({ existingIssues: [], runJobs: VERIFIED_JOBS });
+    const github = fakeGithub({ existingIssues: [] });
     const context = workflowRunContext({ conclusion: "success" });
 
     await notify({ github, context });
@@ -305,7 +362,7 @@ describe("ci-failure-notify", () => {
     assert.equal(github.calls.create.length, 0);
     assert.equal(github.calls.update.length, 0);
     assert.equal(github.calls.createComment.length, 0);
-    // No issue to clear, so the run's jobs are never fetched.
+    // No issue to clear, so neither the comments nor the jobs are fetched.
     assert.equal(github.calls.paginate.length, 1);
   });
 

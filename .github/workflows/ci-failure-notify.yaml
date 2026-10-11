@@ -4,8 +4,9 @@ name: CI failure notify
 # so they rot unnoticed — releases have silently stopped for weeks downstream.
 # This workflow converts such a failure into an open issue (label: ci-failure),
 # deduplicated per workflow name: repeat failures comment on the existing issue.
-# The same workflow's next success on the default branch closes that issue, so
-# an open one means the failure is still live.
+# The issue records which jobs failed, and a later run of the same workflow on
+# the default branch that passes each of them closes it — so an open issue
+# means the failure is still live.
 #
 # `workflow_run` has no wildcard, so `workflows:` below must name every
 # workflow in this repo with a `push:` or `schedule:` trigger (matched by the
@@ -58,7 +59,8 @@ jobs:
     name: File, update, or close ci-failure issue
     # PR-triggered failures are already visible on the PR; only failures of
     # push/schedule runs on the default branch go unnoticed. `success` reaches
-    # the script too, to close the issue a past failure opened.
+    # the script too, to close the issue a past failure opened once the jobs
+    # that failed pass.
     if: >-
       contains(fromJSON('["action_required", "failure", "startup_failure", "timed_out", "success"]'), github.event.workflow_run.conclusion) &&
       (github.event.workflow_run.event == 'push' ||
@@ -67,6 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      # A job-level block replaces the workflow-level one rather than merging
+      # with it, so `contents: read` is restated here for the checkout below —
+      # it is needed in a private fork.
+      contents: read
       issues: write
       # Reading the triggering run's jobs is what tells a verified green from a
       # run that concluded success with its work job skipped.

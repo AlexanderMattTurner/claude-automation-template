@@ -3,21 +3,77 @@
 
 const LABEL = "ci-failure";
 
-// The conclusions this script reports as a failure. Anything else but
-// `success` is a word it does not model, and it refuses rather than filing an
-// issue whose body contradicts its title.
-const FAILED = new Set([
+// The run conclusions this script reports as a failure. Anything but these and
+// `success` is a word it does not model.
+const FAILED_RUN = new Set([
   "action_required",
   "failure",
   "startup_failure",
   "timed_out",
 ]);
 
+// The job conclusions that make a job one the issue is about. `skipped` is not
+// among them: a workflow can skip a job by design on every run this notifier
+// sees, and demanding that job pass would keep the issue open forever.
+const FAILED_JOB = new Set([
+  "action_required",
+  "cancelled",
+  "failure",
+  "timed_out",
+]);
+
+// Carries the failing job names from the failure that files the issue to the
+// success that closes it. A repeat failure writes its own line, and the last
+// line in the thread is the live set.
+const JOBS_LINE = "**Jobs that failed:**";
+
+/** Every job of a run, latest attempt, as `{name, conclusion}` records. */
+async function runJobs(github, context, runId) {
+  return github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+    ...context.repo,
+    run_id: runId,
+    per_page: 100,
+  });
+}
+
+/** The job names a `JOBS_LINE` carries; empty when the text has no such line. */
+function parseJobsLine(text) {
+  const line = (text || "")
+    .split("\n")
+    .find((candidate) => candidate.startsWith(JOBS_LINE));
+  return line
+    ? [...line.matchAll(/`(?<job>[^`]+)`/g)].map((match) => match.groups.job)
+    : [];
+}
+
+/**
+ * The failing job names last recorded on the issue, or null when none is.
+ *
+ * An issue filed before this script recorded them, or by a run that reported
+ * no failing job, yields null — there is then nothing a green run could prove,
+ * so the issue waits for a human.
+ */
+async function recordedJobs(github, context, issue) {
+  const comments = await github.paginate(github.rest.issues.listComments, {
+    ...context.repo,
+    issue_number: issue.number,
+    per_page: 100,
+  });
+  let recorded = null;
+  for (const text of [issue.body, ...comments.map((comment) => comment.body)]) {
+    const found = parseJobsLine(text);
+    if (found.length > 0) {
+      recorded = found;
+    }
+  }
+  return recorded;
+}
+
 /**
  * File, update, or close the tracking issue for a post-merge or scheduled
  * workflow run. One open issue per workflow name: a repeat failure adds a
- * comment instead of a new issue, and the workflow's next verified success on
- * the default branch closes it.
+ * comment instead of a new issue, and a later run that passes every job the
+ * issue records closes it.
  *
  * Called by the ci-failure-notify workflow via actions/github-script.
  *
@@ -32,10 +88,9 @@ module.exports = async ({ github, context }) => {
       "No workflow_run payload on this event — expected a workflow_run event.",
     );
   }
-  if (run.conclusion !== "success" && !FAILED.has(run.conclusion)) {
+  if (run.conclusion !== "success" && !FAILED_RUN.has(run.conclusion)) {
     throw new Error(
-      `Unmodeled workflow_run conclusion "${run.conclusion}" for ${run.name} — ` +
-        "the workflow's own `if:` decides which conclusions reach this script.",
+      `Unmodeled workflow_run conclusion "${run.conclusion}" for ${run.name}.`,
     );
   }
   const title = `CI failure: ${run.name}`;
@@ -63,29 +118,43 @@ module.exports = async ({ github, context }) => {
       console.log(`No open ${LABEL} issue for ${run.name}`);
       return;
     }
-    // A path-gated workflow concludes `success` through its always() reporter
-    // when its decide gate skipped the work job, so the run's own conclusion
-    // cannot say the tree was verified — closing on one is a vacuous green.
-    // Require every job of the run to have run and passed. `verified_head` in
-    // decide-memo-base.py answers the same question for the memo base, by job
-    // name, because it knows which workflow it is reading.
-    const jobs = await github.paginate(
-      github.rest.actions.listJobsForWorkflowRun,
-      { ...context.repo, run_id: run.id, per_page: 100 },
-    );
-    const skipped = jobs.filter((job) => job.conclusion !== "success");
-    if (jobs.length === 0 || skipped.length > 0) {
+    // A run that started before the issue's last notice tested an older tree,
+    // so its green says nothing about the failure that notice describes. The
+    // next green run closes the issue instead.
+    if (new Date(run.run_started_at) < new Date(existing.updated_at)) {
       console.log(
-        `Run ${run.id} concluded success without running ` +
-          `${skipped.map((job) => job.name).join(", ") || "any job"}; ` +
-          `leaving issue #${existing.number} open`,
+        `Run ${run.id} started before issue #${existing.number} was last updated; leaving it open`,
+      );
+      return;
+    }
+    const recorded = await recordedJobs(github, context, existing);
+    if (!recorded) {
+      console.log(
+        `Issue #${existing.number} records no failing job; leaving it open`,
+      );
+      return;
+    }
+    // The run's own conclusion cannot stand in for this: a path-gated workflow
+    // concludes `success` through its always() reporter when the decide gate
+    // skipped the work job. Closing on that is a vacuous green, so each job the
+    // issue is about has to pass in this run. `verified_head` in
+    // decide-memo-base.py answers the same question for the memo base.
+    const passed = new Set(
+      (await runJobs(github, context, run.id))
+        .filter((job) => job.conclusion === "success")
+        .map((job) => job.name),
+    );
+    const outstanding = recorded.filter((name) => !passed.has(name));
+    if (outstanding.length > 0) {
+      console.log(
+        `Run ${run.id} did not pass ${outstanding.join(", ")}; leaving issue #${existing.number} open`,
       );
       return;
     }
     await github.rest.issues.createComment({
       ...context.repo,
       issue_number: existing.number,
-      body: `Green again.\n\n${runLine}`,
+      body: `Green again — ${recorded.join(", ")} passed.\n\n${runLine}`,
     });
     await github.rest.issues.update({
       ...context.repo,
@@ -97,11 +166,18 @@ module.exports = async ({ github, context }) => {
     return;
   }
 
+  const failing = (await runJobs(github, context, run.id))
+    .filter((job) => FAILED_JOB.has(job.conclusion))
+    .map((job) => job.name);
+  const jobsLine = `${JOBS_LINE} ${
+    failing.map((name) => `\`${name}\``).join(", ") || "none reported"
+  }`;
+
   if (existing) {
     await github.rest.issues.createComment({
       ...context.repo,
       issue_number: existing.number,
-      body: `Failed again.\n\n${runLine}`,
+      body: `Failed again.\n\n${runLine}\n${jobsLine}`,
     });
     console.log(`Commented on existing issue #${existing.number}`);
     return;
@@ -132,12 +208,14 @@ module.exports = async ({ github, context }) => {
     `The **${run.name}** workflow failed on \`${run.head_branch}\`.`,
     "",
     runLine,
+    jobsLine,
     "",
     "This issue is filed automatically for post-merge (`push`) and " +
       "`schedule` runs only — failures on those runs have no PR to surface " +
-      "them, so without this notification they rot unnoticed. The next " +
-      `success of **${run.name}** on \`${run.head_branch}\` closes this ` +
-      "issue; further failures while it stays open are added as comments.",
+      "them, so without this notification they rot unnoticed. A later run of " +
+      `**${run.name}** on \`${run.head_branch}\` that passes every job above ` +
+      "closes this issue; further failures while it stays open are added as " +
+      "comments.",
   ].join("\n");
 
   const created = await github.rest.issues.create({
