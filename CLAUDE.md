@@ -127,7 +127,7 @@ Structure work so the user can verify it instead of trusting it. Legibility bene
 
 ### Which model and effort a subagent gets
 
-**Pass `model` when spawning the `general-purpose` type** — an omitted `model` there inherits the session's, so a fleet of Opus agents on mechanical work is the largest avoidable spend in a session. A named `subagent_type` pins its own model in `.claude/agents/*.md` (`code-reviewer` pins `opus`); pass `model` on that call only to override the pin deliberately. The `Agent` tool has no per-call effort knob; `Workflow`'s `agent()` takes both `model` and `effort` per call.
+**Pass `model` when spawning the `general-purpose` type, and on every `create_session` child session** — an omitted `model` on either inherits the session's, so a fleet of Opus agents on mechanical work is the largest avoidable spend in a session. A named `subagent_type` pins its own model in `.claude/agents/*.md` (`code-reviewer` pins `opus`); pass `model` on that call only to override the pin deliberately. The `Agent` tool has no per-call effort knob; `Workflow`'s `agent()` takes both `model` and `effort` per call.
 
 - **Sonnet, medium** — mechanical work whose answer you already stated: a rename across call sites, a lint fix, a read-only file inventory. Drop to low only when the edit is fully specified.
 - **Sonnet, high** — single-file judgement with no design to settle: a merge-conflict resolution, a diagnosis with a named suspect, one failing test.
