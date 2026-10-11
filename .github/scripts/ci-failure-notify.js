@@ -50,13 +50,15 @@ function readRecord(body) {
   return JSON.parse(line.slice(MARKER.length, line.lastIndexOf(MARKER_END)));
 }
 
-/** A timestamp in milliseconds. Throws, because NaN loses every comparison. */
-function parseStamp(value, label) {
-  const stamp = Date.parse(value);
-  if (Number.isNaN(stamp)) {
-    throw new Error(`Unreadable ${label} "${value}".`);
+/** The id of the failing run a record names. Throws on anything but an id. */
+function recordedRunId(record) {
+  const id = record.run?.id;
+  // A missing id would compare as NaN and lose every comparison, turning the
+  // staleness guard below into a silent pass.
+  if (!Number.isInteger(id)) {
+    throw new Error(`Unreadable recorded run id ${JSON.stringify(id)}.`);
   }
-  return stamp;
+  return id;
 }
 
 /**
@@ -115,7 +117,7 @@ function renderBody({ run, record, absent }) {
       "`schedule` runs only. A failure on one of those has no PR to surface " +
       "it, so without this notice it rots unnoticed. A later run of " +
       `**${run.name}** on \`${run.head_branch}\` closes this issue when it ` +
-      "starts after the newest failure and passes every job listed above. A " +
+      "is newer than the failure above and passes every job listed above. A " +
       "repeat failure adds a comment and updates that list.",
   ].join("\n");
 }
@@ -144,7 +146,6 @@ module.exports = async ({ github, context }) => {
       `Unmodeled workflow_run conclusion "${run.conclusion}" for ${run.name}.`,
     );
   }
-  const startedAt = parseStamp(run.run_started_at, "run_started_at");
   const title = `CI failure: ${run.name}`;
 
   const runLine = [
@@ -166,11 +167,15 @@ module.exports = async ({ github, context }) => {
   );
   const record = existing ? readRecord(existing.body) : null;
 
-  // A run that started before the newest failure the issue records tested an
-  // older tree, so neither its passes nor its failures speak to that failure.
-  if (record && startedAt < parseStamp(record.since, "recorded failure time")) {
+  // A run created before the newest failure the issue records tested an older
+  // tree, so neither its passes nor its failures speak to that failure. The
+  // anchor is the run id, not a start time: an id is fixed when the run is
+  // created, so re-running a superseded run cannot make it look newer. The
+  // recorded run's own id passes, which is how a "Re-run failed jobs" that
+  // goes green closes the issue.
+  if (record && run.id < recordedRunId(record)) {
     console.log(
-      `Run ${run.id} started before the newest failure on issue #${existing.number}; leaving it as it is`,
+      `Run ${run.id} predates the newest failure on issue #${existing.number}; leaving it as it is`,
     );
     return;
   }
@@ -238,8 +243,8 @@ module.exports = async ({ github, context }) => {
   const jobs = await runJobs(github, context, run.id);
   const next = {
     jobs: mergeJobs(record ? record.jobs : [], jobs),
-    since: run.run_started_at,
     run: {
+      id: run.id,
       url: run.html_url,
       conclusion: run.conclusion,
       sha: run.head_sha,

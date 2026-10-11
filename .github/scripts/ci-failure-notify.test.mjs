@@ -12,10 +12,10 @@ const require = createRequire(import.meta.url);
 const notify = require("./ci-failure-notify.js");
 
 const REPO = { owner: "owner", repo: "downstream-repo" };
-const FILED_AT = "2026-01-01T00:00:00Z";
-const LATER = "2026-01-02T00:00:00Z";
+const RUN_ID = 12345;
 const MARKER = "<!-- ci-failure-notify:";
 const RUN_FACTS = {
+  id: RUN_ID,
   url: "https://github.com/owner/downstream-repo/actions/runs/1",
   conclusion: "failure",
   sha: "deadbeef",
@@ -28,8 +28,8 @@ function openIssue({ number = 42, title = "CI failure: CI", body = "" } = {}) {
 }
 
 /** An issue body carrying the record the script reads its waiting list from. */
-function recordedBody(jobs, since = FILED_AT) {
-  const record = { jobs, since, run: RUN_FACTS };
+function recordedBody(jobs, run = RUN_FACTS) {
+  const record = { jobs, run };
   return [
     "The **CI** workflow failed on `main`.",
     "",
@@ -99,14 +99,13 @@ function workflowRunContext(overrides = {}) {
     repo: REPO,
     payload: {
       workflow_run: {
-        id: 12345,
+        id: RUN_ID,
         name: "CI",
         html_url: RUN_FACTS.url,
         conclusion: "failure",
         head_sha: "deadbeef",
         event: "push",
         head_branch: "main",
-        run_started_at: LATER,
         ...overrides,
       },
     },
@@ -142,7 +141,6 @@ describe("ci-failure-notify", () => {
     // design on every run, and demanding it pass would never close the issue.
     assert.deepEqual(recordIn(created.body), {
       jobs: ["lint"],
-      since: LATER,
       run: RUN_FACTS,
     });
     assert.match(
@@ -257,7 +255,13 @@ describe("ci-failure-notify", () => {
 
   it("closes the issue when every job it waits on passes, past a by-design skip", async () => {
     const github = fakeGithub({
-      existingIssues: [openIssue({ body: recordedBody(["label"]) })],
+      // Recorded by an earlier run than this one, which is the ordinary case:
+      // a later run of the same workflow clears the issue.
+      existingIssues: [
+        openIssue({
+          body: recordedBody(["label"], { ...RUN_FACTS, id: RUN_ID - 1 }),
+        }),
+      ],
       // The shape of a healthy `PR meta (privileged)` or `Sync from Template`
       // run: the job that failed passes, and a second job is skipped on every
       // run this notifier sees.
@@ -272,7 +276,7 @@ describe("ci-failure-notify", () => {
 
     assert.deepEqual(github.calls.paginate[1], {
       ...REPO,
-      run_id: 12345,
+      run_id: RUN_ID,
       per_page: 100,
     });
     assert.equal(github.calls.create.length, 0);
@@ -444,13 +448,14 @@ describe("ci-failure-notify", () => {
 
   it("leaves the issue open when the green run predates the newest failure", async () => {
     const github = fakeGithub({
-      existingIssues: [openIssue({ body: recordedBody(["lint"], LATER) })],
+      existingIssues: [
+        openIssue({
+          body: recordedBody(["lint"], { ...RUN_FACTS, id: RUN_ID + 1 }),
+        }),
+      ],
       runJobs: [{ name: "lint", conclusion: "success" }],
     });
-    const context = workflowRunContext({
-      conclusion: "success",
-      run_started_at: FILED_AT,
-    });
+    const context = workflowRunContext({ conclusion: "success" });
 
     await notify({ github, context });
 
@@ -460,30 +465,40 @@ describe("ci-failure-notify", () => {
     assert.equal(github.calls.paginate.length, 1);
   });
 
-  it("refuses a recorded failure time it cannot read", async () => {
+  it("closes the issue when the recorded run itself is re-run and passes", async () => {
+    // "Re-run failed jobs" keeps the run id, so the guard above must let the
+    // recorded run's own later attempt through.
     const github = fakeGithub({
-      existingIssues: [openIssue({ body: recordedBody(["lint"], "whenever") })],
+      existingIssues: [openIssue({ body: recordedBody(["lint"]) })],
+      runJobs: [{ name: "lint", conclusion: "success" }],
+    });
+    const context = workflowRunContext({ conclusion: "success" });
+
+    await notify({ github, context });
+
+    assert.equal(github.calls.update[0].state, "closed");
+    assert.match(
+      github.calls.createComment[0].body,
+      /Green again — lint passed/,
+    );
+  });
+
+  it("refuses a recorded run id it cannot read", async () => {
+    const github = fakeGithub({
+      existingIssues: [
+        openIssue({
+          body: recordedBody(["lint"], { ...RUN_FACTS, id: "latest" }),
+        }),
+      ],
       runJobs: [{ name: "lint", conclusion: "success" }],
     });
     const context = workflowRunContext({ conclusion: "success" });
 
     await assert.rejects(
       () => notify({ github, context }),
-      /Unreadable recorded failure time "whenever"/,
+      /Unreadable recorded run id "latest"/,
     );
     assert.equal(github.calls.update.length, 0);
-  });
-
-  it("refuses a run with no start time", async () => {
-    const github = fakeGithub({ existingIssues: [] });
-    const context = workflowRunContext({ run_started_at: undefined });
-
-    await assert.rejects(
-      () => notify({ github, context }),
-      /Unreadable run_started_at/,
-    );
-    assert.equal(github.calls.create.length, 0);
-    assert.equal(github.calls.paginate.length, 0);
   });
 
   it("closes a startup failure once the workflow runs and passes", async () => {
