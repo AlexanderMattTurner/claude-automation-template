@@ -58,9 +58,7 @@ jobs:
     name: File, update, or close ci-failure issue
     # PR-triggered failures are already visible on the PR; only failures of
     # push/schedule runs on the default branch go unnoticed. `success` reaches
-    # the script to close the issue a past failure opened. Skipped and
-    # cancelled runs reach neither leg: they post no verdict, so they neither
-    # report a failure nor clear one.
+    # the script too, to close the issue a past failure opened.
     if: >-
       contains(fromJSON('["action_required", "failure", "startup_failure", "timed_out", "success"]'), github.event.workflow_run.conclusion) &&
       (github.event.workflow_run.event == 'push' ||
@@ -70,6 +68,9 @@ jobs:
     timeout-minutes: 5
     permissions:
       issues: write
+      # Reading the triggering run's jobs is what tells a verified green from a
+      # run that concluded success with its work job skipped.
+      actions: read
     steps:
       # workflow_run workflows always execute from the default branch, so a
       # plain checkout fetches exactly the code that was vetted on main.

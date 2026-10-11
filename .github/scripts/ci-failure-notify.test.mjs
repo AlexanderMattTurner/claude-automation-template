@@ -13,15 +13,26 @@ const notify = require("./ci-failure-notify.js");
 
 const REPO = { owner: "owner", repo: "downstream-repo" };
 
+/** A run whose every job ran and passed — what licenses closing an issue. */
+const VERIFIED_JOBS = [
+  { name: "lint", conclusion: "success" },
+  { name: "lint-passed", conclusion: "success" },
+];
+
 /** Build a fake Octokit-shaped `github` client that records every call. */
-function fakeGithub({ createLabelError, existingIssues = [] } = {}) {
+function fakeGithub({
+  createLabelError,
+  existingIssues = [],
+  runJobs = [],
+} = {}) {
   const calls = {
     createLabel: [],
     createComment: [],
     create: [],
     update: [],
+    paginate: [],
   };
-  return {
+  const github = {
     calls,
     rest: {
       issues: {
@@ -41,17 +52,20 @@ function fakeGithub({ createLabelError, existingIssues = [] } = {}) {
         async update(params) {
           calls.update.push(params);
         },
-        // Referenced only as a paginate() argument in the real module; the
-        // fake paginate below ignores it and resolves existingIssues directly.
+        // Referenced only as a paginate() argument; the fake paginate below
+        // dispatches on which lister it was handed.
         listForRepo() {},
       },
+      actions: { listJobsForWorkflowRun() {} },
     },
-    // Takes no parameters because it uses neither: the real paginate receives
-    // the lister and its params, and JS drops arguments a function ignores.
-    async paginate() {
-      return existingIssues;
+    async paginate(lister, params) {
+      calls.paginate.push(params);
+      return lister === github.rest.actions.listJobsForWorkflowRun
+        ? runJobs
+        : existingIssues;
     },
   };
+  return github;
 }
 
 function workflowRunContext(overrides = {}) {
@@ -59,6 +73,7 @@ function workflowRunContext(overrides = {}) {
     repo: REPO,
     payload: {
       workflow_run: {
+        id: 12345,
         name: "CI",
         html_url: "https://github.com/owner/downstream-repo/actions/runs/1",
         conclusion: "failure",
@@ -153,6 +168,7 @@ describe("ci-failure-notify", () => {
     await notify({ github, context });
 
     assert.equal(github.calls.create.length, 0);
+    assert.equal(github.calls.update.length, 0);
     assert.equal(github.calls.createComment.length, 1);
 
     const comment = github.calls.createComment[0];
@@ -162,6 +178,15 @@ describe("ci-failure-notify", () => {
     assert.match(comment.body, /Failed again/);
     assert.match(comment.body, /deadbeef/);
     assert.match(comment.body, /failure/);
+
+    // The label filter and the open-state filter are what make this issue the
+    // bot's own tracker rather than any same-titled issue in the repo.
+    assert.deepEqual(github.calls.paginate[0], {
+      ...REPO,
+      state: "open",
+      labels: "ci-failure",
+      per_page: 100,
+    });
   });
 
   it("does not treat a same-titled pull request as a matching issue", async () => {
@@ -188,11 +213,17 @@ describe("ci-failure-notify", () => {
       existingIssues: [
         { number: 42, title: "CI failure: CI", pull_request: undefined },
       ],
+      runJobs: VERIFIED_JOBS,
     });
     const context = workflowRunContext({ conclusion: "success" });
 
     await notify({ github, context });
 
+    assert.deepEqual(github.calls.paginate[1], {
+      ...REPO,
+      run_id: 12345,
+      per_page: 100,
+    });
     assert.equal(github.calls.create.length, 0);
     assert.equal(github.calls.update.length, 1);
 
@@ -210,11 +241,50 @@ describe("ci-failure-notify", () => {
     assert.match(comment.body, /deadbeef/);
   });
 
+  it("leaves the issue open when the green run skipped a job", async () => {
+    const github = fakeGithub({
+      existingIssues: [
+        { number: 42, title: "CI failure: CI", pull_request: undefined },
+      ],
+      // The shape a path-gated workflow produces on an unrelated push: the
+      // decide gate and the always() reporter pass, the work job never runs,
+      // and the run still concludes `success`.
+      runJobs: [
+        { name: "decide", conclusion: "success" },
+        { name: "hook-lifecycle", conclusion: "skipped" },
+        { name: "hook-lifecycle-passed", conclusion: "success" },
+      ],
+    });
+    const context = workflowRunContext({ conclusion: "success" });
+
+    await notify({ github, context });
+
+    assert.equal(github.calls.update.length, 0);
+    assert.equal(github.calls.createComment.length, 0);
+    assert.equal(github.calls.create.length, 0);
+  });
+
+  it("leaves the issue open when the green run reports no jobs", async () => {
+    const github = fakeGithub({
+      existingIssues: [
+        { number: 42, title: "CI failure: CI", pull_request: undefined },
+      ],
+      runJobs: [],
+    });
+    const context = workflowRunContext({ conclusion: "success" });
+
+    await notify({ github, context });
+
+    assert.equal(github.calls.update.length, 0);
+    assert.equal(github.calls.createComment.length, 0);
+  });
+
   it("leaves another workflow's issue open when this one goes green", async () => {
     const github = fakeGithub({
       existingIssues: [
         { number: 42, title: "CI failure: Lint", pull_request: undefined },
       ],
+      runJobs: VERIFIED_JOBS,
     });
     const context = workflowRunContext({ conclusion: "success" });
 
@@ -227,7 +297,7 @@ describe("ci-failure-notify", () => {
   });
 
   it("files nothing when a green run finds no open issue", async () => {
-    const github = fakeGithub({ existingIssues: [] });
+    const github = fakeGithub({ existingIssues: [], runJobs: VERIFIED_JOBS });
     const context = workflowRunContext({ conclusion: "success" });
 
     await notify({ github, context });
@@ -235,6 +305,19 @@ describe("ci-failure-notify", () => {
     assert.equal(github.calls.create.length, 0);
     assert.equal(github.calls.update.length, 0);
     assert.equal(github.calls.createComment.length, 0);
+    // No issue to clear, so the run's jobs are never fetched.
+    assert.equal(github.calls.paginate.length, 1);
+  });
+
+  it("refuses a conclusion it does not model", async () => {
+    const github = fakeGithub({ existingIssues: [] });
+    const context = workflowRunContext({ conclusion: "neutral" });
+
+    await assert.rejects(() => notify({ github, context }), /neutral/);
+
+    assert.equal(github.calls.create.length, 0);
+    assert.equal(github.calls.createComment.length, 0);
+    assert.equal(github.calls.createLabel.length, 0);
   });
 
   it("throws and calls nothing when workflow_run is missing", async () => {

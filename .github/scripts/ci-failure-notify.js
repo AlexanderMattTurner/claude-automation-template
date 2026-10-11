@@ -3,12 +3,21 @@
 
 const LABEL = "ci-failure";
 
+// The conclusions this script reports as a failure. Anything else but
+// `success` is a word it does not model, and it refuses rather than filing an
+// issue whose body contradicts its title.
+const FAILED = new Set([
+  "action_required",
+  "failure",
+  "startup_failure",
+  "timed_out",
+]);
+
 /**
  * File, update, or close the tracking issue for a post-merge or scheduled
  * workflow run. One open issue per workflow name: a repeat failure adds a
- * comment instead of a new issue, and the workflow's next success on the
- * default branch closes it. The success leg is what makes the open issue mean
- * "still broken" — without it the issue reports a failure that is over.
+ * comment instead of a new issue, and the workflow's next verified success on
+ * the default branch closes it.
  *
  * Called by the ci-failure-notify workflow via actions/github-script.
  *
@@ -21,6 +30,12 @@ module.exports = async ({ github, context }) => {
   if (!run) {
     throw new Error(
       "No workflow_run payload on this event — expected a workflow_run event.",
+    );
+  }
+  if (run.conclusion !== "success" && !FAILED.has(run.conclusion)) {
+    throw new Error(
+      `Unmodeled workflow_run conclusion "${run.conclusion}" for ${run.name} — ` +
+        "the workflow's own `if:` decides which conclusions reach this script.",
     );
   }
   const title = `CI failure: ${run.name}`;
@@ -43,12 +58,28 @@ module.exports = async ({ github, context }) => {
     (issue) => !issue.pull_request && issue.title === title,
   );
 
-  // Only a green run clears the failure. The workflow passes `cancelled` and
-  // `skipped` through to neither leg, because a run that posted no verdict
-  // says nothing about whether the failure is fixed.
   if (run.conclusion === "success") {
     if (!existing) {
       console.log(`No open ${LABEL} issue for ${run.name}`);
+      return;
+    }
+    // A path-gated workflow concludes `success` through its always() reporter
+    // when its decide gate skipped the work job, so the run's own conclusion
+    // cannot say the tree was verified — closing on one is a vacuous green.
+    // Require every job of the run to have run and passed. `verified_head` in
+    // decide-memo-base.py answers the same question for the memo base, by job
+    // name, because it knows which workflow it is reading.
+    const jobs = await github.paginate(
+      github.rest.actions.listJobsForWorkflowRun,
+      { ...context.repo, run_id: run.id, per_page: 100 },
+    );
+    const skipped = jobs.filter((job) => job.conclusion !== "success");
+    if (jobs.length === 0 || skipped.length > 0) {
+      console.log(
+        `Run ${run.id} concluded success without running ` +
+          `${skipped.map((job) => job.name).join(", ") || "any job"}; ` +
+          `leaving issue #${existing.number} open`,
+      );
       return;
     }
     await github.rest.issues.createComment({
