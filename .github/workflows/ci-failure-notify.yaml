@@ -3,10 +3,11 @@ name: CI failure notify
 # Post-merge (push-to-main) and scheduled workflow failures emit no PR webhook,
 # so they rot unnoticed — releases have silently stopped for weeks downstream.
 # This workflow converts such a failure into an open issue (label: ci-failure),
-# deduplicated per workflow name: repeat failures comment on the existing issue.
-# The issue records which jobs failed, and a later run of the same workflow on
-# the default branch that passes each of them closes it — so an open issue
-# means the failure is still live.
+# deduplicated per workflow name: a repeat failure comments on the existing
+# issue. The issue body records which jobs are still waiting for a pass, and a
+# later run of the same workflow on the default branch closes the issue once
+# each of them passes. A job no run reports any more — renamed by the fix, or
+# deleted — is named in the body instead, for a human to close by hand.
 #
 # `workflow_run` has no wildcard, so `workflows:` below must name every
 # workflow in this repo with a `push:` or `schedule:` trigger (matched by the
@@ -59,8 +60,8 @@ jobs:
     name: File, update, or close ci-failure issue
     # PR-triggered failures are already visible on the PR; only failures of
     # push/schedule runs on the default branch go unnoticed. `success` reaches
-    # the script too, to close the issue a past failure opened once the jobs
-    # that failed pass.
+    # the script too, to close the issue a past failure opened once every job
+    # it waits on has passed.
     if: >-
       contains(fromJSON('["action_required", "failure", "startup_failure", "timed_out", "success"]'), github.event.workflow_run.conclusion) &&
       (github.event.workflow_run.event == 'push' ||

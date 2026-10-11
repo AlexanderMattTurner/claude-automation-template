@@ -12,9 +12,9 @@ const FAILED_RUN = new Set([
   "timed_out",
 ]);
 
-// The job conclusions that make a job one the issue is about. `skipped` is not
-// among them: a workflow can skip a job by design on every run this notifier
-// sees, and demanding that job pass would keep the issue open forever.
+// The job conclusions that put a job on the issue's waiting list. `skipped` is
+// not among them: a workflow can skip a job by design on every run this
+// notifier sees, and demanding that job pass would keep the issue open forever.
 const FAILED_JOB = new Set([
   "action_required",
   "cancelled",
@@ -22,12 +22,15 @@ const FAILED_JOB = new Set([
   "timed_out",
 ]);
 
-// Carries the failing job names from the failure that files the issue to the
-// success that closes it. A repeat failure writes its own line, and the last
-// line in the thread is the live set.
-const JOBS_LINE = "**Jobs that failed:**";
+// Opens the record this script writes into the issue body and reads back. The
+// body's visible text is rendered from that record, so the list a human reads
+// is the list the close decision uses. The record lives in the body alone: a
+// body is one current statement, where a record spread over a comment thread
+// lets the newest paste decide.
+const MARKER = "<!-- ci-failure-notify:";
+const MARKER_END = "-->";
 
-/** Every job of a run, latest attempt, as `{name, conclusion}` records. */
+/** Every job of a run's latest attempt, as `{name, conclusion}` records. */
 async function runJobs(github, context, runId) {
   return github.paginate(github.rest.actions.listJobsForWorkflowRun, {
     ...context.repo,
@@ -36,44 +39,92 @@ async function runJobs(github, context, runId) {
   });
 }
 
-/** The job names a `JOBS_LINE` carries; empty when the text has no such line. */
-function parseJobsLine(text) {
-  const line = (text || "")
+/** The record `body` carries, or null when this script has written none. */
+function readRecord(body) {
+  const line = (body || "")
     .split("\n")
-    .find((candidate) => candidate.startsWith(JOBS_LINE));
-  return line
-    ? [...line.matchAll(/`(?<job>[^`]+)`/g)].map((match) => match.groups.job)
-    : [];
+    .find((candidate) => candidate.startsWith(MARKER));
+  if (!line) {
+    return null;
+  }
+  return JSON.parse(line.slice(MARKER.length, line.lastIndexOf(MARKER_END)));
+}
+
+/** A timestamp in milliseconds. Throws, because NaN loses every comparison. */
+function parseStamp(value, label) {
+  const stamp = Date.parse(value);
+  if (Number.isNaN(stamp)) {
+    throw new Error(`Unreadable ${label} "${value}".`);
+  }
+  return stamp;
 }
 
 /**
- * The failing job names last recorded on the issue, or null when none is.
+ * The job names still waiting for a pass: those already recorded, plus the ones
+ * this run failed, less the ones it passed.
  *
- * An issue filed before this script recorded them, or by a run that reported
- * no failing job, yields null — there is then nothing a green run could prove,
- * so the issue waits for a human.
+ * A job leaves the list only when a run is OBSERVED to pass it. Taking each
+ * run's failures as the whole list instead would drop a job the run skipped,
+ * and the next green run would then close the issue over an untested failure.
  */
-async function recordedJobs(github, context, issue) {
-  const comments = await github.paginate(github.rest.issues.listComments, {
-    ...context.repo,
-    issue_number: issue.number,
-    per_page: 100,
-  });
-  let recorded = null;
-  for (const text of [issue.body, ...comments.map((comment) => comment.body)]) {
-    const found = parseJobsLine(text);
-    if (found.length > 0) {
-      recorded = found;
-    }
-  }
-  return recorded;
+function mergeJobs(recorded, jobs) {
+  const passed = new Set(
+    jobs.filter((job) => job.conclusion === "success").map((job) => job.name),
+  );
+  const failed = jobs
+    .filter((job) => FAILED_JOB.has(job.conclusion))
+    .map((job) => job.name);
+  return [...new Set([...recorded, ...failed])].filter(
+    (name) => !passed.has(name),
+  );
+}
+
+/** The waiting list as the issue shows it. */
+function waitingLine(jobs) {
+  const names = jobs.map((name) => `\`${name}\``).join(", ");
+  return `**Jobs still waiting for a pass:** ${
+    names || "none — the run failed before any job started"
+  }`;
+}
+
+/** The whole issue body, rendered from the record so the two cannot disagree. */
+function renderBody({ run, record, absent }) {
+  const stalemate =
+    absent.length > 0
+      ? [
+          "",
+          `**No run of this workflow reports ${absent
+            .map((name) => `\`${name}\``)
+            .join(", ")} any more.** A renamed or deleted job cannot pass, ` +
+            "so no run can close this issue — close it by hand.",
+        ]
+      : [];
+  return [
+    `The **${run.name}** workflow failed on \`${run.head_branch}\`.`,
+    "",
+    `${MARKER}${JSON.stringify(record)} ${MARKER_END}`,
+    waitingLine(record.jobs),
+    "",
+    `**Latest failing run:** ${record.run.url}`,
+    `**Conclusion:** ${record.run.conclusion}`,
+    `**Head SHA:** ${record.run.sha}`,
+    `**Event:** ${record.run.event}`,
+    ...stalemate,
+    "",
+    "This issue is filed automatically for post-merge (`push`) and " +
+      "`schedule` runs only. A failure on one of those has no PR to surface " +
+      "it, so without this notice it rots unnoticed. A later run of " +
+      `**${run.name}** on \`${run.head_branch}\` closes this issue when it ` +
+      "starts after the newest failure and passes every job listed above. A " +
+      "repeat failure adds a comment and updates that list.",
+  ].join("\n");
 }
 
 /**
  * File, update, or close the tracking issue for a post-merge or scheduled
- * workflow run. One open issue per workflow name: a repeat failure adds a
- * comment instead of a new issue, and a later run that passes every job the
- * issue records closes it.
+ * workflow run. One open issue per workflow name: a repeat failure comments and
+ * updates the issue instead of filing a second one, and a later run that passes
+ * every job the issue still waits on closes it.
  *
  * Called by the ci-failure-notify workflow via actions/github-script.
  *
@@ -93,6 +144,7 @@ module.exports = async ({ github, context }) => {
       `Unmodeled workflow_run conclusion "${run.conclusion}" for ${run.name}.`,
     );
   }
+  const startedAt = parseStamp(run.run_started_at, "run_started_at");
   const title = `CI failure: ${run.name}`;
 
   const runLine = [
@@ -112,23 +164,23 @@ module.exports = async ({ github, context }) => {
   const existing = openIssues.find(
     (issue) => !issue.pull_request && issue.title === title,
   );
+  const record = existing ? readRecord(existing.body) : null;
+
+  // A run that started before the newest failure the issue records tested an
+  // older tree, so neither its passes nor its failures speak to that failure.
+  if (record && startedAt < parseStamp(record.since, "recorded failure time")) {
+    console.log(
+      `Run ${run.id} started before the newest failure on issue #${existing.number}; leaving it as it is`,
+    );
+    return;
+  }
 
   if (run.conclusion === "success") {
     if (!existing) {
       console.log(`No open ${LABEL} issue for ${run.name}`);
       return;
     }
-    // A run that started before the issue's last notice tested an older tree,
-    // so its green says nothing about the failure that notice describes. The
-    // next green run closes the issue instead.
-    if (new Date(run.run_started_at) < new Date(existing.updated_at)) {
-      console.log(
-        `Run ${run.id} started before issue #${existing.number} was last updated; leaving it open`,
-      );
-      return;
-    }
-    const recorded = await recordedJobs(github, context, existing);
-    if (!recorded) {
+    if (!record) {
       console.log(
         `Issue #${existing.number} records no failing job; leaving it open`,
       );
@@ -137,49 +189,77 @@ module.exports = async ({ github, context }) => {
     // The run's own conclusion cannot stand in for this: a path-gated workflow
     // concludes `success` through its always() reporter when the decide gate
     // skipped the work job. Closing on that is a vacuous green, so each job the
-    // issue is about has to pass in this run. `verified_head` in
+    // issue waits on has to pass in this run. `verified_head` in
     // decide-memo-base.py answers the same question for the memo base.
-    const passed = new Set(
-      (await runJobs(github, context, run.id))
-        .filter((job) => job.conclusion === "success")
-        .map((job) => job.name),
-    );
-    const outstanding = recorded.filter((name) => !passed.has(name));
-    if (outstanding.length > 0) {
-      console.log(
-        `Run ${run.id} did not pass ${outstanding.join(", ")}; leaving issue #${existing.number} open`,
-      );
+    const jobs = await runJobs(github, context, run.id);
+    const waiting = mergeJobs(record.jobs, jobs);
+
+    if (waiting.length === 0) {
+      const cleared =
+        record.jobs.length > 0
+          ? `${record.jobs.join(", ")} passed`
+          : "the workflow started and passed";
+      await github.rest.issues.createComment({
+        ...context.repo,
+        issue_number: existing.number,
+        body: `Green again — ${cleared}.\n\n${runLine}`,
+      });
+      await github.rest.issues.update({
+        ...context.repo,
+        issue_number: existing.number,
+        state: "closed",
+        state_reason: "completed",
+      });
+      console.log(`Closed issue #${existing.number}`);
       return;
     }
-    await github.rest.issues.createComment({
-      ...context.repo,
-      issue_number: existing.number,
-      body: `Green again — ${recorded.join(", ")} passed.\n\n${runLine}`,
+
+    // A job this run proved drops off the list even when others remain, so two
+    // path-gated jobs that failed together need not pass together.
+    const present = new Set(jobs.map((job) => job.name));
+    const body = renderBody({
+      run,
+      record: { ...record, jobs: waiting },
+      absent: waiting.filter((name) => !present.has(name)),
     });
-    await github.rest.issues.update({
-      ...context.repo,
-      issue_number: existing.number,
-      state: "closed",
-      state_reason: "completed",
-    });
-    console.log(`Closed issue #${existing.number}`);
+    console.log(
+      `Run ${run.id} left ${waiting.join(", ")} unproven on issue #${existing.number}`,
+    );
+    if (body !== existing.body) {
+      await github.rest.issues.update({
+        ...context.repo,
+        issue_number: existing.number,
+        body,
+      });
+    }
     return;
   }
 
-  const failing = (await runJobs(github, context, run.id))
-    .filter((job) => FAILED_JOB.has(job.conclusion))
-    .map((job) => job.name);
-  const jobsLine = `${JOBS_LINE} ${
-    failing.map((name) => `\`${name}\``).join(", ") || "none reported"
-  }`;
+  const jobs = await runJobs(github, context, run.id);
+  const next = {
+    jobs: mergeJobs(record ? record.jobs : [], jobs),
+    since: run.run_started_at,
+    run: {
+      url: run.html_url,
+      conclusion: run.conclusion,
+      sha: run.head_sha,
+      event: run.event,
+    },
+  };
+  const body = renderBody({ run, record: next, absent: [] });
 
   if (existing) {
+    await github.rest.issues.update({
+      ...context.repo,
+      issue_number: existing.number,
+      body,
+    });
     await github.rest.issues.createComment({
       ...context.repo,
       issue_number: existing.number,
-      body: `Failed again.\n\n${runLine}\n${jobsLine}`,
+      body: `Failed again.\n\n${runLine}\n${waitingLine(next.jobs)}`,
     });
-    console.log(`Commented on existing issue #${existing.number}`);
+    console.log(`Updated existing issue #${existing.number}`);
     return;
   }
 
@@ -203,20 +283,6 @@ module.exports = async ({ github, context }) => {
       throw error;
     }
   }
-
-  const body = [
-    `The **${run.name}** workflow failed on \`${run.head_branch}\`.`,
-    "",
-    runLine,
-    jobsLine,
-    "",
-    "This issue is filed automatically for post-merge (`push`) and " +
-      "`schedule` runs only — failures on those runs have no PR to surface " +
-      "them, so without this notification they rot unnoticed. A later run of " +
-      `**${run.name}** on \`${run.head_branch}\` that passes every job above ` +
-      "closes this issue; further failures while it stays open are added as " +
-      "comments.",
-  ].join("\n");
 
   const created = await github.rest.issues.create({
     ...context.repo,
