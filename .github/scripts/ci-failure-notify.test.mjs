@@ -1,7 +1,9 @@
 // Behavior tests for the CI-failure tracking-issue filer: does a failed
 // post-merge/scheduled workflow_run produce (or update) the right tracking
-// issue? Drives the real module (no re-implementation) and asserts the
-// observable calls made against a fake Octokit-shaped `github` client.
+// issue, and does a later green run close it? Drives the real module (no
+// re-implementation) and asserts the observable calls made against a fake
+// Octokit-shaped `github` client — the real dependency is the GitHub API,
+// which no test can reach.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -17,6 +19,7 @@ function fakeGithub({ createLabelError, existingIssues = [] } = {}) {
     createLabel: [],
     createComment: [],
     create: [],
+    update: [],
   };
   return {
     calls,
@@ -34,6 +37,9 @@ function fakeGithub({ createLabelError, existingIssues = [] } = {}) {
         async create(params) {
           calls.create.push(params);
           return { data: { number: 999 } };
+        },
+        async update(params) {
+          calls.update.push(params);
         },
         // Referenced only as a paginate() argument in the real module; the
         // fake paginate below ignores it and resolves existingIssues directly.
@@ -175,6 +181,60 @@ describe("ci-failure-notify", () => {
     assert.equal(github.calls.createComment.length, 0);
     assert.equal(github.calls.create.length, 1);
     assert.equal(github.calls.create[0].title, "CI failure: CI");
+  });
+
+  it("closes the matching open issue when the workflow goes green", async () => {
+    const github = fakeGithub({
+      existingIssues: [
+        { number: 42, title: "CI failure: CI", pull_request: undefined },
+      ],
+    });
+    const context = workflowRunContext({ conclusion: "success" });
+
+    await notify({ github, context });
+
+    assert.equal(github.calls.create.length, 0);
+    assert.equal(github.calls.update.length, 1);
+
+    const update = github.calls.update[0];
+    assert.equal(update.issue_number, 42);
+    assert.equal(update.owner, REPO.owner);
+    assert.equal(update.repo, REPO.repo);
+    assert.equal(update.state, "closed");
+    assert.equal(update.state_reason, "completed");
+
+    assert.equal(github.calls.createComment.length, 1);
+    const comment = github.calls.createComment[0];
+    assert.equal(comment.issue_number, 42);
+    assert.match(comment.body, /Green again/);
+    assert.match(comment.body, /deadbeef/);
+  });
+
+  it("leaves another workflow's issue open when this one goes green", async () => {
+    const github = fakeGithub({
+      existingIssues: [
+        { number: 42, title: "CI failure: Lint", pull_request: undefined },
+      ],
+    });
+    const context = workflowRunContext({ conclusion: "success" });
+
+    await notify({ github, context });
+
+    assert.equal(github.calls.update.length, 0);
+    assert.equal(github.calls.createComment.length, 0);
+    assert.equal(github.calls.create.length, 0);
+    assert.equal(github.calls.createLabel.length, 0);
+  });
+
+  it("files nothing when a green run finds no open issue", async () => {
+    const github = fakeGithub({ existingIssues: [] });
+    const context = workflowRunContext({ conclusion: "success" });
+
+    await notify({ github, context });
+
+    assert.equal(github.calls.create.length, 0);
+    assert.equal(github.calls.update.length, 0);
+    assert.equal(github.calls.createComment.length, 0);
   });
 
   it("throws and calls nothing when workflow_run is missing", async () => {
