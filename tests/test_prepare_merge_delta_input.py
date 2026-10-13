@@ -8,11 +8,10 @@ import of agent-input-sanitizer fails.
 """
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
-from tests._helpers import REPO_ROOT, commit_files, git_out, init_test_repo
+from tests._helpers import commit_files, copy_script_to, git_out, init_test_repo
 
 
 def origin_with_evil_merge(origin: Path) -> Path:
@@ -45,7 +44,7 @@ def test_a_sanitizer_crash_reaches_the_log(tmp_path: Path):
         "remerge-diff-report.py",
         "sanitize-pr-input.mjs",
     ):
-        shutil.copy(REPO_ROOT / ".github" / "scripts" / name, scripts / name)
+        copy_script_to(name, scripts)
     out = tmp_path / "github_output"
 
     res = subprocess.run(
