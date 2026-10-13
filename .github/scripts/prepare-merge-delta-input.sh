@@ -72,12 +72,11 @@ fi
 # commits, or only clean mechanical merges) — that legitimately skips the review.
 if [[ -s "$raw" ]]; then
   # The sanitizer's stderr is its report, so a crash's stack trace lands in that
-  # file and nowhere in the log. Print it. The sanitizer is the BASE branch's pin,
-  # so a PR that bumps the pin to fix this crash still runs the crashing version.
+  # file and nowhere in the log unless this prints it.
   report="${PR_INPUT_DIR}/merge-delta.report.txt"
   if ! node .github/scripts/sanitize-pr-input.mjs \
     <"$raw" >"${PR_INPUT_DIR}/merge-delta.txt" 2>"$report"; then
-    echo "::error::the input sanitizer crashed on this PR's merge deltas — they were not reviewed. The sanitizer is the base branch's pin in install-input-sanitizer.sh, so a PR that bumps that pin cannot fix its own run. The sanitizer's stderr:" >&2
+    echo "::error::the input sanitizer crashed on this PR's merge deltas — they were not reviewed. The sanitizer is the default branch's pin in install-input-sanitizer.sh, so a PR that bumps that pin cannot fix its own run. The sanitizer's stderr:" >&2
     cat "$report" >&2
     exit 1
   fi

@@ -12,61 +12,40 @@ import shutil
 import subprocess
 from pathlib import Path
 
-ROOT = Path(
-    subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-)
-SCRIPTS = ROOT / ".github" / "scripts"
+from tests._helpers import REPO_ROOT, commit_files, git_out, init_test_repo
 
 
-def git(repo: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
-    ).stdout
-
-
-def commit(repo: Path, text: str, message: str) -> None:
-    (repo / "f.txt").write_text(text, encoding="utf-8")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-q", "-m", message)
-
-
-def origin_with_evil_merge(tmp_path: Path) -> Path:
-    origin = tmp_path / "origin"
-    origin.mkdir()
-    git(origin, "init", "-q", "-b", "main")
-    git(origin, "config", "user.email", "t@t")
-    git(origin, "config", "user.name", "t")
-    commit(origin, "one\ntwo\nthree\n", "base")
-    git(origin, "checkout", "-q", "-b", "side")
-    commit(origin, "one\nTHEIRS\nthree\n", "side change")
-    git(origin, "checkout", "-q", "-b", "pr", "main")
-    commit(origin, "one\nOURS\nthree\n", "pr change")
-    subprocess.run(
+def origin_with_evil_merge(origin: Path) -> Path:
+    init_test_repo(origin)
+    commit_files(origin, {"f.txt": "one\ntwo\nthree\n"}, "base")
+    git_out(origin, "checkout", "-q", "-b", "side")
+    commit_files(origin, {"f.txt": "one\nTHEIRS\nthree\n"}, "side change")
+    git_out(origin, "checkout", "-q", "-b", "pr", "main")
+    commit_files(origin, {"f.txt": "one\nOURS\nthree\n"}, "pr change")
+    res = subprocess.run(
         ["git", "-C", str(origin), "merge", "--no-edit", "side"],
         capture_output=True,
         check=False,
     )
-    commit(origin, "one\nOURS\nTHEIRS\nINVENTED\nthree\n", "merge side")
-    git(origin, "update-ref", "refs/pull/7/head", "pr")
-    git(origin, "checkout", "-q", "main")
+    assert res.returncode != 0, "fixture must actually conflict"
+    commit_files(origin, {"f.txt": "one\nOURS\nTHEIRS\nINVENTED\nthree\n"}, "merge")
+    git_out(origin, "update-ref", "refs/pull/7/head", "pr")
+    git_out(origin, "checkout", "-q", "main")
     return origin
 
 
 def test_a_sanitizer_crash_reaches_the_log(tmp_path: Path):
     work = tmp_path / "work"
-    git(tmp_path, "clone", "-q", str(origin_with_evil_merge(tmp_path)), str(work))
-    (work / ".github" / "scripts").mkdir(parents=True)
+    origin = origin_with_evil_merge(tmp_path / "origin")
+    git_out(tmp_path, "clone", "-q", str(origin), str(work))
+    scripts = work / ".github" / "scripts"
+    scripts.mkdir(parents=True)
     for name in (
         "prepare-merge-delta-input.sh",
         "remerge-diff-report.py",
         "sanitize-pr-input.mjs",
     ):
-        shutil.copy(SCRIPTS / name, work / ".github" / "scripts" / name)
+        shutil.copy(REPO_ROOT / ".github" / "scripts" / name, scripts / name)
     out = tmp_path / "github_output"
 
     res = subprocess.run(
