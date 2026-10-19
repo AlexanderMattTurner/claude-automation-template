@@ -11,3 +11,8 @@ minimumReleaseAge: 4320
 # packages published from this repo's own GitHub owner.
 minimumReleaseAgeExclude:
   - agent-control-plane-core
+
+# Security overrides for transitive dev dependencies of markdownlint-cli2.
+overrides:
+  smol-toml: ">=1.8.1" # GHSA-r4xh-jqrq-34v2
+  katex: ">=0.18.2" # GHSA-238p-pmpm-9mq7
