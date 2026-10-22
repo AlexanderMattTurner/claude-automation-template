@@ -43,16 +43,16 @@ def run_resolve(tmp_path: Path, *, mergiraf: bool, token: str, install_exit: int
     scripts = tmp_path / "scripts"
     shutil.copytree(SCRIPTS / "lib", scripts / "lib")
     shutil.copy(SCRIPTS / "template-sync-resolve.sh", scripts)
-    (scripts / "install-claude-cli.sh").write_text(STUB_INSTALLER)
+    (scripts / "install-claude-cli.sh").write_text(STUB_INSTALLER, encoding="utf-8")
     resolver = tmp_path / "resolver"
     (resolver / "auto-resolve").mkdir(parents=True)
-    (resolver / "auto-resolve" / "fanout.py").write_text(STUB_FANOUT)
+    (resolver / "auto-resolve" / "fanout.py").write_text(STUB_FANOUT, encoding="utf-8")
     mergiraf_bin = tmp_path / "mergiraf"
-    mergiraf_bin.write_text(STUB_MERGIRAF)
+    mergiraf_bin.write_text(STUB_MERGIRAF, encoding="utf-8")
     mergiraf_bin.chmod(0o755)
     work = tmp_path / "work"
     work.mkdir()
-    (work / "f.txt").write_text(CONFLICTED)
+    (work / "f.txt").write_text(CONFLICTED, encoding="utf-8")
     calls = tmp_path / "calls"
     calls.touch()
     output = tmp_path / "output"
@@ -76,9 +76,11 @@ def run_resolve(tmp_path: Path, *, mergiraf: bool, token: str, install_exit: int
     )
     assert result.returncode == 0, result.stderr
     outputs = dict(
-        line.split("=", 1) for line in output.read_text().splitlines() if "=" in line
+        line.split("=", 1)
+        for line in output.read_text(encoding="utf-8").splitlines()
+        if "=" in line
     )
-    return calls.read_text().split(), outputs
+    return calls.read_text(encoding="utf-8").split(), outputs
 
 
 @pytest.mark.parametrize(
