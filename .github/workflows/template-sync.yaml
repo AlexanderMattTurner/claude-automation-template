@@ -302,14 +302,6 @@ jobs:
         if: inputs.dry-run != true && steps.sync.outputs.conflict_files != '' && steps.create-pr.outputs.pull-request-number
         run: bash .github/scripts/install-mergiraf.sh
 
-      # Tier 2 is the resolver's fanout.py, which shells out to the `claude`
-      # binary. Nothing on the runner image provides it, so without this step
-      # fanout dies with "the `claude` CLI is not on PATH" and every conflict
-      # mergiraf leaves stays marked.
-      - name: Install the Claude CLI (pinned)
-        if: inputs.dry-run != true && steps.sync.outputs.conflict_files != '' && steps.create-pr.outputs.pull-request-number
-        run: bash .github/scripts/install-claude-cli.sh
-
       - name: Resolve the sync conflicts
         id: resolve
         if: inputs.dry-run != true && steps.sync.outputs.conflict_files != '' && steps.create-pr.outputs.pull-request-number

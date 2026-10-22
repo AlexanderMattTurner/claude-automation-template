@@ -81,23 +81,9 @@ def test_the_resolver_steps_run_only_when_a_conflict_carries_markers():
         for job in _workflow()["jobs"].values()
         for step in job.get("steps", [])
         if step.get("id") == "resolve"
-        or str(step.get("name", "")).startswith(
-            ("Install mergiraf", "Install the Claude CLI")
-        )
+        or str(step.get("name", "")).startswith("Install mergiraf")
     ]
-    assert len(steps) == 3, f"found {len(steps)} resolver steps, expected 3"
+    assert len(steps) == 2, f"found {len(steps)} resolver steps, expected 2"
     for step in steps:
         assert "steps.sync.outputs.conflict_files != ''" in step["if"], step["name"]
         assert "has_conflicts" not in step["if"], step["name"]
-
-
-def test_the_claude_cli_is_installed_before_the_model_tier():
-    # The resolver's fanout.py shells out to `claude`, which the runner image
-    # does not provide; without the install the model tier resolves nothing.
-    steps = _workflow()["jobs"]["sync"]["steps"]
-    runs = [step.get("run", "") for step in steps]
-    resolve_at = [i for i, run in enumerate(runs) if "template-sync-resolve.sh" in run]
-    install_at = [i for i, run in enumerate(runs) if "install-claude-cli.sh" in run]
-    assert len(resolve_at) == 1, f"expected one resolve step, found {resolve_at}"
-    assert len(install_at) == 1, f"expected one claude CLI install, found {install_at}"
-    assert install_at[0] < resolve_at[0]
