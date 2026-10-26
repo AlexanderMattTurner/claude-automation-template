@@ -101,15 +101,24 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          sparse-checkout: .github/scripts
+          sparse-checkout: |
+            .github/scripts
+            .github/workflows/auto-resolve-conflicts.yaml
+          sparse-checkout-cone-mode: false
           persist-credentials: false
+      # The labeler runs with a write token, so it comes from the SAME pinned
+      # resolver commit auto-resolve-conflicts.yaml calls, never a moving branch
+      # whose owner could change what runs here.
+      - name: Read the resolver pin
+        id: pin
+        run: python3 .github/scripts/resolver-ref.py --github-output
       # The labeler ships WITH the resolver it triggers, so no repository keeps a
       # copy of it to drift from the label the resolver reads.
       - name: Check out the resolver that provides the labeler
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          repository: AlexanderMattTurner/agent-resolve-merge-conflicts
-          ref: main
+          repository: ${{ steps.pin.outputs.repository }}
+          ref: ${{ steps.pin.outputs.ref }}
           path: resolver
           persist-credentials: false
       - name: Sync merge-conflict labels

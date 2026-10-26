@@ -198,6 +198,23 @@ jobs:
           filter: blob:none
           persist-credentials: false
 
+      # Every step that runs after the sync rewrote the tree executes THIS copy:
+      # the reviewed `.github` at BASE_SHA. `.github/scripts` is in SYNC_PATHS, so
+      # the workspace copy is unreviewed template content by then, and it can carry
+      # conflict markers that make bash die before any PR exists to show them. The
+      # resolve and push steps hold the org PAT and the model token, so running
+      # the synced copy would hand both to code no human has read.
+      - name: Extract the reviewed .github tree
+        id: reviewed
+        env:
+          BASE_SHA: ${{ github.sha }}
+        run: |
+          set -o pipefail
+          dir="${RUNNER_TEMP}/reviewed"
+          mkdir -p "${dir}" # bare-mkdir-ok: the extraction below is the post-condition and fails loudly
+          timeout --kill-after=30 300 git archive "${BASE_SHA}" .github | tar -x -f - -C "${dir}"
+          echo "dir=${dir}" >>"$GITHUB_OUTPUT"
+
       - name: Checkout template repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -240,16 +257,13 @@ jobs:
           HAS_DELETIONS: ${{ steps.sync.outputs.has_deletions }}
           CONFLICT_FILES: ${{ steps.sync.outputs.conflict_files }}
           DELETED_FILES: ${{ steps.sync.outputs.deleted_files }}
-        run: bash .github/scripts/show-sync-diff.sh
+          REVIEWED: ${{ steps.reviewed.outputs.dir }}
+        run: bash "${REVIEWED}/.github/scripts/show-sync-diff.sh"
 
       # The body is a script, not an inline `format()` chain: a chain that long
       # is invisible to shellcheck, cannot be tested, and grew a shape nobody
       # could read a conditional out of. It runs BEFORE create-pull-request,
       # because that action reads the body from a file.
-      # It runs a BASE_SHA copy for the same reason the marker gate does:
-      # `.github/scripts` is in SYNC_PATHS, so a sync can leave conflict markers
-      # in this very script, and bash dies on them before any PR exists to show
-      # them — no PR, so neither the resolver nor the marker gate can repair it.
       - name: Render the pull request body
         if: inputs.dry-run != true && (steps.sync.outputs.has_changes == 'true' || steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true')
         id: pr-body
@@ -267,13 +281,8 @@ jobs:
           CONFLICT_REPORT: ${{ steps.sync.outputs.conflict_report }}
           MARKERLESS_FILES: ${{ steps.sync.outputs.markerless_files }}
           PR_BODY_PATH: ${{ runner.temp }}/template-sync-body.md
-          BASE_SHA: ${{ github.sha }}
-        run: |
-          set -o pipefail
-          body_dir="${RUNNER_TEMP}/pr-body-scripts"
-          mkdir -p "${body_dir}" # bare-mkdir-ok: the extraction below is the post-condition and fails loudly
-          timeout --kill-after=30 300 git archive "${BASE_SHA}" .github/scripts | tar -x -f - -C "${body_dir}"
-          bash "${body_dir}/.github/scripts/template-sync-pr-body.sh"
+          REVIEWED: ${{ steps.reviewed.outputs.dir }}
+        run: bash "${REVIEWED}/.github/scripts/template-sync-pr-body.sh"
 
       - name: Create Pull Request
         if: inputs.dry-run != true && (steps.sync.outputs.has_changes == 'true' || steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true')
@@ -305,7 +314,19 @@ jobs:
       # conflict_files, and template-sync-resolve.sh refuses an empty list.
       - name: Install mergiraf (pinned, digest-verified)
         if: inputs.dry-run != true && steps.sync.outputs.conflict_files != '' && steps.create-pr.outputs.pull-request-number
-        run: bash .github/scripts/install-mergiraf.sh
+        env:
+          REVIEWED: ${{ steps.reviewed.outputs.dir }}
+        run: bash "${REVIEWED}/.github/scripts/install-mergiraf.sh"
+
+      # Tier 2 is the resolver's own fan-out, from the same pinned commit
+      # auto-resolve-conflicts.yaml calls: its `uses:` line, read from the
+      # reviewed tree, is the one place that pin is written.
+      - name: Read the resolver pin
+        id: resolver-pin
+        if: inputs.dry-run != true && steps.sync.outputs.conflict_files != '' && steps.create-pr.outputs.pull-request-number
+        env:
+          REVIEWED: ${{ steps.reviewed.outputs.dir }}
+        run: python3 "${REVIEWED}/.github/scripts/resolver-ref.py" --github-output "${REVIEWED}"
 
       - name: Resolve the sync conflicts
         id: resolve
@@ -320,19 +341,18 @@ jobs:
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
           GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || github.token }}
           GH_REPO: ${{ github.repository }}
+          REVIEWED: ${{ steps.reviewed.outputs.dir }}
+          RESOLVER_REPOSITORY: ${{ steps.resolver-pin.outputs.repository }}
+          RESOLVER_REF: ${{ steps.resolver-pin.outputs.ref }}
         run: |
           git fetch --no-tags origin "+refs/heads/template-sync:refs/remotes/origin/template-sync"
           git checkout -B template-sync origin/template-sync
-          # Tier 2 of the conflict resolution is the resolver's own fan-out, which
-          # lives in its own repository now. Pinned by SHA to the same commit
-          # auto-resolve-conflicts.yaml calls, so both run one version of it.
           resolver_dir="${RUNNER_TEMP}/template-sync-resolver"
-          git clone --no-tags --depth 1 \
-            "https://github.com/AlexanderMattTurner/agent-resolve-merge-conflicts.git" "${resolver_dir}"
-          git -C "${resolver_dir}" fetch --no-tags --depth 1 origin ca9a3fa872a9c06ade766de9bf69ff7b0329247f
+          git clone --no-tags --depth 1 "https://github.com/${RESOLVER_REPOSITORY}.git" "${resolver_dir}"
+          git -C "${resolver_dir}" fetch --no-tags --depth 1 origin "${RESOLVER_REF}"
           git -C "${resolver_dir}" checkout --detach FETCH_HEAD
           RESOLVER_DIR="${resolver_dir}/.github/resolver" \
-            bash .github/scripts/template-sync-resolve.sh
+            bash "${REVIEWED}/.github/scripts/template-sync-resolve.sh"
 
       - name: Push the resolutions
         if: steps.resolve.outcome == 'success' && (steps.resolve.outputs.deterministic != '' || steps.resolve.outputs.by_model != '')
@@ -341,50 +361,37 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.GITHUB_TOKEN }}
           DETERMINISTIC: ${{ steps.resolve.outputs.deterministic }}
           BY_MODEL: ${{ steps.resolve.outputs.by_model }}
-        run: bash .github/scripts/template-sync-push.sh
+          REVIEWED: ${{ steps.reviewed.outputs.dir }}
+        run: bash "${REVIEWED}/.github/scripts/template-sync-push.sh"
 
       # The markers reach the branch before either resolver tier runs, because
       # create-pull-request commits the whole synced tree. So this is the step
       # that holds the invariant: no file on `template-sync` carries a conflict
       # marker. It runs even when a step above it failed, because a resolve step
       # that died is exactly when the markers survive.
-      # It runs a BASE_SHA copy, not the workspace: `.github/scripts` is in
-      # SYNC_PATHS, so a sync can mark the gate's own file, and bash dies on it.
       - name: Refuse conflict markers on the sync branch
         if: ${{ !cancelled() && inputs.dry-run != true && steps.create-pr.outputs.pull-request-number }}
         env:
           BASE_SHA: ${{ github.sha }}
           # token-fallback-ok: designed graceful degradation, not an accident.
           GITHUB_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.GITHUB_TOKEN }}
-        run: |
-          set -o pipefail
-          gate_dir="${RUNNER_TEMP}/marker-gate"
-          mkdir -p "${gate_dir}" # bare-mkdir-ok: the extraction below is the post-condition and fails loudly
-          timeout --kill-after=30 300 git archive "${BASE_SHA}" .github/scripts | tar -x -f - -C "${gate_dir}"
-          bash "${gate_dir}/.github/scripts/template-sync-marker-gate.sh"
+          REVIEWED: ${{ steps.reviewed.outputs.dir }}
+        run: bash "${REVIEWED}/.github/scripts/template-sync-marker-gate.sh"
 
       # A sync merges itself only when NOTHING needed judgement. See the script
       # for the full predicate; the two carve-outs are that a model-resolved file
       # never qualifies, and neither does a change to the supervision surface.
-      # It runs a BASE_SHA copy for the same reason the gate does: the gate
-      # passing only proves the branch carries no conflict marker, never that
-      # this script or the predicate it reads still match the reviewed version.
       - name: Enable auto-merge on a fully deterministic sync
         if: inputs.dry-run != true && steps.create-pr.outputs.pull-request-number && vars.TEMPLATE_SYNC_AUTOMERGE != 'false'
         env:
-          BASE_SHA: ${{ github.sha }}
           GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || github.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
+          REVIEWED: ${{ steps.reviewed.outputs.dir }}
           HAS_CONFLICTS: ${{ steps.sync.outputs.has_conflicts }}
           HAS_DELETIONS: ${{ steps.sync.outputs.has_deletions }}
           HAS_DOWNGRADES: ${{ steps.sync.outputs.has_downgrades }}
           ALL_DETERMINISTIC: ${{ steps.resolve.outputs.all_deterministic }}
           CHANGED_PATHS: ${{ steps.sync.outputs.changed_paths }}
           MARKERLESS_FILES: ${{ steps.sync.outputs.markerless_files }}
-        run: |
-          set -o pipefail
-          automerge_dir="${RUNNER_TEMP}/marker-gate-automerge"
-          mkdir -p "${automerge_dir}" # bare-mkdir-ok: the extraction below is the post-condition and fails loudly
-          timeout --kill-after=30 300 git archive "${BASE_SHA}" .github/scripts | tar -x -f - -C "${automerge_dir}"
-          bash "${automerge_dir}/.github/scripts/template-sync-automerge.sh"
+        run: bash "${REVIEWED}/.github/scripts/template-sync-automerge.sh"
