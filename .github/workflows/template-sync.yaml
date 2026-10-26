@@ -215,6 +215,8 @@ jobs:
           # scope this sync needs to push .github/workflows/ changes.
           # token-fallback-ok: designed graceful degradation, not an accident.
           TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.GITHUB_TOKEN }}
+          # The secret TOKEN reads first, so the error names the one to fix.
+          TOKEN_SECRET_NAME: TEMPLATE_SYNC_TOKEN_ORG
         # Run the child repo's own copy — never execute scripts directly from
         # the template checkout. Template script updates arrive via sync PRs
         # and go through human review before they can execute.
