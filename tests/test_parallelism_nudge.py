@@ -176,3 +176,26 @@ def test_fails_open_on_malformed_stdin(tmp_path: Path) -> None:
     )
     assert result.returncode == 0
     assert result.stdout == ""
+
+
+def test_the_sentinel_write_does_not_follow_a_planted_symlink(tmp_path: Path) -> None:
+    """The sentinel name is predictable in a shared TMPDIR. A dangling symlink
+    planted there must not turn the hook's write into a create at its target."""
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text(
+        _serial_transcript(SERIAL_TOOL_TURN_THRESHOLD), encoding="utf-8"
+    )
+    probe = tmp_path / "probe"
+    probe.mkdir()
+    assert _run_hook(transcript, probe).stdout != ""
+    (name,) = [p.name for p in probe.iterdir()]
+
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    victim = tmp_path / "victim"
+    (shared / name).symlink_to(victim)
+    result = _run_hook(transcript, shared)
+    assert result.returncode == 0
+    assert result.stdout != "", "the nudge must still be delivered"
+    assert not victim.exists()
+    assert (shared / name).is_file() and not (shared / name).is_symlink()
