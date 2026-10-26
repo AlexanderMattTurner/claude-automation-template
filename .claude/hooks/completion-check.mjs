@@ -261,13 +261,17 @@ export function recordPush(path, now) {
  * it. The arming draw is taken once, from the recorded push, and persists — so a
  * redraw on every event cannot keep it out of reach. Only an affirmation or a spent
  * ping budget ends the check; a stop allowed for any other reason leaves it armed.
- * @param {{session_id?: unknown, transcript_path?: unknown}} payload the Stop payload
+ * @param {{session_id?: unknown, transcript_path?: unknown,
+ *   hook_event_name?: unknown}} payload the Stop payload
  * @param {{stateDir?: string, maxPings?: number, now?: () => number,
  *   random?: () => number}} [options] test overrides
  * @returns {{decision: string, reason: string}|null}
  */
 export function run(payload, options = {}) {
   if (process.env.COMPLETION_CHECK === "0") return null;
+  // On another event a `decision: "block"` body would block that event instead.
+  const event = payload?.hook_event_name;
+  if (event !== undefined && event !== "Stop") return null;
   const path = statePath(payload?.session_id, options.stateDir);
   const transcript = payload?.transcript_path;
   if (path === null || typeof transcript !== "string") return null;
