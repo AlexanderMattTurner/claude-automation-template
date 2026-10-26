@@ -18,11 +18,8 @@ git_root=$(git rev-parse --show-toplevel)
 # shellcheck source=.hooks/lib-gate.sh
 source "$git_root/.hooks/lib-gate.sh"
 
-# Git hooks run in a bare shell and don't inherit session PATH edits; surface
-# the venv's tools plus uv/uvx and cargo installs.
-if [[ -d "$git_root/.venv/bin" ]]; then
-  export PATH="$git_root/.venv/bin:$PATH"
-fi
+# Also surface uv/uvx and cargo installs, which pre-commit is fetched through.
+gate_path_add_venv "$git_root"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
 # Mirror CI's invocation: pre-commit.yaml runs `uvx pre-commit==<pin>`, and that
