@@ -16,3 +16,10 @@ minimumReleaseAgeExclude:
 # only the wasm through web-tree-sitter, so its native build never runs.
 allowBuilds:
   tree-sitter-bash: false
+
+# Transitive fixes under markdownlint-cli2 (GHSA-r7fv-28h4-cvq7, GHSA-gfr2-rv44-r23c,
+# GHSA-vfgh-jcmw-g37q, GHSA-r4xh-jqrq-34v2). Drop once markdownlint-cli2 resolves them itself.
+overrides:
+  markdown-it: ">=15.0.3"
+  smol-toml: ">=1.8.1"
+  katex: ">=0.18.2"
