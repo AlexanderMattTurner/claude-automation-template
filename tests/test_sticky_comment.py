@@ -27,7 +27,7 @@ import json, os, subprocess, sys
 from pathlib import Path
 
 here = Path(__file__).parent
-comments = json.loads((here / "comments.json").read_text())
+comments = json.loads((here / "comments.json").read_text(encoding="utf-8"))
 args = sys.argv[1:]
 assert args[0] == "api", args
 method, jq, path = "GET", None, None
@@ -76,7 +76,7 @@ def gh(tmp_path: Path):
     stub.chmod(0o755)
 
     def run(script: str, comments: list[dict], **env: str) -> list[str]:
-        (bindir / "comments.json").write_text(json.dumps(comments))
+        (bindir / "comments.json").write_text(json.dumps(comments), encoding="utf-8")
         result = subprocess.run(
             ["bash", str(SCRIPTS / script)],
             cwd=REPO_ROOT,
@@ -86,14 +86,14 @@ def gh(tmp_path: Path):
         )
         assert result.returncode == 0, result.stderr
         log = bindir / "writes.log"
-        return log.read_text().splitlines() if log.exists() else []
+        return log.read_text(encoding="utf-8").splitlines() if log.exists() else []
 
     return run
 
 
 def test_the_delta_report_patches_the_bots_comment_not_a_look_alike(gh, tmp_path):
     report = tmp_path / "report.md"
-    report.write_text(f"{DELTA}\n## deltas\n")
+    report.write_text(f"{DELTA}\n## deltas\n", encoding="utf-8")
     writes = gh(
         "remerge-diff-comment.sh",
         [comment(1, "mallory", f"{DELTA}\nplanted"), comment(2, BOT, f"{DELTA}\nold")],
@@ -106,7 +106,7 @@ def test_the_delta_report_patches_the_bots_comment_not_a_look_alike(gh, tmp_path
 
 def test_a_look_alike_alone_gets_a_fresh_bot_comment(gh, tmp_path):
     report = tmp_path / "report.md"
-    report.write_text(f"{DELTA}\n## deltas\n")
+    report.write_text(f"{DELTA}\n## deltas\n", encoding="utf-8")
     writes = gh(
         "remerge-diff-comment.sh",
         [comment(1, "mallory", f"{DELTA}\nplanted")],

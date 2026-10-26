@@ -40,12 +40,16 @@ def run(root: Path, *args: str, env: dict | None = None):
 def caller_with(tmp_path: Path, uses: str) -> Path:
     path = tmp_path / CALLER
     path.parent.mkdir(parents=True)
-    path.write_text(yaml.safe_dump({"jobs": {"resolve": {"uses": uses}}}))
+    path.write_text(
+        yaml.safe_dump({"jobs": {"resolve": {"uses": uses}}}), encoding="utf-8"
+    )
     return tmp_path
 
 
 def test_it_prints_the_ref_the_live_uses_line_names():
-    uses = yaml.safe_load((REPO_ROOT / CALLER).read_text())["jobs"]["resolve"]["uses"]
+    uses = yaml.safe_load((REPO_ROOT / CALLER).read_text(encoding="utf-8"))["jobs"][
+        "resolve"
+    ]["uses"]
     result = run(REPO_ROOT)
     assert result.returncode == 0, result.stderr
     assert result.stdout == uses.partition("@")[2] + "\n"
@@ -56,11 +60,14 @@ def test_github_output_carries_the_repository_and_the_ref(tmp_path: Path):
         tmp_path, f"Owner/{RESOLVER}/.github/workflows/auto-resolve.yaml@{'a' * 40}"
     )
     out = tmp_path / "out"
-    out.write_text("prior=1\n")
+    out.write_text("prior=1\n", encoding="utf-8")
     result = run(root, "--github-output", env={"GITHUB_OUTPUT": str(out)})
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
-    assert out.read_text() == f"prior=1\nrepository=Owner/{RESOLVER}\nref={'a' * 40}\n"
+    assert (
+        out.read_text(encoding="utf-8")
+        == f"prior=1\nrepository=Owner/{RESOLVER}\nref={'a' * 40}\n"
+    )
 
 
 @pytest.mark.parametrize(
