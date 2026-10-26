@@ -182,6 +182,40 @@ def test_adds_new_file_from_template(workdir: Path) -> None:
     assert outputs["has_deletions"] == "false"
 
 
+def test_adds_a_single_file_sync_path_entry(workdir: Path) -> None:
+    """SYNC_PATHS carries `.github/tool-versions.sh`, a FILE that no directory
+    entry covers. `.github/scripts` syncs install-mergiraf.sh, which sources that
+    pin, so the entry that brings it must work on its own."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / ".github" / "tool-versions.sh", "MERGIRAF_VERSION=v0.0.1\n")
+    commit_all(template)
+
+    result, output_file = run_sync(
+        child, template, sync_paths=".github/tool-versions.sh"
+    )
+    assert result.returncode == 0, result.stderr
+
+    synced = child / ".github" / "tool-versions.sh"
+    assert synced.read_text(encoding="utf-8") == "MERGIRAF_VERSION=v0.0.1\n"
+    assert parse_outputs(output_file)["has_changes"] == "true"
+
+
+def test_a_file_sync_path_absent_from_the_template_is_skipped(workdir: Path) -> None:
+    """A template that has not added the file yet must leave the rest of the sync
+    running, not abort it."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "a.txt", "same\n")
+    commit_all(template)
+
+    result, _ = run_sync(child, template, sync_paths="config .github/tool-versions.sh")
+    assert result.returncode == 0, result.stderr
+    assert "not found in template, skipping" in result.stdout
+    assert (child / "config" / "a.txt").read_text(encoding="utf-8") == "same\n"
+    assert not (child / ".github" / "tool-versions.sh").exists()
+
+
 def test_no_changes_when_files_identical(workdir: Path) -> None:
     child = workdir / "child"
     template = workdir / "template"
