@@ -323,13 +323,13 @@ with open(sys.argv[1], encoding="utf-8") as workflow:
 PY
 }
 
-# json_duplicate_member FILE — true when the JSON document FILE repeats a member name in any object.
-# RFC 8259 leaves the duplicate to the parser, and jq, Python and JavaScript all keep the LAST one,
-# so a clean line merge where both sides added one key silently drops one side's block. A file that
-# is not valid JSON exits 2 and kills the sync rather than merging unread.
-json_duplicate_member() {
-  local rc=0
-  python3 - "$1" <<'PY' || rc=$?
+# json_merge_problem FILE — why the merged JSON document FILE must not replace the local file, or
+# nothing when it may. RFC 8259 leaves a duplicate member name to the parser, and jq, Python and
+# JavaScript all keep the LAST one, so a clean line merge where both sides added one key silently
+# drops one side's block. A clean merge can also yield text json.load refuses: a JSONC comment, or a
+# comma one side's edit left dangling. Both keep the local file, and the caller reports the reason.
+json_merge_problem() {
+  python3 - "$1" <<'PY'
 import json
 import sys
 
@@ -349,14 +349,10 @@ with open(sys.argv[1], encoding="utf-8") as document:
     try:
         json.load(document, object_pairs_hook=refuse_duplicates)
     except Duplicate:
-        sys.exit(0)
+        print("duplicate")
     except json.JSONDecodeError as err:
-        print(f"::error::template-sync: {sys.argv[1]} is not valid JSON: {err}", file=sys.stderr)
-        sys.exit(2)
-sys.exit(1)
+        print(f"invalid: {err}")
 PY
-  ((rc <= 1)) || exit "$rc"
-  ((rc == 0))
 }
 
 # Resolve a single file's sync outcome using a 3-way merge of the file at PREV_SHA
@@ -367,8 +363,8 @@ PY
 #   4. Template is unchanged since base → local diverged alone; keep local.
 #   5. Local is unchanged since base → template advanced alone; adopt template.
 #   6. Both sides changed → attempt a 3-way merge:
-#      a. Clean merge → write merged result, unless a JSON result repeats a member name: that
-#         keeps local and is reported as a conflict no marker can show.
+#      a. Clean merge → write merged result, unless a JSON result repeats a member name or does
+#         not parse: that keeps local and is reported as a conflict no marker can show.
 #      b. Conflict → write conflict markers, so both sides reach the reviewer.
 process_file() {
   local rel_path="$1"
@@ -454,12 +450,26 @@ process_file() {
   cp "$rel_path" "$merge_result"
 
   if merge_file_clean "$merge_result" "$base_file" "$template_file"; then
-    if [[ "$rel_path" == *.json ]] && json_duplicate_member "$merge_result"; then
+    local json_problem=""
+    # An `if`, not `&&`: errexit skips an `&&` list, so a crashed parser would read as "no problem".
+    if [[ "$rel_path" == *.json ]]; then
+      json_problem=$(json_merge_problem "$merge_result")
+    fi
+    if [[ "$json_problem" == duplicate ]]; then
       echo "CONFLICT (clean merge repeats a JSON member, local kept): $rel_path"
       record_markerless_conflict "$rel_path" "$template_file" \
         "**The template change is NOT applied.** The line merge was clean, but its result repeats a
 JSON member name. Most parsers keep only the LAST copy, so one side's block would silently stop
 taking effect. The sync keeps the local file unchanged. Port the template's change by hand."
+      rm -f "$base_file" "$merge_result"
+      return
+    fi
+    if [[ -n "$json_problem" ]]; then
+      echo "CONFLICT (clean merge is not valid JSON, local kept): $rel_path"
+      record_markerless_conflict "$rel_path" "$template_file" \
+        "**The template change is NOT applied.** The line merge was clean, but its result is
+not valid JSON (${json_problem#invalid: }). A JSONC comment or a comma one side left behind does
+this. The sync keeps the local file unchanged. Port the template's change by hand."
       rm -f "$base_file" "$merge_result"
       return
     fi

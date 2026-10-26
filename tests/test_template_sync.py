@@ -1282,6 +1282,44 @@ def test_a_clean_json_merge_with_a_duplicate_member_is_a_conflict(
     assert (child / "config" / "settings.json").read_text(encoding="utf-8") == local
 
 
+def test_a_clean_json_merge_that_does_not_parse_keeps_local(workdir: Path) -> None:
+    """A merged .json that json.load refuses keeps the local file and is reported.
+
+    JSONC is the common case: a comment both sides keep rides a clean line merge
+    into a file json.load refuses. The sync must not abort with no pull request,
+    and the report names the repository path, never the temporary merge file.
+    """
+    base = '{\n  // pinned\n  "a": 1,\n  "b": 2,\n  "c": 3,\n  "d": 4\n}\n'
+    local = '{\n  // pinned\n  "a": 10,\n  "b": 2,\n  "c": 3,\n  "d": 4\n}\n'
+    template_after = '{\n  // pinned\n  "a": 1,\n  "b": 2,\n  "c": 3,\n  "d": 40\n}\n'
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "settings.json", base)
+    prev_sha = commit_all(template)
+    write(child / "config" / "settings.json", local)
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    write(template / "config" / "settings.json", template_after)
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_conflicts"] == "true"
+    assert outputs["markerless_files"].split() == ["config/settings.json"]
+    assert "not valid JSON" in outputs["conflict_report"]
+    assert (
+        "merge_result_"
+        not in outputs["conflict_report"] + result.stdout + result.stderr
+    )
+    assert (
+        "CONFLICT (clean merge is not valid JSON, local kept): config/settings.json"
+        in result.stdout
+    )
+    assert (child / "config" / "settings.json").read_text(encoding="utf-8") == local
+
+
 def test_a_clean_json_merge_without_duplicates_still_merges(workdir: Path) -> None:
     child = workdir / "child"
     template = workdir / "template"
