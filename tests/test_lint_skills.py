@@ -96,3 +96,33 @@ def test_rejects_unclosed_frontmatter(tmp_path: Path, copy_script) -> None:
     result = run_lint(tmp_path, copy_script, skill)
     assert result.returncode == 1
     assert "closing" in result.stderr
+
+
+def test_an_all_comment_frontmatter_reports_instead_of_aborting(
+    tmp_path: Path, copy_script
+) -> None:
+    """A frontmatter holding only comments must reach the field checks, which
+    name what is missing, rather than abort the linter with no message."""
+    skill = write_skill(tmp_path, "comments", "---\n# a comment\n---\n# body\n")
+    result = run_lint(tmp_path, copy_script, skill)
+    assert result.returncode == 1
+    assert "missing 'name:'" in result.stderr
+    assert "missing 'description:'" in result.stderr
+
+
+def test_the_next_key_does_not_count_toward_the_description(
+    tmp_path: Path, copy_script
+) -> None:
+    """The periods in the key after `description:` are not part of it."""
+    body = "---\nname: x\ndescription: Tiny\nversion: 1.2.3\n---\n# body\n"
+    skill = write_skill(tmp_path, "short", body)
+    result = run_lint(tmp_path, copy_script, skill)
+    assert result.returncode == 1
+    assert "description too short" in result.stderr
+
+
+def test_a_continued_description_counts_every_line(tmp_path: Path, copy_script) -> None:
+    body = "---\nname: x\ndescription: >\n  One sentence.\n  Two sentences.\n---\n# b\n"
+    skill = write_skill(tmp_path, "folded", body)
+    result = run_lint(tmp_path, copy_script, skill)
+    assert result.returncode == 0, result.stderr
