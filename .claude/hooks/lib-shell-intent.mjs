@@ -10,8 +10,10 @@
  *
  * A word scan, not a shell parser: these hooks run on a bare `node` on every tool
  * call, with no node_modules. It finds a program only at COMMAND POSITION — the
- * start of the command, or after a shell separator or keyword — so a MENTION in a
- * quoted argument, a grep pattern or a heredoc body does not count. Before the
+ * start of the command, or after a shell separator or keyword — so a MENTION
+ * inside a quoted argument or a grep pattern does not count. It cannot see quotes
+ * or heredocs across lines, so a LINE of a heredoc body or of a multi-line string
+ * that starts with the program counts: the error runs the checks. Before the
  * program it skips variable assignments, an `env` wrapper and a directory prefix;
  * after it, the program's own global flags, consuming the value of each flag that
  * takes one. A flag it does not know counts as one that takes no value.
