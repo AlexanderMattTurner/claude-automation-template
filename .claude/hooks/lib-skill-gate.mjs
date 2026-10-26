@@ -74,12 +74,13 @@ function markerSays(path, skill) {
  *
  * @param {object} spec
  * @param {string} spec.skill        the skill the gate requires
- * @param {(payload: any) => boolean} spec.triggered  does this payload need it?
+ * @param {(payload: any) => boolean|Promise<boolean>} spec.triggered  does this
+ *   payload need it?
  * @param {(toolName: string) => string} spec.reason  the deny text
- * @returns {(payload: any) => string|null}
+ * @returns {(payload: any) => Promise<string|null>}
  */
 export function createSkillGate({ skill, triggered, reason }) {
-  return function judge(payload) {
+  return async function judge(payload) {
     const path = markerPath(payload?.session_id, skill);
     if (invokesSkill(payload, skill)) {
       // Best-effort: a failed write costs a reminder, not correctness.
@@ -94,7 +95,7 @@ export function createSkillGate({ skill, triggered, reason }) {
         }
       return null;
     }
-    if (!triggered(payload)) return null;
+    if (!(await triggered(payload))) return null;
     // No session key means no way to tell whether the skill ran, and a reminder
     // that can never be satisfied is a wedge with no remedy — worse than a missed
     // one.

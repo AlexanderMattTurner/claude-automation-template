@@ -163,6 +163,13 @@ ALLOWED_CALLS = [
         },
     ),
     (
+        "a separator inside a single-quoted argument",
+        {
+            "tool_name": "Bash",
+            "tool_input": {"command": "git commit -m 'note; gh pr create --fill'"},
+        },
+    ),
+    (
         "a similarly named binary",
         {"tool_name": "Bash", "tool_input": {"command": "mygh pr create"}},
     ),

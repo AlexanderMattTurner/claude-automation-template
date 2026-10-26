@@ -51,11 +51,11 @@ export function failedChecks(script = CHECK_SCRIPT) {
  * The hook response for one payload: a deny body, or null to let the call run.
  * @param {any} payload
  * @param {{runChecks?: () => string|null, now?: () => number}} [deps] test seams
- * @returns {ReturnType<typeof denyToolCall>|null}
+ * @returns {Promise<ReturnType<typeof denyToolCall>|null>}
  */
-export function judgePush(payload, deps = {}) {
-  const pushes = pushesCommits(payload);
-  if (!pushes && !opensPullRequest(payload)) return null;
+export async function judgePush(payload, deps = {}) {
+  const pushes = await pushesCommits(payload);
+  if (!pushes && !(await opensPullRequest(payload))) return null;
   const failure = (deps.runChecks ?? failedChecks)();
   if (failure !== null)
     return denyToolCall(
@@ -73,6 +73,6 @@ if (isMain(import.meta.url)) {
   } catch {
     // See the posture note in the header: an unreadable payload names no push.
   }
-  const response = judgePush(payload);
+  const response = await judgePush(payload);
   if (response) process.stdout.write(JSON.stringify(response));
 }

@@ -26,6 +26,9 @@ def project(tmp_path: Path) -> Path:
     pre-push-check.sh runs `ruff` — a stub that records its call."""
     root = tmp_path / "proj"
     shutil.copytree(REPO_ROOT / ".claude" / "hooks", root / ".claude" / "hooks")
+    # The bash parser the hooks load at fire time: web-tree-sitter and
+    # tree-sitter-bash, from the repo's own install.
+    (root / "node_modules").symlink_to(REPO_ROOT / "node_modules")
     scripts = root / ".github" / "scripts"
     scripts.mkdir(parents=True)
     shutil.copy(REPO_ROOT / ".github" / "scripts" / "script-configured.sh", scripts)
@@ -90,10 +93,17 @@ GATED = [
     "env gh pr create",
     "env -u GH_HOST GH_TOKEN=x gh --repo o/r pr create",
     "if git push; then echo ok; fi",
+    'echo "$(git push)"',
+    "git commit -m 'x' && git push",
 ]
 
 NOT_GATED = [
     'git commit -m "then git push"',
+    # A separator inside a quoted argument does not start a command.
+    'git commit -m "docs: explain workflow; git push after checks"',
+    "git commit -m 'wip; git push origin main'",
+    "printf '%s\\n' 'a && gh pr create'",
+    "cat <<'EOF' > notes.md\ngit push\nEOF",
     "echo git push",
     "grep -rn 'gh pr create' .",
     "git log --oneline",
@@ -185,3 +195,17 @@ def test_unparsable_stdin_passes(project: Path, tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+
+def test_a_shortlisted_command_counts_when_the_parser_is_missing(
+    project: Path, tmp_path: Path
+) -> None:
+    """With no node_modules the call cannot be judged, so a command that names
+    `git` and `push` runs the checks. One that names neither is not parsed."""
+    (project / "node_modules").unlink()
+    command = 'git commit -m "docs: explain workflow; git push after checks"'
+    result = run_gate(project, tmp_path, bash(command), exit_code=1)
+    assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == (
+        "deny"
+    )
+    assert run_gate(project, tmp_path, bash("ls -la"), exit_code=1).stdout == ""

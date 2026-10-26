@@ -11,3 +11,8 @@ minimumReleaseAge: 4320
 # packages published from this repo's own GitHub owner.
 minimumReleaseAgeExclude:
   - agent-control-plane-core
+
+# tree-sitter-bash ships a native addon AND tree-sitter-bash.wasm. The hooks load
+# only the wasm through web-tree-sitter, so its native build never runs.
+allowBuilds:
+  tree-sitter-bash: false

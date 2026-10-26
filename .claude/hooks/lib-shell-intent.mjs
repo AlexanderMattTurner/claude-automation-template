@@ -2,67 +2,23 @@
  * What a tool call DOES, for every hook that acts on a push or on a new pull
  * request or issue: the PreToolUse push gate and the skill gates.
  *
- * PROBLEM CLASS — two hooks deciding "is this a push / a PR create" with two
- * matchers. A settings.json `if` such as `Bash(git push:*)` missed
- * `git -C /repo push`; the skill gates' regex missed `gh -R o/r pr create`,
- * `GH_TOKEN=x gh pr create` and `env gh pr create`. Which checks ran then
- * depended on how the command was spelled. Every hook asks this module instead.
+ * PROBLEM CLASS — hooks deciding "is this a push / a PR create" by matching the
+ * command's TEXT. A settings.json `if` such as `Bash(git push:*)` missed
+ * `git -C /repo push`, and a regex read the `; git push` inside
+ * `git commit -m "docs; git push after checks"` as a second command. Every hook
+ * asks this module, and this module asks the bash grammar (tree-sitter-bash,
+ * through web-tree-sitter's wasm build): a `command` node is executed, while a
+ * `string` argument or a `heredoc_body` is text.
  *
- * A word scan, not a shell parser: these hooks run on a bare `node` on every tool
- * call, with no node_modules. It finds a program only at COMMAND POSITION — the
- * start of the command, or after a shell separator or keyword — so a MENTION
- * inside a quoted argument or a grep pattern does not count. It cannot see quotes
- * or heredocs across lines, so a LINE of a heredoc body or of a multi-line string
- * that starts with the program counts: the error runs the checks. Before the
- * program it skips variable assignments, an `env` wrapper and a directory prefix;
- * after it, the program's own global flags, consuming the value of each flag that
- * takes one. A flag it does not know counts as one that takes no value.
+ * A word scan only SHORTLISTS: a command that does not hold every word of the
+ * invocation as a token is never parsed, which keeps the parser's load off every
+ * other tool call. A shortlisted command that cannot be judged — the parser
+ * package is absent, or the parse has an ERROR node — counts as the invocation,
+ * so the push gate runs its checks rather than waving the call through.
  */
+import { createRequire } from "node:module";
 
-/** Blanks between two words, a backslash-newline continuation included. */
-const WS = String.raw`(?:[ \t]|\\\n)+`;
-
-/** One shell word: a quoted string, or a run with no blank or operator in it. */
-const WORD = String.raw`(?:"[^"\n]*"|'[^'\n]*'|[^\s;|&()'"]+)`;
-
-/**
- * Flags, then words. A flag in `valueFlags` consumes the next word as its value.
- * The bare-flag arm refuses those names, so `git -C push log` never backtracks
- * into reading `-C` as bare and `push` as the subcommand.
- * @param {readonly string[]} valueFlags @returns {string}
- */
-function flagsSource(valueFlags) {
-  const names = `(?:${valueFlags.join("|")})`;
-  return String.raw`(?:${WS}(?:${names}${WS}${WORD}|(?!${names}(?:\s|$))-[^\s;|&()]*))*`;
-}
-
-/** Any run of `NAME=value` words before a program. */
-const ASSIGNMENTS = String.raw`(?:[A-Za-z_]\w*=${WORD}?${WS})*`;
-
-/**
- * The start of a command: the start of the text or a separator, then any shell
- * keywords, assignments and an `env` wrapper with its flags.
- */
-const COMMAND_START = [
-  String.raw`(?:^|[\n;|&(){}!\`])[ \t]*`,
-  String.raw`(?:(?:if|then|elif|else|while|until|do|time)${WS})*`,
-  ASSIGNMENTS,
-  String.raw`(?:env${flagsSource(["-u", "-C", "-S"])}${WS}${ASSIGNMENTS})?`,
-].join("");
-
-/**
- * A regex for `program [global flags] word...` at command position.
- * @param {string} program @param {readonly string[]} valueFlags global flags
- *   whose value is the NEXT word @param {readonly string[]} words
- * @returns {RegExp}
- */
-function commandAt(program, valueFlags, words) {
-  const dirPrefix = String.raw`(?:[^\s;|&()'"]*/)?`;
-  const subcommand = words.map((w) => `${WS}${w}`).join("");
-  return new RegExp(
-    `${COMMAND_START}${dirPrefix}${program}${flagsSource(valueFlags)}${subcommand}\\b`,
-  );
-}
+import { lazyImport } from "./lib-hook-io.mjs";
 
 /** git's global options that take their value as the next word. */
 const GIT_VALUE_FLAGS = Object.freeze([
@@ -78,21 +34,113 @@ const GIT_VALUE_FLAGS = Object.freeze([
 /** gh's flags that may precede the subcommand and take a value. */
 const GH_VALUE_FLAGS = Object.freeze(["-R", "--repo"]);
 
-const GIT_PUSH_RE = commandAt("git", GIT_VALUE_FLAGS, ["push"]);
+/** `env` options that take their value as the next word. */
+const ENV_VALUE_FLAGS = Object.freeze(["-u", "-C", "-S"]);
 
 /** Suffix-matched: the same tool arrives as `mcp__github__…` or `mcp__github_remote__…`. */
 const PR_MCP_TOOL_RE = /^mcp__.*create_pull_request$/;
 
+/** A wrapper that runs the rest of its arguments as the command. */
+const WRAPPERS = new Set(["env", "command", "exec"]);
+
+/** @type {Promise<any|null>|undefined} */
+let parserPromise;
+
 /**
- * A regex for `gh <group> <action>` at command position. `create\b` counts
- * `create-draft` and not `creates`; `mygh` is not `gh`.
- * @param {string} group @param {string} action @returns {RegExp}
+ * The bash parser, or null when its packages cannot load. Loaded once per
+ * process, and only for a shortlisted command.
+ * @returns {Promise<any|null>}
  */
-export function ghCommand(group, action) {
-  return commandAt("gh", GH_VALUE_FLAGS, [group, action]);
+function bashParser() {
+  parserPromise ??= (async () => {
+    const { Parser, Language } = await lazyImport("web-tree-sitter");
+    if (!Parser) return null;
+    let wasm;
+    try {
+      wasm = createRequire(import.meta.url).resolve(
+        "tree-sitter-bash/tree-sitter-bash.wasm",
+      );
+    } catch {
+      return null; // tree-sitter-bash is not installed: the caller's fallback.
+    }
+    await Parser.init();
+    const parser = new Parser();
+    parser.setLanguage(await Language.load(wasm));
+    return parser;
+  })();
+  return parserPromise;
 }
 
-const GH_PR_CREATE_RE = ghCommand("pr", "create");
+/**
+ * The literal value of one word node, or null when the shell computes it (an
+ * expansion or a substitution inside it).
+ * @param {any} node @returns {string|null}
+ */
+function literal(node) {
+  if (node.type === "word") return node.text;
+  if (node.type === "raw_string") return node.text.slice(1, -1);
+  if (node.type === "string") {
+    const parts = node.namedChildren;
+    if (parts.every((/** @type {any} */ p) => p.type === "string_content"))
+      return parts.map((/** @type {any} */ p) => p.text).join("");
+  }
+  return null;
+}
+
+/**
+ * Does this argv run `program [flags] ...words`? Skips wrappers (`env` with its
+ * options and assignments, `command`, `exec`), then the program's own flags,
+ * consuming the value of each flag in `valueFlags`.
+ * @param {(string|null)[]} argv @param {string} program
+ * @param {readonly string[]} valueFlags @param {readonly string[]} words
+ * @returns {boolean}
+ */
+function argvRuns(argv, program, valueFlags, words) {
+  let i = 0;
+  while (WRAPPERS.has(argv[i] ?? "")) {
+    if (argv[i++] !== "env") continue;
+    for (; argv[i]?.startsWith("-") || /^\w+=/.test(argv[i] ?? ""); i++)
+      if (ENV_VALUE_FLAGS.includes(argv[i] ?? "")) i++;
+  }
+  const name = argv[i++];
+  if (typeof name !== "string") return false;
+  if (name.slice(name.lastIndexOf("/") + 1) !== program) return false;
+  for (; argv[i]?.startsWith("-"); i++)
+    if (valueFlags.includes(argv[i] ?? "")) i++;
+  return words.every((word, k) => argv[i + k] === word);
+}
+
+/**
+ * Does `command` run `program [flags] ...words` anywhere it executes — a list,
+ * a pipeline, a subshell, a command substitution — but not inside a string or a
+ * heredoc body?
+ * @param {string} command @param {string} program
+ * @param {readonly string[]} valueFlags @param {readonly string[]} words
+ * @returns {Promise<boolean>}
+ */
+async function runs(command, program, valueFlags, words) {
+  const shortlisted = [program, ...words].every((w) =>
+    new RegExp(String.raw`(?<![\w-])${w}(?![\w-])`).test(command),
+  );
+  if (!shortlisted) return false;
+  const parser = await bashParser();
+  if (parser === null) return true;
+  const tree = parser.parse(command);
+  try {
+    if (tree.rootNode.hasError) return true;
+    return tree.rootNode
+      .descendantsOfType("command")
+      .some((/** @type {any} */ cmd) => {
+        // The `name` field is a `command_name` node wrapping the word itself.
+        const name = cmd.childForFieldName("name")?.namedChildren[0];
+        const args = cmd.childrenForFieldName("argument");
+        const argv = [name, ...args].map((n) => (n ? literal(n) : null));
+        return argvRuns(argv, program, valueFlags, words);
+      });
+  } finally {
+    tree.delete();
+  }
+}
 
 /**
  * The shell text of a Bash tool call, or null for any other call.
@@ -106,24 +154,33 @@ export function bashCommand(payload) {
 }
 
 /**
- * Does this tool call push commits?
- * @param {any} payload @returns {boolean}
+ * Does this Bash command run `gh <group> <action>`?
+ * @param {string} command @param {string} group @param {string} action
+ * @returns {Promise<boolean>}
  */
-export function pushesCommits(payload) {
+export function runsGh(command, group, action) {
+  return runs(command, "gh", GH_VALUE_FLAGS, [group, action]);
+}
+
+/**
+ * Does this tool call push commits?
+ * @param {any} payload @returns {Promise<boolean>}
+ */
+export async function pushesCommits(payload) {
   const command = bashCommand(payload);
-  return command !== null && GIT_PUSH_RE.test(command);
+  return command !== null && runs(command, "git", GIT_VALUE_FLAGS, ["push"]);
 }
 
 /**
  * Does this tool call open a pull request — `gh pr create`, or any MCP
  * `create_pull_request` tool? Out of scope: `gh api` or `curl` to the pulls
- * endpoint, a script whose body runs `gh pr create`, and the web UI. Each is some
- * HTTP client, so matching them means matching arbitrary programs.
- * @param {any} payload @returns {boolean}
+ * endpoint, a script whose body runs `gh pr create`, `bash -c "…"`, and the web
+ * UI. Each is some program's argument, so matching them means matching text.
+ * @param {any} payload @returns {Promise<boolean>}
  */
-export function opensPullRequest(payload) {
+export async function opensPullRequest(payload) {
   if (typeof payload?.tool_name !== "string") return false;
   if (PR_MCP_TOOL_RE.test(payload.tool_name)) return true;
   const command = bashCommand(payload);
-  return command !== null && GH_PR_CREATE_RE.test(command);
+  return command !== null && runsGh(command, "pr", "create");
 }
