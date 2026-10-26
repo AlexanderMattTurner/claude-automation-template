@@ -13,8 +13,8 @@
 # Approves ONLY when the reviewer's LATEST review is CHANGES_REQUESTED or
 # COMMENTED (any other latest state means nothing to clear: APPROVED already
 # through, DISMISSED, or "" it never reviewed this PR; the allowlist is stricter
-# than "!= APPROVED" on purpose), AND that latest review opened at least one
-# thread, AND no reviewer thread from any review is still unresolved. A hold whose
+# than "!= APPROVED" on purpose), AND that hold's cycle (after the review before
+# it) opened at least one thread, AND no reviewer thread is still unresolved. A hold whose
 # concern lived only in the review body opens no thread, so it clears on the
 # reviewer's own re-review instead, even after an earlier round's threads close.
 #
@@ -63,22 +63,29 @@ reviews_query='query($owner: String!, $name: String!, $pr: Int!, $endCursor: Str
     pullRequest(number: $pr) {
       reviews(first: 100, after: $endCursor) {
         pageInfo { hasNextPage endCursor }
-        nodes { databaseId author { login } state submittedAt }
+        nodes { databaseId author { login } state body submittedAt }
       }
     }
   }
 }'
+# A body-less review is not one: GitHub synthesizes it around every standalone
+# review comment, which is how a hold thread is opened and how a reply is posted.
 reviewer_reviews="$(gh api graphql --paginate \
   -f query="$reviews_query" -f owner="$owner" -f name="$name" -F pr="$PR" \
   --jq ".data.repository.pullRequest.reviews.nodes[]
         | ${REVIEWER_MATCH_AUTHOR}
+        | select((.body // \"\") != \"\")
         | {databaseId, state, submittedAt}")"
 
 # Paginated: a long-lived PR can accrue >100 reviews, and an unpaginated
 # first:100 returns the OLDEST 100 and would pick a stale state. Each slurp below
-# therefore sorts by submittedAt across every page.
+# therefore sorts by submittedAt across every page. cycleStart is the review
+# before the latest, which opens the latest hold's cycle.
 latest_review="$(jq -cs \
-  'if length == 0 then {state: "", submittedAt: ""} else (sort_by(.submittedAt) | last) end' \
+  'sort_by(.submittedAt) as $r
+   | if ($r | length) == 0 then {state: "", submittedAt: "", cycleStart: ""}
+     else $r[-1] + {cycleStart: (if ($r | length) > 1 then $r[-2].submittedAt else "" end)}
+     end' \
   <<<"$reviewer_reviews")"
 latest_state="$(jq -r '.state' <<<"$latest_review")"
 
@@ -95,10 +102,12 @@ if [[ "$latest_state" != "CHANGES_REQUESTED" && "$latest_state" != "COMMENTED" ]
   exit 0
 fi
 
-# HOLD_SINCE scopes the in_hold count below to the latest hold. jq reads it from
-# the environment, so it is exported rather than shell-local.
+# HOLD_SINCE names the latest hold. CYCLE_START, the review before it, scopes the
+# in_hold count below to that hold's cycle. jq reads it from the environment, so
+# it is exported rather than shell-local.
 HOLD_SINCE="$(jq -r '.submittedAt // ""' <<<"$latest_review")"
-export HOLD_SINCE
+CYCLE_START="$(jq -r '.cycleStart // ""' <<<"$latest_review")"
+export CYCLE_START
 if [[ -z "$HOLD_SINCE" ]]; then
   echo "the reviewer's ${latest_state} review carries no submittedAt, so no thread can be scoped to it; the hold stays in place." >&2
   exit 1
@@ -124,10 +133,12 @@ remaining_query='query($owner: String!, $name: String!, $pr: Int!, $endCursor: S
 # `unresolved` spans the whole PR: a thread still open from any round blocks.
 # `in_hold` counts only the threads the latest hold opened, so an earlier round's
 # resolved threads cannot vouch for a newer hold. A thread belongs to the hold
-# when the review holding its root comment was submitted at or after HOLD_SINCE.
-# The root comment's own createdAt cannot answer that: a comment drafted into a
-# pending review is created BEFORE that review is submitted.
-thread_in_hold='((.comments.nodes[0].pullRequestReview.submittedAt // "") >= env.HOLD_SINCE)'
+# when the review holding its root comment came AFTER the previous real review.
+# Comparing with the hold itself is wrong: the oversized and degraded paths open
+# their hold thread first and post the review after it, so that thread is older
+# than its own hold. The root comment's createdAt cannot answer either: a comment
+# drafted into a pending review is created BEFORE that review is submitted.
+thread_in_hold='((.comments.nodes[0].pullRequestReview.submittedAt // "") > env.CYCLE_START)'
 # shellcheck disable=SC2016 # jq program is literal, not shell ($p is a jq var)
 counts="$(gh api graphql --paginate \
   -f query="$remaining_query" -f owner="$owner" -f name="$name" -F pr="$PR" \

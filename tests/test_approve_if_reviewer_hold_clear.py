@@ -45,12 +45,18 @@ def thread(
 
 
 def review(
-    state: str, author: str = BOT, at: str = "2026-01-01T00:00:00Z", rid: int = 1
+    state: str,
+    author: str = BOT,
+    at: str = "2026-01-01T00:00:00Z",
+    rid: int = 1,
+    body: str = "Automated review.",
 ) -> dict:
+    """A review. An empty `body` is the review GitHub synthesizes around a standalone comment."""
     return {
         "databaseId": rid,
         "author": {"login": author},
         "state": state,
+        "body": body,
         "submittedAt": at,
     }
 
@@ -447,6 +453,39 @@ def test_a_later_hold_clears_on_its_own_resolved_thread(tmp_path: Path):
         reviews=[
             review("CHANGES_REQUESTED", at="2026-01-01T00:00:00Z", rid=11),
             review("CHANGES_REQUESTED", at="2026-01-05T00:00:00Z", rid=55),
+        ],
+    )
+    assert res.returncode == 0, res.stderr
+    assert "approved to satisfy the review gate" in res.stderr
+
+
+def test_a_hold_thread_opened_before_its_own_review_clears_the_hold(tmp_path: Path):
+    """The oversized and degraded paths post the hold THREAD first and the notice
+    review after it. The thread rides the body-less review GitHub synthesized at
+    01-04, so it predates its own hold at 01-05. It still belongs to that hold,
+    because it came after the previous real review at 01-01."""
+    res, calls = run(
+        tmp_path,
+        threads=[thread(resolved=True, opened_at="2026-01-04T00:00:00Z")],
+        reviews=[
+            review("CHANGES_REQUESTED", at="2026-01-01T00:00:00Z", rid=11),
+            review("COMMENTED", at="2026-01-04T00:00:00Z", rid=44, body=""),
+            review("CHANGES_REQUESTED", at="2026-01-05T00:00:00Z", rid=55),
+        ],
+    )
+    assert res.returncode == 0, res.stderr
+    assert "approved to satisfy the review gate" in res.stderr
+
+
+def test_a_body_less_review_is_not_the_latest_hold(tmp_path: Path):
+    """A reply posted in-thread synthesizes a body-less COMMENTED review. It is no
+    verdict, so the real hold before it stays the one its thread clears."""
+    res, calls = run(
+        tmp_path,
+        threads=[thread(resolved=True, opened_at="2026-01-01T00:00:00Z")],
+        reviews=[
+            review("CHANGES_REQUESTED", at="2026-01-01T00:00:00Z", rid=11),
+            review("COMMENTED", at="2026-01-06T00:00:00Z", rid=66, body=""),
         ],
     )
     assert res.returncode == 0, res.stderr
