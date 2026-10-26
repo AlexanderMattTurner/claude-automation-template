@@ -56,6 +56,23 @@ GATED_CALLS = [
         {"tool_name": "Bash", "tool_input": {"command": "gh pr create --fill"}},
         "pr-creation",
     ),
+    # A global flag, an assignment or an `env` wrapper before the subcommand still
+    # runs `gh pr create`.
+    (
+        "gh -R owner/repo pr create",
+        {"tool_name": "Bash", "tool_input": {"command": "gh -R o/r pr create"}},
+        "pr-creation",
+    ),
+    (
+        "GH_TOKEN=x gh pr create",
+        {"tool_name": "Bash", "tool_input": {"command": "GH_TOKEN=x gh pr create"}},
+        "pr-creation",
+    ),
+    (
+        "env gh pr create",
+        {"tool_name": "Bash", "tool_input": {"command": "cd a && env gh pr create"}},
+        "pr-creation",
+    ),
     (
         "the MCP create_pull_request tool",
         {"tool_name": "mcp__github__create_pull_request", "tool_input": {}},

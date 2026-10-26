@@ -8,21 +8,19 @@
  * session that pushes and quits inside the window. Before arming, and in a session
  * that never pushes, the stop is allowed silently.
  *
- * The push is RECORDED, never parsed: `.claude/settings.json` runs this file with
- * `--record-push` on PreToolUse under the `Bash(git push:*)` matcher, the same
- * matcher pre-push-check.sh trusts, so Claude Code decides what a push is and no
- * shell text is read here. The pings are bounded (default 3, `COMPLETION_CHECK_MAX`)
- * and the check is one-shot, so a session can never be trapped; `COMPLETION_CHECK=0`
+ * The push is RECORDED by `push-gate.mjs`, which calls {@link recordPush} once its
+ * checks let a push through, so this file reads no shell text. The pings are
+ * bounded (default 3, `COMPLETION_CHECK_MAX`) and the check is one-shot, so a session can never be trapped; `COMPLETION_CHECK=0`
  * disables it. An armed stop with nothing to certify — a turn that called no tool,
  * or whose only tool calls were empty `ReadNotifications` polls — is allowed WITHOUT
  * spending the one shot. Advisory posture: malformed events and state failures allow
  * the stop. Dependency-free on purpose: the template ships no node_modules.
  */
 import { mkdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname } from "node:path";
 
 import {
+  hookStateDir,
   isMain,
   readStdinJson,
   readTranscriptTail,
@@ -192,10 +190,13 @@ const FRESH = Object.freeze({
 /**
  * This session's state file, or null when the session id is not a safe filename.
  * @param {unknown} sessionId
- * @param {string} dir
+ * @param {string} [dir]
  * @returns {string|null}
  */
-export function statePath(sessionId, dir) {
+export function statePath(
+  sessionId,
+  dir = hookStateDir("COMPLETION_CHECK_STATE_DIR", "claude-completion-check"),
+) {
   return sessionStatePath(sessionId, dir, ".json");
 }
 
@@ -234,7 +235,7 @@ export function readState(path) {
  */
 function save(path, state) {
   try {
-    mkdirSync(join(path, ".."), { recursive: true, mode: 0o700 });
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   } catch {
     return false;
   }
@@ -242,9 +243,9 @@ function save(path, state) {
 }
 
 /**
- * The PreToolUse arm: record when this session first ran a push. The matcher in
- * settings.json is what decided the command IS a push; this only stamps the time.
- * Later pushes leave the first stamp alone, so the arming window opens once.
+ * Record when this session first ran a push. `push-gate.mjs` decided the command
+ * IS a push; this only stamps the time. Later pushes leave the first stamp alone,
+ * so the arming window opens once.
  * @param {string} path the session's state file
  * @param {number} now epoch milliseconds
  * @returns {boolean} whether a first push was recorded by this call
@@ -267,11 +268,7 @@ export function recordPush(path, now) {
  */
 export function run(payload, options = {}) {
   if (process.env.COMPLETION_CHECK === "0") return null;
-  const dir =
-    options.stateDir ??
-    process.env.COMPLETION_CHECK_STATE_DIR ??
-    join(tmpdir(), "claude-completion-check");
-  const path = statePath(payload?.session_id, dir);
+  const path = statePath(payload?.session_id, options.stateDir);
   const transcript = payload?.transcript_path;
   if (path === null || typeof transcript !== "string") return null;
   const envMax = Number(process.env.COMPLETION_CHECK_MAX);
@@ -329,16 +326,8 @@ if (isMain(import.meta.url)) {
       typeof raw === "object" && raw !== null
         ? /** @type {{session_id?: unknown, transcript_path?: unknown}} */ (raw)
         : {};
-    if (process.argv.includes("--record-push")) {
-      const dir =
-        process.env.COMPLETION_CHECK_STATE_DIR ??
-        join(tmpdir(), "claude-completion-check");
-      const path = statePath(payload.session_id, dir);
-      if (path !== null) recordPush(path, Date.now());
-    } else {
-      const response = run(payload);
-      if (response) process.stdout.write(`${JSON.stringify(response)}\n`);
-    }
+    const response = run(payload);
+    if (response) process.stdout.write(`${JSON.stringify(response)}\n`);
   } catch {
     // Fail open: a malformed payload or an unwritable state directory allows the
     // stop, so this hook can never hold a session open on its own defect.

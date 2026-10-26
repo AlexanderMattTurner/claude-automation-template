@@ -1,11 +1,10 @@
 """End-to-end tests for .claude/hooks/completion-check.mjs.
 
-Drives the two commands `.claude/settings.json` wires — the PreToolUse
-`--record-push` arm through `safe-launch.sh`, and the Stop arm through `node` —
-as subprocesses against a real transcript file, and asserts what Claude Code
-would see: the block JSON on stdout, or silence. The in-process cases live in
-tests/completion-check.test.mjs; only this can tell a hook that works in
-isolation from one whose launch line never fires it.
+Drives the Stop command `.claude/settings.json` wires as a subprocess against a
+real transcript file, and asserts what Claude Code would see: the block JSON on
+stdout, or silence. The in-process cases live in tests/completion-check.test.mjs;
+only this can tell a hook that works in isolation from one whose launch line
+never fires it. tests/test_push_gate.py drives the push record.
 """
 
 import json
@@ -33,19 +32,6 @@ def _wired_command(event: str) -> str:
         f"scan that finds none makes every assertion below pass over nothing"
     )
     return commands[0]
-
-
-def test_the_push_arm_is_gated_on_the_harness_push_matcher():
-    """The hook never parses shell text; settings.json's `if` is what decides a
-    Bash call is a push, and it is the matcher pre-push-check.sh already uses."""
-    hooks = json.loads(SETTINGS.read_text(encoding="utf-8"))["hooks"]
-    entries = [
-        entry
-        for group in hooks["PreToolUse"]
-        for entry in group.get("hooks", [])
-        if "completion-check.mjs" in entry.get("command", "")
-    ]
-    assert [e.get("if") for e in entries] == ["Bash(git push:*)"]
 
 
 def _run(event: str, payload: dict, state: Path) -> subprocess.CompletedProcess:
@@ -80,21 +66,6 @@ def _worked_turn(text: str) -> str:
             _line("assistant", [{"type": "text", "text": text}]),
         ]
     )
-
-
-def test_the_wired_push_arm_records_the_push_and_says_nothing(tmp_path):
-    payload = {
-        "hook_event_name": "PreToolUse",
-        "session_id": SESSION,
-        "tool_name": "Bash",
-        "tool_input": {"command": "git push -u origin x"},
-    }
-    proc = _run("PreToolUse", payload, tmp_path)
-
-    assert proc.returncode == 0, proc.stderr.decode(errors="replace")[:400]
-    assert proc.stdout.decode().strip() == ""
-    saved = json.loads((tmp_path / f"{SESSION}.json").read_text(encoding="utf-8"))
-    assert isinstance(saved["pushedAt"], int) and saved["pushedAt"] > 0
 
 
 def test_the_wired_stop_arm_allows_a_session_that_never_pushed(tmp_path):

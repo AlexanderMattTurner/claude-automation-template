@@ -20,7 +20,7 @@
 import { judgePlanSkill } from "./gate-plan-skill.mjs";
 import { judgePrSkill } from "./gate-pr-skill.mjs";
 import { judgeTestsSkill } from "./gate-tests-skill.mjs";
-import { isMain, readStdinJson } from "./lib-hook-io.mjs";
+import { denyToolCall, isMain, readStdinJson } from "./lib-hook-io.mjs";
 
 /**
  * Every gate, in the order a reason is taken from. A payload triggers at most one
@@ -55,14 +55,7 @@ export function judge(payload) {
  */
 export function response(payload) {
   const reason = judge(payload);
-  if (reason === null) return "";
-  return JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: reason,
-    },
-  });
+  return reason === null ? "" : JSON.stringify(denyToolCall(reason));
 }
 
 if (isMain(import.meta.url)) {
