@@ -7,6 +7,7 @@ resulting file contents + GITHUB_OUTPUT entries.
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -84,6 +85,7 @@ def run_sync(
     sync_paths: str,
     exclude_paths: str = "",
     opt_in_paths: str = "",
+    path_prefix: Path | None = None,
 ) -> tuple[subprocess.CompletedProcess, Path]:
     template_copy = child / "_template"
     if template_copy.exists():
@@ -104,6 +106,8 @@ def run_sync(
         "GITHUB_OUTPUT": str(output_file),
         "TEMPLATE_SYNC_WORK_DIR": str(work),
     }
+    if path_prefix is not None:
+        env["PATH"] = f"{path_prefix}:{env['PATH']}"
     result = subprocess.run(
         ["bash", str(SCRIPT)], cwd=child, env=env, capture_output=True, text=True
     )
@@ -682,10 +686,18 @@ def test_survives_self_overwrite_with_longer_file(workdir: Path) -> None:
     script_rel = ".github/scripts/template-sync.sh"
     script_bytes = SCRIPT.read_text(encoding="utf-8")
 
-    # Base == the current script; child adopts it verbatim (Case 5 later).
+    # Base == the current script; child adopts it verbatim (Case 5 later). The
+    # script runs the wrapper beside it, which sources the pin file, so a real
+    # child carries both.
+    deps = {
+        rel: (REPO_ROOT / rel).read_text(encoding="utf-8")
+        for rel in (".github/scripts/run-with-pyyaml.sh", ".github/tool-versions.sh")
+    }
     write(template / script_rel, script_bytes)
     prev_sha = commit_all(template)
     write(child / script_rel, script_bytes)
+    for rel, text in deps.items():
+        write(child / rel, text)
     (child / ".template-version").write_text(prev_sha, encoding="utf-8")
     commit_all(child)
 
@@ -1248,6 +1260,28 @@ def test_the_template_declares_which_paths_sync(workdir: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert (child / "renamed" / "pin.txt").read_text(encoding="utf-8") == "pin\n"
+    assert (child / "config" / "a.txt").read_text(encoding="utf-8") == "a\n"
+
+
+def test_the_sync_paths_reader_needs_no_pyyaml_on_the_system_python(
+    workdir: Path,
+) -> None:
+    """A runner whose python3 lacks PyYAML (a container job, a self-hosted runner)
+    must still read the template's SYNC_PATHS: uv supplies PyYAML at the pin."""
+    shim = workdir / "bin"
+    shim.mkdir()
+    # -S drops site-packages, so this python3 imports the stdlib and nothing else.
+    write(shim / "python3", f'#!/bin/sh\nexec "{sys.executable}" -S "$@"\n')
+    (shim / "python3").chmod(0o755)
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "a.txt", "a\n")
+    commit_all(template)
+    commit_all(child)
+
+    result, _ = run_sync(child, template, sync_paths="config", path_prefix=shim)
+
+    assert result.returncode == 0, result.stderr
     assert (child / "config" / "a.txt").read_text(encoding="utf-8") == "a\n"
 
 

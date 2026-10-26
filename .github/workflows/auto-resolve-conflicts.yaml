@@ -108,10 +108,17 @@ jobs:
           sparse-checkout: |
             .github/workflows/auto-resolve-conflicts.yaml
             .github/scripts/resolver-ref.py
+            .github/scripts/run-with-pyyaml.sh
+            .github/tool-versions.sh
           sparse-checkout-cone-mode: false
+      # run-with-pyyaml.sh fetches PyYAML through uv. No cache: this job holds
+      # credentials, and a cache another run wrote is input it never reviewed.
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: false
       - name: Read the resolver pin
         id: pin
-        run: python3 .github/scripts/resolver-ref.py --github-output
+        run: bash .github/scripts/run-with-pyyaml.sh .github/scripts/resolver-ref.py --github-output
 
       # discover.py comes from the resolver repository, never this tree: a
       # pull_request event's merge ref is PR-authored, and the script's `prs`

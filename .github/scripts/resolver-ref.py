@@ -11,8 +11,8 @@ GitHub interpolates nothing into a `uses:`, so that line cannot read a shared
 value. It is therefore the source, and every other reader asks here. Dependabot
 moves only that line, so every reader follows it with no second edit.
 
-Standard library plus PyYAML, on the system interpreter: the callers install no
-virtualenv, and the hosted runner image ships PyYAML.
+Standard library plus PyYAML. Every caller runs it through run-with-pyyaml.sh,
+which supplies PyYAML at its pinned version, so no runner image needs to ship it.
 
 Usage: resolver-ref.py [--github-output] [ROOT]
   ROOT defaults to the working directory. Prints the ref. With --github-output,

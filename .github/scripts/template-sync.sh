@@ -313,7 +313,7 @@ merge_file_clean() {
 # the first sync after a rename ships a reader without the data file it reads. The template is the
 # only side that knows which paths it ships now. A repo narrows the set with EXCLUDE_PATHS.
 template_sync_paths() {
-  python3 - "_template/.github/workflows/template-sync.yaml" <<'PY'
+  bash "$(dirname "${BASH_SOURCE[0]}")/run-with-pyyaml.sh" - "_template/.github/workflows/template-sync.yaml" <<'PY'
 import sys
 
 import yaml

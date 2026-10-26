@@ -243,6 +243,12 @@ jobs:
         # and go through human review before they can execute.
         run: bash .github/scripts/check-token-scope.sh
 
+      # run-with-pyyaml.sh fetches PyYAML through uv. No cache: this job holds
+      # credentials, and a cache another run wrote is input it never reviewed.
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: false
+
       - name: Sync template files with conflict detection
         id: sync
         env:
@@ -326,7 +332,7 @@ jobs:
         if: inputs.dry-run != true && steps.sync.outputs.conflict_files != '' && steps.create-pr.outputs.pull-request-number
         env:
           REVIEWED: ${{ steps.reviewed.outputs.dir }}
-        run: python3 "${REVIEWED}/.github/scripts/resolver-ref.py" --github-output "${REVIEWED}"
+        run: bash "${REVIEWED}/.github/scripts/run-with-pyyaml.sh" "${REVIEWED}/.github/scripts/resolver-ref.py" --github-output "${REVIEWED}"
 
       - name: Resolve the sync conflicts
         id: resolve
