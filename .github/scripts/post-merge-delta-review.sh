@@ -54,8 +54,9 @@ block="$(mktemp)"
   printf '%s\n' "$STICKY_REVIEW_START"
   printf '## Merge-resolution review (Sonnet 5)\n\n'
   if [[ "$had_deltas" == "true" ]]; then
-    # Sanitize the model output before it reaches the comment.
-    node .github/scripts/sanitize-pr-input.mjs <"$review"
+    # Clean the model output before it reaches the comment: a `<!--` it echoed from the
+    # merge deltas could otherwise close this block early with a forged $STICKY_REVIEW_END.
+    node .github/scripts/sanitize-pr-input.mjs --model-text <"$review"
   else
     printf 'No merge-resolution deltas on the current head.\n'
   fi

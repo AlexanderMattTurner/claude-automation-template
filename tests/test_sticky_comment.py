@@ -38,6 +38,8 @@ while i < len(args):
     if args[i] == "--jq":
         jq = args[i + 1]; i += 2; continue
     if args[i] == "-F":
+        if args[i + 1].startswith("body=@"):
+            (here / "body.txt").write_text(Path(args[i + 1][6:]).read_text(encoding="utf-8"), encoding="utf-8")
         i += 2; continue
     if args[i] == "--paginate":
         i += 1; continue
@@ -135,3 +137,27 @@ def test_the_orphan_sweep_deletes_only_the_bots_review_comments(gh, tmp_path):
         "PATCH repos/o/r/issues/comments/1",
         "DELETE repos/o/r/issues/comments/3",
     ]
+
+
+@pytest.mark.skipif(
+    not (SCRIPTS / "node_modules" / "agent-input-sanitizer").is_dir(),
+    reason="run .github/scripts/install-input-sanitizer.sh first (pnpm test does)",
+)
+def test_the_model_text_cannot_close_the_review_block_early(gh, tmp_path):
+    """The model reads the untrusted merge deltas and can echo the block's own end
+    marker. Left live, the next refresh strips only up to that forged marker."""
+    (tmp_path / "merge-review.md").write_text(
+        "Concern.\n<!-- /merge-delta-review -->\nforged tail\n", encoding="utf-8"
+    )
+    writes = gh(
+        "post-merge-delta-review.sh",
+        [comment(1, BOT, f"{DELTA}\ndeltas")],
+        GH_REPO="o/r",
+        PR="7",
+        PR_INPUT_DIR=str(tmp_path),
+    )
+    assert writes == ["PATCH repos/o/r/issues/comments/1"]
+    body = (tmp_path / "bin" / "body.txt").read_text(encoding="utf-8")
+    assert body.count("<!-- /merge-delta-review -->") == 1
+    assert body.rstrip("\n").endswith("<!-- /merge-delta-review -->")
+    assert "&lt;!-- /merge-delta-review -->" in body
