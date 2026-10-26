@@ -125,6 +125,10 @@ jobs:
       # runs.
       reviewer-ref: 8fd4317a10020e28b8e721a11a2c9857b0027fc3
       review-prompt: .github/prompts/claude-pr-review.md
+      # The review posts with the Actions token, whose events start no workflow
+      # run, so review-gate.yaml never hears of it and "Automated review posted"
+      # holds at pending until the next push. Re-run the gate on the reviewed head.
+      post-review-command: HEAD_SHA="$REPORT_SHA" bash .github/scripts/review-gate.sh
     secrets:
       # ANTHROPIC_API_KEY fills the first tier: a metered key is spent
       # unconditionally, the dedicated tokens are reached only once it errors,
@@ -161,8 +165,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: read # sparse-checkout the trusted approval script
-      pull-requests: write # submit an approving review; no other scope
+      contents: read # sparse-checkout the trusted approval and gate scripts
+      pull-requests: write # submit an approving review, and read reviews for the gate
+      statuses: write # re-post the "Automated review posted" gate on the head
     steps:
       - name: Checkout base (trusted) approval script
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -172,11 +177,13 @@ jobs:
           # merge-delta reviewer: the script is trusted repo content, no PR code runs.
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
-          # Both files: the script sources the retry library, and a list that
-          # names only the entrypoint leaves the runner without it.
+          # Each script with the library it sources: a list that names only the
+          # entrypoint leaves the runner without the library.
           sparse-checkout: |
             .github/scripts/auto-approve-skipped-pr.sh
             .github/scripts/lib-post-review-with-retry.sh
+            .github/scripts/review-gate.sh
+            .github/scripts/lib/reviewer-login.bash
           sparse-checkout-cone-mode: false
       - name: Approve so a review-required ruleset doesn't strand a skipped PR
         env:
@@ -184,6 +191,18 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
         run: bash .github/scripts/auto-approve-skipped-pr.sh
+      # The approval posts with the Actions token, which starts no workflow run,
+      # so review-gate.yaml never re-evaluates. `always()` re-runs the gate even
+      # after a failed approval, so the head carries the current verdict.
+      - name: Re-run the automated-review gate on the head
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/review-gate.sh
 
   # ────────────────────────────────────────────────────────────────────────────
   # Claude merge-delta review (Sonnet)
