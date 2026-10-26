@@ -15,13 +15,15 @@
 # exits 1, which reds the run. The marker text stays in the pull request body's
 # conflict report, which is where a human resolves it from.
 #
-# Env: BASE_SHA (the commit the sync branched from), GITHUB_TOKEN.
+# Env: BASE_SHA (the commit the sync branched from), GITHUB_TOKEN, CONFLICT_FILES
+# (the paths the sync's own merge conflicted on; may be empty).
 set -euo pipefail
 
 # Read before the sources below, which need `jq` on PATH: a missing tool must
 # not stand in for a missing variable in the failure this script reports.
 : "${BASE_SHA:?BASE_SHA required}"
 : "${GITHUB_TOKEN:?GITHUB_TOKEN required}"
+: "${CONFLICT_FILES?CONFLICT_FILES required, even when empty}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$(cd "${SCRIPT_DIR}/lib" && pwd)"
@@ -59,9 +61,19 @@ scan="$(committed_marker_paths "$BASE_SHA")" || scan_rc=$?
   exit 1
 }
 
+# The scan reads the WHOLE tree, so it also names a template file that is NEW
+# here and holds marker text on purpose, such as a fixture: its base has no copy
+# to excuse it. Only a path the sync's merge conflicted on can carry a failed
+# resolution, so the restore-or-delete below never reaches any other file.
+read -ra conflict_files <<<"$CONFLICT_FILES"
+declare -A is_conflict_file=()
+for path in "${conflict_files[@]}"; do
+  is_conflict_file["$path"]=1
+done
+
 marked=()
 while IFS= read -r path; do
-  [[ -n "$path" ]] && marked+=("$path")
+  [[ -n "$path" && -n "${is_conflict_file[$path]:-}" ]] && marked+=("$path")
 done <<<"$scan"
 
 if [[ ${#marked[@]} -eq 0 ]]; then

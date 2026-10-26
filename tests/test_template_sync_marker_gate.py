@@ -101,8 +101,15 @@ def run_gate(
     base_sha: str,
     script: Path = SCRIPT,
     extra_path: Path | None = None,
+    conflict_files: str = ".github/scripts/lib/retry.bash",
 ) -> subprocess.CompletedProcess[str]:
-    env = {**git_env(), "BASE_SHA": base_sha, "GITHUB_TOKEN": "x"}
+    """CONFLICT_FILES defaults to the one path the sandbox's sync conflicted on."""
+    env = {
+        **git_env(),
+        "BASE_SHA": base_sha,
+        "GITHUB_TOKEN": "x",
+        "CONFLICT_FILES": conflict_files,
+    }
     if extra_path is not None:
         env["PATH"] = f"{extra_path}:{env['PATH']}"
     return subprocess.run(
@@ -148,7 +155,7 @@ def test_a_file_the_base_does_not_have_is_removed(sandbox):
     commit_files(work, {"new-from-template.bash": MARKED}, "sync from template")
     push_branch(work)
 
-    result = run_gate(work, base_sha)
+    result = run_gate(work, base_sha, conflict_files="new-from-template.bash")
 
     assert result.returncode == 1, result.stdout + result.stderr
     tracked = git_out(work, "ls-tree", "-r", "--name-only", "origin/template-sync")
@@ -259,7 +266,9 @@ def test_the_gate_runs_from_a_base_copy_when_its_own_file_is_marked(sandbox, tmp
     commit_files(work, {gate_path: MARKED}, "sync from template")
     push_branch(work)
 
-    in_tree = run_gate(work, base_sha, script=work / gate_path)
+    in_tree = run_gate(
+        work, base_sha, script=work / gate_path, conflict_files=gate_path
+    )
     assert in_tree.returncode != 0
     assert "::error::" not in in_tree.stdout, "bash cannot parse the marked copy"
 
@@ -268,7 +277,9 @@ def test_the_gate_runs_from_a_base_copy_when_its_own_file_is_marked(sandbox, tmp
     shutil.copy2(SCRIPT, base_copy / SCRIPT.name)
     shutil.copytree(SCRIPT.parent / "lib", base_copy / "lib")
 
-    result = run_gate(work, base_sha, script=base_copy / SCRIPT.name)
+    result = run_gate(
+        work, base_sha, script=base_copy / SCRIPT.name, conflict_files=gate_path
+    )
 
     assert result.returncode == 1, result.stdout + result.stderr
     tracked = git_out(work, "ls-tree", "-r", "--name-only", "origin/template-sync")
@@ -323,4 +334,21 @@ def test_a_clean_branch_passes_and_is_left_alone(sandbox):
 
     assert result.returncode == 0, result.stdout + result.stderr
     fetch_origin(work)
+    assert git_out(work, "rev-parse", "origin/template-sync") == tip
+
+
+def test_marker_text_in_a_file_the_sync_did_not_conflict_on_is_left_alone(sandbox):
+    """A template file that holds marker text on purpose (a fixture, a document)
+    arrives NEW, so its base has no copy to excuse it. The sync's own merge never
+    conflicted on it, so the gate must leave it on the branch and stay green."""
+    work, base_sha = sandbox
+    tip = commit_files(
+        work, {"tests/fixtures/conflict.txt": MARKED}, "sync from template"
+    )
+    push_branch(work)
+
+    result = run_gate(work, base_sha)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert pushed(work, "tests/fixtures/conflict.txt") == MARKED.rstrip("\n")
     assert git_out(work, "rev-parse", "origin/template-sync") == tip

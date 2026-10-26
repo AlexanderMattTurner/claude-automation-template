@@ -373,6 +373,7 @@ jobs:
         if: ${{ !cancelled() && inputs.dry-run != true && steps.create-pr.outputs.pull-request-number }}
         env:
           BASE_SHA: ${{ github.sha }}
+          CONFLICT_FILES: ${{ steps.sync.outputs.conflict_files }}
           # token-fallback-ok: designed graceful degradation, not an accident.
           GITHUB_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.GITHUB_TOKEN }}
           REVIEWED: ${{ steps.reviewed.outputs.dir }}
