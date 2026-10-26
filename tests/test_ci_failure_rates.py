@@ -225,7 +225,7 @@ def test_fetch_flattens_jobs_from_every_run():
         runs=_runs(2),
         jobs={0: [_rec("lint", "success")], 1: [_rec("lint", "failure")]},
     )
-    records = fetch_job_records("o/r", "tok", max_runs=100, get_json=api)
+    records = fetch_job_records("o/r", "tok", branch="main", max_runs=100, get_json=api)
     # Order-independent (jobs fetched concurrently), so compare as a multiset.
     assert sorted(map(tuple, (r.items() for r in records))) == sorted(
         map(
@@ -235,11 +235,35 @@ def test_fetch_flattens_jobs_from_every_run():
     )
 
 
+def test_fetch_counts_every_attempt_and_reads_the_named_branch():
+    """A check that failed and went green on a re-run cost a re-run, so its first
+    attempt must count: the jobs endpoint returns only the LAST attempt unless
+    asked for `filter=all`. And the listing reads the branch it is given, so a
+    repository whose default branch is not `main` gets a report at all."""
+    api = _FakeApi(runs=_runs(1), jobs={0: [_rec("lint", "success")]})
+    fetch_job_records("o/r", "tok", branch="trunk", max_runs=10, get_json=api)
+    jobs = [parse_qs(urlsplit(c).query) for c in api.calls if "/jobs?" in c]
+    listing = [parse_qs(urlsplit(c).query) for c in api.calls if "/runs?" in c]
+    assert jobs and all(q["filter"] == ["all"] for q in jobs), api.calls
+    assert listing and all(q["branch"] == ["trunk"] for q in listing), api.calls
+
+
+def test_default_branch_reads_the_repository():
+    calls = []
+
+    def get(url):
+        calls.append(url)
+        return {"default_branch": "trunk"}
+
+    assert mod.default_branch("o/r", get) == "trunk"
+    assert calls == ["https://api.github.com/repos/o/r"]
+
+
 def test_fetch_pages_the_listing_beyond_one_page():
     # 250 runs > PER_PAGE(100) forces 3 listing pages; each run yields one job.
     n = 2 * PER_PAGE + 50
     api = _FakeApi(runs=_runs(n), jobs={i: [_rec("job", "success")] for i in range(n)})
-    records = fetch_job_records("o/r", "tok", max_runs=n, get_json=api)
+    records = fetch_job_records("o/r", "tok", branch="main", max_runs=n, get_json=api)
     assert len(records) == n
     listing_pages = [c for c in api.calls if "/actions/runs?" in c]
     assert len(listing_pages) == 3  # ceil(250/100)
@@ -267,7 +291,9 @@ def test_fetch_pages_a_run_with_more_than_one_page_of_jobs():
         start = (page - 1) * PER_PAGE
         return {"jobs": all_jobs[start : start + PER_PAGE], "total_count": total}
 
-    records = fetch_job_records("o/r", "tok", max_runs=100, get_json=getter)
+    records = fetch_job_records(
+        "o/r", "tok", branch="main", max_runs=100, get_json=getter
+    )
     assert len(records) == total  # all 150, NOT truncated at PER_PAGE
     assert sorted(r["name"] for r in records) == sorted(j["name"] for j in all_jobs)
     job_pages = [c for c in calls if "/jobs?" in c]
@@ -286,7 +312,9 @@ def test_fetch_stops_after_one_job_page_when_short():
             return {"workflow_runs": _runs(1)}
         return {"jobs": [_rec("lint", "success"), _rec("test", "failure")]}
 
-    records = fetch_job_records("o/r", "tok", max_runs=100, get_json=getter)
+    records = fetch_job_records(
+        "o/r", "tok", branch="main", max_runs=100, get_json=getter
+    )
     assert len(records) == 2
     job_pages = [c for c in calls if "/jobs?" in c]
     assert len(job_pages) == 1  # exactly one fetch for the run's jobs
@@ -306,7 +334,9 @@ def test_fetch_stops_when_full_page_equals_total_count():
         assert page == 1, "must not request a second jobs page when total is reached"
         return {"jobs": jobs, "total_count": PER_PAGE}
 
-    records = fetch_job_records("o/r", "tok", max_runs=100, get_json=getter)
+    records = fetch_job_records(
+        "o/r", "tok", branch="main", max_runs=100, get_json=getter
+    )
     assert len(records) == PER_PAGE
     assert len([c for c in calls if "/jobs?" in c]) == 1
 
@@ -316,7 +346,7 @@ def test_fetch_caps_at_max_runs_and_stops_paging_early():
     # sliced to 120, and only 120 jobs endpoints hit — no wasted job calls.
     n = 2 * PER_PAGE + 50
     api = _FakeApi(runs=_runs(n), jobs={i: [_rec("job", "success")] for i in range(n)})
-    records = fetch_job_records("o/r", "tok", max_runs=120, get_json=api)
+    records = fetch_job_records("o/r", "tok", branch="main", max_runs=120, get_json=api)
     assert len(records) == 120
     job_calls = [c for c in api.calls if "/jobs?" in c]
     assert len(job_calls) == 120
@@ -327,7 +357,9 @@ def test_fetch_stops_when_history_shorter_than_max_runs():
     api = _FakeApi(
         runs=_runs(30), jobs={i: [_rec("job", "success")] for i in range(30)}
     )
-    records = fetch_job_records("o/r", "tok", max_runs=5000, get_json=api)
+    records = fetch_job_records(
+        "o/r", "tok", branch="main", max_runs=5000, get_json=api
+    )
     assert len(records) == 30
     assert len([c for c in api.calls if "/actions/runs?" in c]) == 1
 
@@ -337,7 +369,7 @@ def test_fetch_slides_created_window_past_the_1000_cap():
     # hits the ceiling), then a second `created:<=` window collects the rest.
     n = 1500
     api = _FakeApi(runs=_runs(n), jobs={i: [_rec("job", "success")] for i in range(n)})
-    records = fetch_job_records("o/r", "tok", max_runs=n, get_json=api)
+    records = fetch_job_records("o/r", "tok", branch="main", max_runs=n, get_json=api)
     assert len(records) == n  # every run reached despite the per-query cap
     windowed = [c for c in api.calls if "created=" in c]
     assert windowed, "expected a second created:<= window past the 1000 cap"
@@ -348,8 +380,76 @@ def test_fetch_dedupes_the_window_boundary_run():
     # `created:<=` result; it must be counted once, not twice.
     n = 1200
     api = _FakeApi(runs=_runs(n), jobs={i: [_rec("job", "success")] for i in range(n)})
-    records = fetch_job_records("o/r", "tok", max_runs=n, get_json=api)
+    records = fetch_job_records("o/r", "tok", branch="main", max_runs=n, get_json=api)
     assert len(records) == n  # exactly n, no double-count at the seam
+
+
+def test_fetch_counts_a_startup_failure_run_under_its_workflow_name():
+    # A run that dies before any job starts lists no jobs, so a job-name-only
+    # aggregation drops it and the workflow reads as zero failures. The run's own
+    # `startup_failure` conclusion must be counted, under a key suffixed to keep
+    # it off the job-name rows a successful run of the same workflow feeds, and
+    # its (necessarily empty) jobs endpoint must not be fetched at all.
+    runs = [
+        {"id": 0, "created_at": "0002", "name": "Lint", "conclusion": "success"},
+        {
+            "id": 1,
+            "created_at": "0001",
+            "name": "Hook lifecycle",
+            "conclusion": "startup_failure",
+        },
+    ]
+    calls: list[str] = []
+
+    def getter(url: str) -> dict:
+        calls.append(url)
+        if "/actions/runs?" in url:
+            return {"workflow_runs": runs}
+        return {"jobs": [_rec("lint", "success")]}
+
+    records = fetch_job_records(
+        "o/r", "tok", branch="main", max_runs=100, get_json=getter
+    )
+    assert records == [
+        _rec("Hook lifecycle (workflow startup)", "startup_failure"),
+        _rec("lint", "success"),
+    ]
+    # Only run 0's jobs are fetched; run 1 has none to fetch.
+    assert [c for c in calls if "/jobs?" in c] == [
+        f"{mod.API_ROOT}/repos/o/r/actions/runs/0/jobs?filter=all&per_page={PER_PAGE}&page=1"
+    ]
+
+
+def test_startup_failure_gets_its_own_row_beside_the_job_rows():
+    # End-to-end through the aggregator: the startup_failure record is both a run
+    # and a failure, and it sits on its own row — the workflow's successful runs
+    # report under their JOB names, so folding the two together would claim a
+    # denominator the startup key never sees.
+    records = [
+        _rec("Hook lifecycle (workflow startup)", "startup_failure"),
+        _rec("hook-lifecycle", "success"),
+    ]
+    assert build_report(records) == (
+        "# CI failure-rate report (RFC)\n"
+        "\n"
+        "| Check | Runs | Failures | Failure rate |\n"
+        "| :-- | --: | --: | --: |\n"
+        "| Hook lifecycle (workflow startup) | 1 | 1 | 100.0% |\n"
+        "| hook-lifecycle | 1 | 0 | 0.0% |\n"
+    )
+
+
+def test_action_required_counts_as_a_failed_run():
+    # A job parked on a manual approval gate reached a verdict the report counts,
+    # per the documented counting rule.
+    records = [_rec("deploy", "action_required"), _rec("deploy", "success")]
+    assert build_report(records) == (
+        "# CI failure-rate report (RFC)\n"
+        "\n"
+        "| Check | Runs | Failures | Failure rate |\n"
+        "| :-- | --: | --: | --: |\n"
+        "| deploy | 2 | 1 | 50.0% |\n"
+    )
 
 
 def test_rate_limit_wait_honors_secondary_retry_after():
@@ -536,7 +636,9 @@ def test_fetch_window_exactly_fills_to_max_runs_at_cap():
     # an inner break) ends the sweep — the loop-condition exit past a full window.
     n = 1100
     api = _FakeApi(runs=_runs(n), jobs={i: [_rec("job", "success")] for i in range(n)})
-    records = fetch_job_records("o/r", "tok", max_runs=mod.LISTING_CAP, get_json=api)
+    records = fetch_job_records(
+        "o/r", "tok", branch="main", max_runs=mod.LISTING_CAP, get_json=api
+    )
     assert len(records) == mod.LISTING_CAP
 
 
@@ -548,7 +650,7 @@ def test_fetch_uses_default_retrying_getter_when_none_injected(monkeypatch):
         jobs={0: [_rec("lint", "success")], 1: [_rec("lint", "failure")]},
     )
     monkeypatch.setattr(mod, "_get_json_retry", lambda url, token: api(url))
-    records = fetch_job_records("o/r", "tok", max_runs=100)
+    records = fetch_job_records("o/r", "tok", branch="main", max_runs=100)
     assert sorted(r["conclusion"] for r in records) == ["failure", "success"]
 
 
@@ -556,7 +658,7 @@ def test_fetch_requires_token_when_no_getter():
     import pytest
 
     with pytest.raises(SystemExit, match="GH_TOKEN is required"):
-        fetch_job_records("o/r", "", max_runs=100)
+        fetch_job_records("o/r", "", branch="main", max_runs=100)
 
 
 def test_main_prints_report_for_repo_from_argv(monkeypatch, capsys):
@@ -565,20 +667,22 @@ def test_main_prints_report_for_repo_from_argv(monkeypatch, capsys):
     monkeypatch.setattr(mod.sys, "argv", ["ci-failure-rates.py", "owner/repo"])
     monkeypatch.setenv("CI_FAILURE_RATES_MAX_RUNS", "50")
     monkeypatch.setenv("GH_TOKEN", "tok")
+    monkeypatch.setattr(mod, "default_branch", lambda repo, get: "trunk")
     monkeypatch.setattr(
         mod,
         "fetch_job_records",
-        lambda repo, token, *, max_runs: [
+        lambda repo, token, *, branch, max_runs: [
             _rec("lint", "failure"),
-            _rec("lint", "success"),
+            _rec(branch, "success"),
         ],
     )
     mod.main()
     out = capsys.readouterr().out
     assert "# CI failure-rate report (RFC)" in out
     assert "`owner/repo`" in out
-    assert "| lint | 2 | 1 | 50.0% |" in out
-    assert "sampled from up to 50 main runs" in out
+    assert "| lint | 1 | 1 | 100.0% |" in out
+    assert "| trunk | 1 | 0 | 0.0% |" in out
+    assert "sampled from up to 50 runs on `trunk`" in out
 
 
 def test_main_requires_repo_slug(monkeypatch):
@@ -599,7 +703,7 @@ def test_fetch_result_feeds_build_report_end_to_end():
             2: [_rec("kcov", "success"), _rec("lint", "success")],
         },
     )
-    records = fetch_job_records("o/r", "tok", max_runs=100, get_json=api)
+    records = fetch_job_records("o/r", "tok", branch="main", max_runs=100, get_json=api)
     assert build_report(records) == (
         "# CI failure-rate report (RFC)\n"
         "\n"
