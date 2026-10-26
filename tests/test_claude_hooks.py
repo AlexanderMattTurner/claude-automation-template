@@ -16,6 +16,7 @@ SAFE_LAUNCH_PARSE = REPO_ROOT / ".claude" / "hooks" / "safe-launch-parse.py"
 SAFE_LAUNCH = REPO_ROOT / ".claude" / "hooks" / "safe-launch.sh"
 PRE_PUSH_CHECK = REPO_ROOT / ".claude" / "hooks" / "pre-push-check.sh"
 LIB_CHECKS = REPO_ROOT / ".claude" / "hooks" / "lib-checks.sh"
+SCRIPT_CONFIGURED = REPO_ROOT / ".github" / "scripts" / "script-configured.sh"
 
 
 def _run_parser_raw(
@@ -254,6 +255,36 @@ def test_gh_repo_extraction(
         assert sourced.stdout == expected
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"tool_name": "Write", "tool_input": {"file_path": "/p/.hooks/x\n/../../t"}},
+        {"tool_name": "Write", "tool_input": {"file_path": "/p/.hooks/x\r/../t"}},
+        {"tool_name": "Write\nBash", "tool_input": {"file_path": "/p/.hooks/x"}},
+    ],
+    ids=["newline-path", "carriage-return-path", "newline-name"],
+)
+def test_safe_launch_parse_refuses_a_line_break(payload: dict) -> None:
+    """safe-launch reads the two values by line, so a value holding a line break
+    would become a field of its own. Such a payload must print nothing."""
+    result = _run_parser_raw(json.dumps(payload))
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "tool_input",
+    [{"file_path": 5}, {"file_path": ["/p/.hooks/x"]}, {"edits": "x"}, "not-a-dict"],
+    ids=["int-path", "list-path", "string-edits", "string-input"],
+)
+def test_safe_launch_parse_ignores_a_non_string_path(tool_input: object) -> None:
+    result = _run_parser_raw(
+        json.dumps({"tool_name": "Write", "tool_input": tool_input})
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "Write\n\n"
+
+
 @pytest.fixture
 def safe_launch_sandbox(tmp_path: Path) -> Path:
     """Project dir containing a copy of safe-launch.sh under .claude/hooks/,
@@ -310,6 +341,25 @@ def test_safe_launch_degraded_path_blocks_symlink_escape(
     assert "allowing self-repair edit" not in result.stderr
 
 
+def test_safe_launch_degraded_path_asks_on_a_newline_split_path(
+    safe_launch_sandbox: Path,
+) -> None:
+    """The first line of this path sits under .claude/hooks/; the second climbs
+    out of the project. Line-based reading saw only the first and allowed the
+    write, so the payload must reach the "ask" default instead."""
+    hooks = safe_launch_sandbox / ".claude" / "hooks"
+    result = _run_safe_launch(
+        safe_launch_sandbox,
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": f"{hooks}/x\n/../../../target"},
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert '"permissionDecision":"ask"' in result.stdout
+    assert "allowing self-repair edit" not in result.stderr
+
+
 def test_safe_launch_degraded_path_allows_real_self_repair(
     safe_launch_sandbox: Path,
 ) -> None:
@@ -330,11 +380,11 @@ def test_safe_launch_degraded_path_allows_real_self_repair(
 
 @pytest.fixture
 def pre_push_sandbox(tmp_path: Path) -> Path:
-    """Project dir containing a copy of pre-push-check.sh and lib-checks.sh."""
-    hooks_dir = tmp_path / ".claude" / "hooks"
-    hooks_dir.mkdir(parents=True)
-    for src in (PRE_PUSH_CHECK, LIB_CHECKS):
-        dst = hooks_dir / src.name
+    """Project dir containing pre-push-check.sh, lib-checks.sh and the
+    script-configured.sh predicate lib-checks.sh calls."""
+    for src in (PRE_PUSH_CHECK, LIB_CHECKS, SCRIPT_CONFIGURED):
+        dst = tmp_path / src.relative_to(REPO_ROOT)
+        dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_bytes(src.read_bytes())
         dst.chmod(0o755)
     return tmp_path
