@@ -86,6 +86,10 @@ on:
 
 env:
   TEMPLATE_REPO: "${{ vars.TEMPLATE_SYNC_ORG || 'AlexanderMattTurner' }}/claude-automation-template"
+  # The sync reads this list from the TEMPLATE's copy of this file, never from the
+  # copy here, so a path the template renames arrives on the first sync after the
+  # rename. Narrow it with EXCLUDE_PATHS; an edit to this line here has no effect.
+  #
   # Whole directories of core automation files that are always template-owned.
   # Every file under these paths propagates to downstream consumers; new files
   # added to the template auto-sync without anyone having to edit this list.
@@ -225,7 +229,6 @@ jobs:
       - name: Sync template files with conflict detection
         id: sync
         env:
-          SYNC_PATHS: ${{ env.SYNC_PATHS }}
           EXCLUDE_PATHS: ${{ env.EXCLUDE_PATHS }}
           OPT_IN_PATHS: ${{ env.OPT_IN_PATHS }}
         run: bash .github/scripts/template-sync.sh

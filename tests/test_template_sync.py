@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tests._helpers import GIT_IDENTITY_ENV, REPO_ROOT, commit_all, init_test_repo
 
@@ -68,6 +69,14 @@ def workdir(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def declare_sync_paths(template_copy: Path, sync_paths: str) -> None:
+    """Write the template workflow whose `env.SYNC_PATHS` the sync reads."""
+    write(
+        template_copy / ".github" / "workflows" / "template-sync.yaml",
+        yaml.safe_dump({"env": {"SYNC_PATHS": sync_paths}}),
+    )
+
+
 def run_sync(
     child: Path,
     template: Path,
@@ -80,6 +89,7 @@ def run_sync(
     if template_copy.exists():
         subprocess.run(["rm", "-rf", str(template_copy)], check=True)
     subprocess.run(["cp", "-a", str(template), str(template_copy)], check=True)
+    declare_sync_paths(template_copy, sync_paths)
 
     output_file = child.parent / f"github_output_{child.name}.txt"
     output_file.write_text("", encoding="utf-8")
@@ -89,7 +99,6 @@ def run_sync(
     env = {
         **os.environ,
         **GIT_IDENTITY_ENV,
-        "SYNC_PATHS": sync_paths,
         "EXCLUDE_PATHS": exclude_paths,
         "OPT_IN_PATHS": opt_in_paths,
         "GITHUB_OUTPUT": str(output_file),
@@ -604,11 +613,11 @@ def test_fails_loudly_without_github_output(workdir: Path) -> None:
     commit_all(template)
     template_copy = workdir / "child" / "_template"
     subprocess.run(["cp", "-a", str(template), str(template_copy)], check=True)
+    declare_sync_paths(template_copy, "config")
 
     env = {
         **os.environ,
         **GIT_IDENTITY_ENV,
-        "SYNC_PATHS": "config",
         # No GITHUB_OUTPUT set
     }
     env.pop("GITHUB_OUTPUT", None)
@@ -655,6 +664,7 @@ def test_survives_self_overwrite_with_longer_file(workdir: Path) -> None:
 
     template_copy = child / "_template"
     subprocess.run(["cp", "-a", str(template), str(template_copy)], check=True)
+    declare_sync_paths(template_copy, ".github/scripts")
     output_file = child.parent / "github_output_selfoverwrite.txt"
     output_file.write_text("", encoding="utf-8")
     work = child.parent / "work_selfoverwrite"
@@ -662,7 +672,6 @@ def test_survives_self_overwrite_with_longer_file(workdir: Path) -> None:
     env = {
         **os.environ,
         **GIT_IDENTITY_ENV,
-        "SYNC_PATHS": ".github/scripts",
         "EXCLUDE_PATHS": "",
         "GITHUB_OUTPUT": str(output_file),
         "TEMPLATE_SYNC_WORK_DIR": str(work),
@@ -1169,3 +1178,96 @@ def test_kept_local_entries_take_the_report_cap_before_marked_ones(
     assert "+tmpl " in report
     assert "### `config/a.txt`" not in report
     assert len(report.encode()) <= 3000 + 600
+
+
+def test_the_template_declares_which_paths_sync(workdir: Path) -> None:
+    """A path the template renames must arrive on the FIRST sync after the rename.
+
+    The child's own SYNC_PATHS still names the old path until a sync delivers the
+    new workflow, so reading the child's copy ships the renamed file one cycle
+    late, and the first sync carries a reader without the data it reads.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "a.txt", "a\n")
+    write(template / "renamed" / "pin.txt", "pin\n")
+    commit_all(template)
+    commit_all(child)
+
+    template_copy = child / "_template"
+    subprocess.run(["cp", "-a", str(template), str(template_copy)], check=True)
+    declare_sync_paths(template_copy, "config renamed")
+    output_file = workdir / "github_output_declared.txt"
+    output_file.write_text("", encoding="utf-8")
+    work = workdir / "work_declared"
+    work.mkdir()
+    env = {
+        **os.environ,
+        **GIT_IDENTITY_ENV,
+        # The child's stale list, which names only the pre-rename path.
+        "SYNC_PATHS": "config",
+        "GITHUB_OUTPUT": str(output_file),
+        "TEMPLATE_SYNC_WORK_DIR": str(work),
+    }
+    result = subprocess.run(
+        ["bash", str(SCRIPT)], cwd=child, env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert (child / "renamed" / "pin.txt").read_text(encoding="utf-8") == "pin\n"
+    assert (child / "config" / "a.txt").read_text(encoding="utf-8") == "a\n"
+
+
+def test_a_clean_json_merge_with_a_duplicate_member_is_a_conflict(
+    workdir: Path,
+) -> None:
+    """Both sides adding the same top-level key merges "cleanly" into two keys.
+
+    jq, Python and JavaScript keep the LAST one, so the repo's own block silently
+    stops taking effect. The sync must keep the local file and report it.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+    base = '{\n  "a": 1,\n  "b": 2,\n  "c": 3,\n  "d": 4\n}\n'
+    local = '{\n  "a": 1,\n  "enabledPlugins": {"local": true},\n  "b": 2,\n  "c": 3,\n  "d": 4\n}\n'
+    template_after = '{\n  "a": 1,\n  "b": 2,\n  "c": 3,\n  "enabledPlugins": {"tmpl": true},\n  "d": 4\n}\n'
+    write(template / "config" / "settings.json", base)
+    prev_sha = commit_all(template)
+    write(child / "config" / "settings.json", local)
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    write(template / "config" / "settings.json", template_after)
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_conflicts"] == "true"
+    assert outputs["markerless_files"].split() == ["config/settings.json"]
+    assert "enabledPlugins" in outputs["conflict_report"]
+    assert (child / "config" / "settings.json").read_text(encoding="utf-8") == local
+
+
+def test_a_clean_json_merge_without_duplicates_still_merges(workdir: Path) -> None:
+    child = workdir / "child"
+    template = workdir / "template"
+    base = '{\n  "a": 1,\n  "b": 2,\n  "c": 3,\n  "d": 4\n}\n'
+    local = '{\n  "a": 1,\n  "local": true,\n  "b": 2,\n  "c": 3,\n  "d": 4\n}\n'
+    template_after = (
+        '{\n  "a": 1,\n  "b": 2,\n  "c": 3,\n  "tmpl": true,\n  "d": 4\n}\n'
+    )
+    merged = '{\n  "a": 1,\n  "local": true,\n  "b": 2,\n  "c": 3,\n  "tmpl": true,\n  "d": 4\n}\n'
+    write(template / "config" / "settings.json", base)
+    prev_sha = commit_all(template)
+    write(child / "config" / "settings.json", local)
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    write(template / "config" / "settings.json", template_after)
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_conflicts"] == "false"
+    assert (child / "config" / "settings.json").read_text(encoding="utf-8") == merged
