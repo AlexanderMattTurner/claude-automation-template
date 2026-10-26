@@ -1,4 +1,5 @@
-"""Tests for .claude/hooks/lib-checks.sh has_script.
+"""Tests for .claude/hooks/lib-checks.sh has_script, which asks
+.github/scripts/script-configured.sh.
 
 The load-bearing guard: a malformed package.json (or a missing jq) must fail
 LOUD with exit 2 — the "could not classify" contract — never be silently
@@ -36,7 +37,7 @@ def test_malformed_package_json_exits_2(tmp_path: Path) -> None:
 
     result = _run_has_script(tmp_path, path=os.environ["PATH"])
     assert result.returncode == 2, result.stderr
-    assert "not valid JSON" in result.stderr
+    assert "cannot read package.json" in result.stderr
 
 
 def test_configured_script_returns_0(tmp_path: Path) -> None:
@@ -73,3 +74,20 @@ def test_missing_jq_fails_loud(tmp_path: Path) -> None:
     (bin_dir / "bash").symlink_to(shutil.which("bash"))
     result = _run_has_script(tmp_path, path=str(bin_dir))
     assert result.returncode == 2, result.stderr
+
+
+def test_a_missing_predicate_fails_loud(tmp_path: Path) -> None:
+    """lib-checks.sh holds no copy of the predicate, so without
+    script-configured.sh beside it there is no answer: exit 2, never 1."""
+    lib = tmp_path / ".claude" / "hooks" / "lib-checks.sh"
+    lib.parent.mkdir(parents=True)
+    lib.write_bytes(LIB.read_bytes())
+    (tmp_path / "package.json").write_text('{"scripts": {}}', encoding="utf-8")
+    result = subprocess.run(
+        ["bash", "-c", f'source "{lib}"; has_script build'],
+        env={"CLAUDE_PROJECT_DIR": str(tmp_path)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2, result.stderr
+    assert "script-configured.sh, which is missing" in result.stderr

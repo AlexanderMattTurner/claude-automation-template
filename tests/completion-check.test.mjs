@@ -232,6 +232,18 @@ describe("run", () => {
     assert.equal(readState(path).deadlineMs, saved.deadlineMs);
   });
 
+  it("answers only a Stop event", () => {
+    // A settings.json still wiring this file on PreToolUse must not turn the
+    // Stop question into a block of the tool call.
+    const dir = stateDir();
+    const { payload } = armedSession(dir, workedTurn("Pushed."));
+    const options = { stateDir: dir, now: () => 10 };
+    const preToolUse = { ...payload, hook_event_name: "PreToolUse" };
+    assert.equal(run(preToolUse, options), null);
+    const stop = { ...payload, hook_event_name: "Stop" };
+    assert.equal(run(stop, options)?.decision, "block");
+  });
+
   it("asks once the window has passed, and again until answered or spent", () => {
     const dir = stateDir();
     const { path, payload } = armedSession(dir, workedTurn("Pushed."));
