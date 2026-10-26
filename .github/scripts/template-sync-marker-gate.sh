@@ -43,8 +43,7 @@ git rev-parse --verify --quiet "${BASE_SHA}^{commit}" >/dev/null || {
 }
 
 git_auth_header "$GITHUB_TOKEN"
-git config user.name "github-actions[bot]"
-git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+git_bot_identity
 
 # The branch, not the workspace, is what a consumer checks out, so judge and
 # repair the branch. `-f` drops the edits the resolve step chose not to push.

@@ -19,6 +19,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/retry.bash"
 # shellcheck source=lib/anthropic-ladder.bash disable=SC1091
 source "$SCRIPT_DIR/lib/anthropic-ladder.bash"
+# shellcheck source=lib/git-auth.bash disable=SC1091
+source "$SCRIPT_DIR/lib/git-auth.bash"
 
 log() { echo "$@" >&2; }
 
@@ -413,8 +415,7 @@ fi
 # the branch name — that would push to the bogus ref "HEAD:HEAD". GITHUB_REF_NAME
 # is the actual triggering branch in Actions; only fall back to git for local runs.
 DEFAULT_BRANCH="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
-git config user.name "github-actions[bot]"
-git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+git_bot_identity
 if git diff --quiet -- CHANGELOG.md; then
   log "No CHANGELOG changes to commit."
 else
