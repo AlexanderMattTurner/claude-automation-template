@@ -40,8 +40,19 @@ def review(state: str, *, author: str = BOT, body: str = "Automated review.") ->
     return {"state": state, "body": body, "user": {"login": author}}
 
 
-def run_gate(tmp_path: Path, reviews: list[dict]) -> str:
-    """Run the gate over `reviews`; return the status state it posted."""
+def run_gate(
+    tmp_path: Path,
+    reviews: list[dict],
+    *,
+    argv: tuple[str, ...] = ("bash", str(SCRIPT)),
+    env: dict[str, str] | None = None,
+    head: str = HEAD_SHA,
+) -> str:
+    """Run the gate over `reviews`; return the status state it posted on `head`.
+
+    `argv` and `env` default to the gate script under the review-gate.yaml step's
+    environment. A caller that re-runs the gate passes its own command and env.
+    """
     (tmp_path / "reviews.json").write_text(json.dumps(reviews), encoding="utf-8")
     log = tmp_path / "gh-calls.txt"
     stub = f"""#!/usr/bin/env bash
@@ -64,23 +75,19 @@ exit 0
     (bin_dir / "gh").write_text(stub, encoding="utf-8")
     (bin_dir / "gh").chmod(0o755)
 
+    if env is None:
+        env = {"GH_TOKEN": "t", "GH_REPO": "o/r", "PR": "438", "HEAD_SHA": HEAD_SHA}
     res = subprocess.run(
-        ["bash", str(SCRIPT)],
+        list(argv),
         capture_output=True,
         text=True,
         check=False,
         cwd=REPO_ROOT,
-        env={
-            "PATH": f"{bin_dir}:/usr/bin:/bin:/usr/local/bin",
-            "GH_TOKEN": "t",
-            "GH_REPO": "o/r",
-            "PR": "438",
-            "HEAD_SHA": HEAD_SHA,
-        },
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin:/usr/local/bin", **env},
     )
     assert res.returncode == 0, res.stderr
     calls = log.read_text(encoding="utf-8")
-    assert f"statuses/{HEAD_SHA}" in calls, f"the gate posted no status: {calls}"
+    assert f"statuses/{head}" in calls, f"the gate posted no status on {head}: {calls}"
     states = [s for s in ("state=success", "state=pending") if s in calls]
     assert len(states) == 1, f"expected exactly one verdict, got {states}: {calls}"
     return states[0].removeprefix("state=")
@@ -213,3 +220,55 @@ def test_every_reviewer_script_uses_the_shared_login_library():
             f"{name} hand-writes the [bot]-stripping jq instead of using the "
             "library's select clause"
         )
+
+
+# ── The callers whose review fires no event must re-run the gate themselves ──
+#
+# A review posted with the Actions token starts no workflow run, so review-gate.yaml's
+# `pull_request_review` leg never sees it, and the gate holds at `pending` until the
+# next push. Both jobs in claude-review.yaml that post such a review re-run the gate.
+
+CLAUDE_REVIEW = REPO_ROOT / ".github" / "workflows" / "claude-review.yaml"
+REPORT_SHA = "deadbeef"
+
+
+def _claude_review_jobs() -> dict:
+    return yaml.safe_load(CLAUDE_REVIEW.read_text(encoding="utf-8"))["jobs"]
+
+
+def test_the_review_job_re_runs_the_gate_on_the_reviewed_head(tmp_path: Path) -> None:
+    """agent-review's review.yaml runs `post-review-command` with exactly these four
+    variables once the review lands. The gate must post on REPORT_SHA."""
+    command = _claude_review_jobs()["review"]["with"]["post-review-command"]
+    env = {"GH_TOKEN": "t", "GH_REPO": "o/r", "PR": "438", "REPORT_SHA": REPORT_SHA}
+    state = run_gate(
+        tmp_path,
+        [review("COMMENTED")],
+        argv=("bash", "-c", command),
+        env=env,
+        head=REPORT_SHA,
+    )
+    assert state == "success"
+
+
+def test_auto_approve_re_runs_the_gate_after_approving(tmp_path: Path) -> None:
+    job = _claude_review_jobs()["auto-approve-skipped"]
+    gates = [s for s in job["steps"] if "review-gate.sh" in str(s.get("run", ""))]
+    assert len(gates) == 1, f"expected one gate re-run step, found {len(gates)}"
+    step = gates[0]
+    # A failed approval still re-runs the gate, so the head never keeps a stale verdict.
+    assert step["if"] == "always()"
+    assert job["permissions"]["statuses"] == "write"
+    sparse = job["steps"][0]["with"]["sparse-checkout"].split()
+    assert ".github/scripts/review-gate.sh" in sparse
+    # The step's own env, with each GitHub expression replaced by a value.
+    values = {"GH_REPO": "o/r", "PR": "438", "HEAD_SHA": REPORT_SHA, "GH_TOKEN": "t"}
+    env = {key: values.get(key, "x") for key in step["env"]}
+    state = run_gate(
+        tmp_path,
+        [review("APPROVED")],
+        argv=("bash", "-c", step["run"]),
+        env=env,
+        head=REPORT_SHA,
+    )
+    assert state == "success"

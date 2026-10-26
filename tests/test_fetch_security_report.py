@@ -57,3 +57,43 @@ def test_successful_empty_scan_reports_no_alerts(tmp_path: Path) -> None:
     report = _run(tmp_path, "exit 0\n")
     assert "No Socket.dev alerts found in recent open PRs." in report
     assert "Could not fetch open PRs for Socket.dev scan" not in report
+
+
+# Like the real gh: `gh api` has no `--arg` flag and refuses one, and an error goes
+# to stderr. Dependabot answers one alert, code scanning is forbidden, and secret
+# scanning answers an empty list. Every other call succeeds with no output.
+ALERTS_GH = r"""
+for arg in "$@"; do
+  if [[ "$arg" == --arg ]]; then echo "unknown flag: --arg" >&2; exit 1; fi
+done
+case "$*" in
+  *dependabot/alerts*)
+    echo '[{"number": 7, "security_advisory": {"severity": "high", "summary": "Bad parse"},
+            "dependency": {"package": {"name": "lodash", "ecosystem": "npm"}}}]' ;;
+  *code-scanning/alerts*) echo "HTTP 403: Resource not accessible by integration" >&2; exit 1 ;;
+  *secret-scanning/alerts*) echo '[]' ;;
+esac
+exit 0
+"""
+
+
+def test_each_alert_section_reports_alerts_a_failure_or_none(tmp_path: Path) -> None:
+    """Three sections, three outcomes. A fetch that worked lists its alerts or says
+    there are none; a fetch that failed says so, and gh's error text stays in the
+    job log rather than the report."""
+    report = _run(tmp_path, ALERTS_GH)
+    sections = {
+        block.split("\n", 1)[0]: block.split("\n", 1)[1].strip()
+        for block in report.split("## ")[1:]
+    }
+    assert sections["Dependabot Alerts"] == (
+        "- **HIGH**: [Bad parse](https://github.com/owner/repo/security/dependabot/7)"
+        " in `lodash` (npm)"
+    )
+    assert sections["Code Scanning Alerts"] == (
+        "_Could not fetch Code Scanning Alerts (check the token's security scopes"
+        " and whether the feature is enabled)._"
+    )
+    assert sections["Secret Scanning Alerts"] == "_No open alerts._"
+    assert "HTTP 403" not in report
+    assert "unknown flag" not in report

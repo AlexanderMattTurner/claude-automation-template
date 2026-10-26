@@ -24,7 +24,12 @@ FAKE_GH = """#!/usr/bin/env bash
 echo "$*" >> "$CALL_LOG"
 case "$1 $2" in
   "run list") cat "$RUNS_JSON" ;;
-  "run cancel") exit 0 ;;
+  "run cancel")
+    if [[ -n "${CANCEL_FAILS:-}" && "$3" == "$CANCEL_FAILS" ]]; then
+      echo "HTTP 403: Resource not accessible by integration" >&2
+      exit 1
+    fi
+    exit 0 ;;
   *) echo "fake gh: unhandled: $*" >&2; exit 1 ;;
 esac
 """
@@ -114,3 +119,20 @@ def test_a_missing_closed_at_fails_and_cancels_nothing(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert "CLOSED_AT" in result.stderr
     assert cancelled == []
+
+
+def test_a_failed_cancel_warns_with_ghs_own_error_and_goes_on(tmp_path: Path) -> None:
+    """A lost permission must read as itself, not as a guess that the run finished,
+    and one failed cancel must not stop the sweep."""
+    runs = [
+        run_in_flight(1, "2026-03-01T11:00:00Z"),
+        run_in_flight(2, "2026-03-01T11:00:00Z"),
+    ]
+    result, cancelled = sweep(tmp_path, runs, CANCEL_FAILS="1")
+    assert result.returncode == 0, result.stderr
+    assert cancelled == ["1", "2"]
+    assert (
+        "::warning::could not cancel run 1 (exit 1): "
+        "HTTP 403: Resource not accessible by integration"
+    ) in result.stdout
+    assert "cancelled 2" in result.stdout

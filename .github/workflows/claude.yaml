@@ -70,6 +70,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # A local `uses: ./…` action resolves against the workspace, so without this
+      # checkout the next step dies with "Can't find action.yml". The ref is the
+      # DEFAULT branch on every event: a PR review event would otherwise check out
+      # the PR's merge ref, and this job's secrets would run the PR author's copy
+      # of the action.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
       - name: Respond to @claude
         uses: ./.github/actions/claude-run
         with:

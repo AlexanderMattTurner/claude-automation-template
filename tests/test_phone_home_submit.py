@@ -33,6 +33,8 @@ def run_submit(
     lessons: str = "- A lesson.\n",
     existing_issues: list | None = None,
     create_should_fail: bool = False,
+    list_should_fail: bool = False,
+    labels_should_fail: bool = False,
     env_overrides: dict | None = None,
 ) -> tuple[dict, subprocess.CompletedProcess]:
     """Invoke phone-home-submit.js with a mock github-script environment.
@@ -52,6 +54,8 @@ const submit = require({json.dumps(str(SCRIPT))});
 const calls = {{ create: [], listForRepo: [], addLabels: [] }};
 const existingIssues = {json.dumps(existing_issues or [])};
 const createShouldFail = {str(create_should_fail).lower()};
+const listShouldFail = {str(list_should_fail).lower()};
+const labelsShouldFail = {str(labels_should_fail).lower()};
 
 const github = {{
   paginate: async (fn, params) => {{
@@ -62,6 +66,9 @@ const github = {{
     issues: {{
       listForRepo: async (params) => {{
         calls.listForRepo.push(params);
+        if (listShouldFail) {{
+          throw new Error("simulated list failure");
+        }}
         return {{ data: existingIssues }};
       }},
       create: async (params) => {{
@@ -78,6 +85,9 @@ const github = {{
       }},
       addLabels: async (params) => {{
         calls.addLabels.push(params);
+        if (labelsShouldFail) {{
+          throw new Error("simulated addLabels failure");
+        }}
       }},
     }},
   }},
@@ -88,6 +98,7 @@ submit({{ github }})
     fs.writeFileSync(process.env.CALLS_FILE, JSON.stringify(calls));
   }})
   .catch((err) => {{
+    fs.writeFileSync(process.env.CALLS_FILE, JSON.stringify(calls));
     process.stderr.write(err.message + "\\n");
     process.exit(1);
   }});
@@ -108,7 +119,7 @@ submit({{ github }})
         ["node", str(wrapper)], env=env, capture_output=True, text=True
     )
     calls: dict = {}
-    if result.returncode == 0 and calls_file.exists():
+    if calls_file.exists():
         calls = json.loads(calls_file.read_text(encoding="utf-8"))
     return calls, result
 
@@ -171,10 +182,29 @@ def test_missing_env_vars_raises(tmp_path: Path) -> None:
     assert "Missing required env vars" in result.stderr
 
 
-def test_create_failure_does_not_raise(tmp_path: Path) -> None:
-    """A create failure (e.g. missing TEMPLATE_SYNC_TOKEN) must degrade
-    gracefully, matching the workflow's tolerance for unconfigured phone-home."""
+def test_create_failure_fails_the_run(tmp_path: Path) -> None:
+    """A create failure (e.g. a missing TEMPLATE_SYNC_TOKEN) must go red. The
+    run fires once per merged PR, so a green run here loses its lessons."""
     calls, result = run_submit(tmp_path, create_should_fail=True)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode != 0
+    assert "simulated create failure" in result.stderr
     assert len(calls["create"]) == 1
     assert calls["addLabels"] == []
+
+
+def test_dedup_failure_fails_the_run_before_creating(tmp_path: Path) -> None:
+    """A dedup that cannot read the open issues must not create blind: a re-run
+    after a later failure would then file the same lessons twice."""
+    calls, result = run_submit(tmp_path, list_should_fail=True)
+    assert result.returncode != 0
+    assert "simulated list failure" in result.stderr
+    assert calls["create"] == []
+
+
+def test_label_failure_fails_the_run(tmp_path: Path) -> None:
+    """The dedup lists issues by the phone-home label, so an unlabelled issue is
+    invisible to the next re-run's dedup and gets filed again."""
+    calls, result = run_submit(tmp_path, labels_should_fail=True)
+    assert result.returncode != 0
+    assert "simulated addLabels failure" in result.stderr
+    assert len(calls["create"]) == 1

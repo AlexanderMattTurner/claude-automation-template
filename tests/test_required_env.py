@@ -15,8 +15,8 @@ SCRIPTS = REPO_ROOT / ".github" / "scripts"
 
 # (script, required env vars, vars to scrub from inherited environment)
 CASES = [
-    # check-token-scope.sh requires TOKEN
-    ("check-token-scope.sh", ["TOKEN"]),
+    # check-token-scope.sh requires TOKEN and the name of the secret it came from
+    ("check-token-scope.sh", ["TOKEN", "TOKEN_SECRET_NAME"]),
     # check-existing-security-pr.sh requires GH_TOKEN and DEFAULT_BRANCH
     ("check-existing-security-pr.sh", ["GH_TOKEN", "DEFAULT_BRANCH"]),
     # list-dependabot-prs.sh requires GH_TOKEN

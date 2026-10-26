@@ -202,15 +202,16 @@ def test_an_untrusted_author_always_gets_the_real_review(title, association):
 @pytest.mark.parametrize("title", SKIP_TITLES + REVIEWED_TITLES)
 @pytest.mark.parametrize("association", UNTRUSTED + TRUSTED)
 @pytest.mark.parametrize("same_repo", [True, False])
+@pytest.mark.parametrize("bot", [True, False])
 def test_every_pull_request_is_either_reviewed_or_approved(
-    title, association, same_repo
+    title, association, same_repo, bot
 ):
     """The stranding invariant, over the whole payload space: a PR the reviewer
     skips must be one the approver picks up, and vice versa. Exactly one of the
     two jobs claims each `opened` PR."""
-    pl = payload(title=title, association=association, same_repo=same_repo)
+    pl = payload(title=title, association=association, same_repo=same_repo, bot=bot)
     assert reviews(pl) != approves(pl), (
-        f"{association}/{same_repo}/{title!r} is claimed by "
+        f"{association}/{same_repo}/bot={bot}/{title!r} is claimed by "
         f"{'both' if reviews(pl) else 'neither'} job"
     )
 
@@ -235,11 +236,27 @@ def test_a_same_repo_branch_is_trusted_on_its_own(title):
     assert approves(pl)
 
 
-def test_a_bot_pull_request_is_skipped_and_approved_from_a_fork_too():
-    """`user.type` is a payload fact both jobs read the same way, so the bot
-    class agrees without the trust guard — pinned so a future edit that guards
-    one arm and not the other cannot strand a Dependabot PR."""
-    pl = payload(title="chore(deps): bump x", bot=True, same_repo=False)
+@pytest.mark.parametrize("bot", [True, False])
+@pytest.mark.parametrize("association", UNTRUSTED)
+def test_an_untrusted_pull_request_is_reviewed_whoever_opened_it(bot, association):
+    """`user.type` is no trust signal: any GitHub App can open a fork PR, so a
+    Bot author from outside this repo buys neither the skip nor the approval."""
+    pl = payload(title="chore(deps): bump x", association=association, bot=bot)
+    assert reviews(pl), f"an untrusted {'bot' if bot else 'user'} PR skipped review"
+    assert not approves(pl), f"an untrusted {'bot' if bot else 'user'} PR was approved"
+
+
+@pytest.mark.parametrize(
+    ("association", "same_repo"),
+    [("NONE", True), ("OWNER", False), ("MEMBER", False), ("COLLABORATOR", False)],
+)
+@pytest.mark.parametrize("title", SKIP_TITLES + REVIEWED_TITLES)
+def test_a_trusted_bot_pull_request_is_skipped_and_approved(
+    association, same_repo, title
+):
+    """Dependabot opens a same-repo branch, so it keeps the bot skip whatever the
+    title. Both jobs read the bot class the same way, so it is never stranded."""
+    pl = payload(title=title, association=association, same_repo=same_repo, bot=True)
     assert not reviews(pl)
     assert approves(pl)
 
