@@ -10,10 +10,11 @@
 # the run stayed green while a marked bash library sat on the branch and the
 # consumer's own CI died on `<<<` as a syntax error.
 #
-# This gate restores every still-marked path to its pre-sync content and pushes
-# that, so the branch head carries no marker whatever the tiers managed. It then
-# exits 1, which reds the run. The marker text stays in the pull request body's
-# conflict report, which is where a human resolves it from.
+# This gate restores every still-marked path the sync's merge conflicted on to
+# its pre-sync content and pushes that, so no failed resolution stays on the
+# branch whatever the tiers managed. It then exits 1, which reds the run. The
+# marker text stays in the pull request body's conflict report, which is where a
+# human resolves it from. Marker text in any other path stays, and the log names it.
 #
 # Env: BASE_SHA (the commit the sync branched from), GITHUB_TOKEN, CONFLICT_FILES
 # (the paths the sync's own merge conflicted on; may be empty).
@@ -71,12 +72,26 @@ for path in "${conflict_files[@]}"; do
 done
 
 marked=()
+ignored=()
 while IFS= read -r path; do
-  [[ -n "$path" && -n "${is_conflict_file[$path]:-}" ]] && marked+=("$path")
+  [[ -n "$path" ]] || continue
+  if [[ -n "${is_conflict_file[$path]:-}" ]]; then
+    marked+=("$path")
+  else
+    ignored+=("$path")
+  fi
 done <<<"$scan"
 
-if [[ ${#marked[@]} -eq 0 ]]; then
+if [[ ${#ignored[@]} -gt 0 ]]; then
+  echo "template-sync-marker-gate: marker text left in place, because the sync's merge never conflicted on these: ${ignored[*]}"
+fi
+
+if [[ ${#marked[@]} -eq 0 && ${#ignored[@]} -eq 0 ]]; then
   echo "template-sync-marker-gate: no conflict markers on ${BRANCH}."
+  exit 0
+fi
+if [[ ${#marked[@]} -eq 0 ]]; then
+  echo "template-sync-marker-gate: no unresolved conflict on ${BRANCH}."
   exit 0
 fi
 

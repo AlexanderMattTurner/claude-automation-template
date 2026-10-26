@@ -352,3 +352,9 @@ def test_marker_text_in_a_file_the_sync_did_not_conflict_on_is_left_alone(sandbo
     assert result.returncode == 0, result.stdout + result.stderr
     assert pushed(work, "tests/fixtures/conflict.txt") == MARKED.rstrip("\n")
     assert git_out(work, "rev-parse", "origin/template-sync") == tip
+    # Left alone is not unseen: the log names the path it kept, and never claims a clean branch.
+    assert (
+        "template-sync-marker-gate: marker text left in place, because the sync's merge "
+        "never conflicted on these: tests/fixtures/conflict.txt"
+    ) in result.stdout
+    assert "no conflict markers" not in result.stdout
