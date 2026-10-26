@@ -56,14 +56,15 @@ jobs:
   # what the calling job holds, so a caller that grants less ends the run in
   # `startup_failure` before any job starts.
   #
-  # THE TITLE SKIP IS GATED ON A TRUSTED AUTHOR, and the same guard appears
-  # verbatim on auto-approve-skipped below. A PR title is written by the PR
-  # AUTHOR, so on its own it is an attacker-chosen string that decides whether
+  # THE TITLE AND BOT SKIPS ARE GATED ON A TRUSTED AUTHOR, and the same guard
+  # appears verbatim on auto-approve-skipped below. A PR title is written by the
+  # PR AUTHOR, so on its own it is an attacker-chosen string that decides whether
   # this repo reviews the PR at all: an outside contributor titling a fork PR
   # `chore: bump` skipped the review AND collected the auto-approval, clearing
-  # three merge levers with one string. The guard is the pair GitHub sets, not
-  # the author: `head.repo.full_name` (same-repo branch, so the author already
-  # has push access) or `author_association` in OWNER/MEMBER/COLLABORATOR.
+  # three merge levers with one string. A Bot author is no better: any GitHub App
+  # can open a fork PR. The guard is the pair GitHub sets, not the author:
+  # `head.repo.full_name` (same-repo branch, so the author already has push
+  # access) or `author_association` in OWNER/MEMBER/COLLABORATOR.
   #
   # It must gate BOTH jobs or neither. Guarding only the approval leaves an
   # untrusted `chore:` PR skipped here and approved by nobody — reviewed by
@@ -90,23 +91,23 @@ jobs:
     if: >-
       github.event.label.name == 'needs-auto-review' ||
       (
-      github.event.action != 'labeled' &&
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.user.type != 'Bot' &&
-      (
+        github.event.action != 'labeled' &&
+        github.event.pull_request.draft == false &&
         !(
-          github.event.pull_request.head.repo.full_name == github.repository ||
-          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
-        ) ||
-        (
-          !startsWith(github.event.pull_request.title, 'chore:') &&
-          !startsWith(github.event.pull_request.title, 'chore(') &&
-          !startsWith(github.event.pull_request.title, 'style:') &&
-          !startsWith(github.event.pull_request.title, 'style(') &&
-          !startsWith(github.event.pull_request.title, 'release:') &&
-          !startsWith(github.event.pull_request.title, 'release(')
+          (
+            github.event.pull_request.head.repo.full_name == github.repository ||
+            contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+          ) &&
+          (
+            github.event.pull_request.user.type == 'Bot' ||
+            startsWith(github.event.pull_request.title, 'chore:') ||
+            startsWith(github.event.pull_request.title, 'chore(') ||
+            startsWith(github.event.pull_request.title, 'style:') ||
+            startsWith(github.event.pull_request.title, 'style(') ||
+            startsWith(github.event.pull_request.title, 'release:') ||
+            startsWith(github.event.pull_request.title, 'release(')
+          )
         )
-      )
       )
     permissions:
       contents: read # the reviewer checks out this repository's default branch
@@ -145,21 +146,17 @@ jobs:
       (github.event.action == 'opened' || github.event.action == 'ready_for_review') &&
       github.event.pull_request.draft == false &&
       (
+        github.event.pull_request.head.repo.full_name == github.repository ||
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+      ) &&
+      (
         github.event.pull_request.user.type == 'Bot' ||
-        (
-          (
-            github.event.pull_request.head.repo.full_name == github.repository ||
-            contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
-          ) &&
-          (
-            startsWith(github.event.pull_request.title, 'chore:') ||
-            startsWith(github.event.pull_request.title, 'chore(') ||
-            startsWith(github.event.pull_request.title, 'style:') ||
-            startsWith(github.event.pull_request.title, 'style(') ||
-            startsWith(github.event.pull_request.title, 'release:') ||
-            startsWith(github.event.pull_request.title, 'release(')
-          )
-        )
+        startsWith(github.event.pull_request.title, 'chore:') ||
+        startsWith(github.event.pull_request.title, 'chore(') ||
+        startsWith(github.event.pull_request.title, 'style:') ||
+        startsWith(github.event.pull_request.title, 'style(') ||
+        startsWith(github.event.pull_request.title, 'release:') ||
+        startsWith(github.event.pull_request.title, 'release(')
       )
     runs-on: ubuntu-latest
     timeout-minutes: 5
