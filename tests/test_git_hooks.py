@@ -235,3 +235,65 @@ def test_pre_push_annotated_tag_on_a_pushed_commit_needs_no_tools(
     )
     assert result.returncode == 0, result.stderr
     assert "REFUSING" not in result.stderr
+
+
+def _push_new_commit_with_git_env(
+    repo: Path, cwd: Path
+) -> tuple[subprocess.CompletedProcess, str]:
+    """Run pre-push over one new commit with GIT_DIR and GIT_WORK_TREE exported,
+    as git exports them to a hook run from a worktree. Returns the result and
+    what a stub pre-commit saw of the two variables."""
+    subprocess.run(
+        ["git", "commit", "-q", "--allow-empty", "-m", "new"],
+        cwd=repo,
+        env=git_env(),
+        check=True,
+    )
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True
+    ).stdout.strip()
+    path = minimal_path(repo)
+    log = repo / "git-env.log"
+    stub = Path(path) / "pre-commit"
+    stub.write_text(
+        f'#!/bin/bash\necho "${{GIT_DIR-unset}}|${{GIT_WORK_TREE-unset}}" >"{log}"\n',
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": path,
+        "HOME": str(repo),
+        "GIT_DIR": str(repo / ".git"),
+        "GIT_WORK_TREE": str(repo),
+    }
+    bash = shutil.which("bash")
+    assert bash
+    result = subprocess.run(
+        [bash, str(repo / ".hooks" / "pre-push"), "origin", "url"],
+        cwd=cwd,
+        input=f"refs/heads/main {head} refs/heads/main {ZERO_SHA}\n",
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    return result, log.read_text(encoding="utf-8").strip()
+
+
+def test_pre_push_hides_git_dir_from_the_hooks_it_runs(hook_repo: Path) -> None:
+    """An absolute GIT_DIR inherited by pre-commit's hooks makes a hook that runs
+    git inside its own cached clone read THIS repository instead."""
+    result, seen = _push_new_commit_with_git_env(hook_repo, cwd=hook_repo)
+    assert result.returncode == 0, result.stderr
+    assert seen == "unset|unset"
+
+
+def test_pre_push_keeps_git_dir_when_it_is_the_only_way_to_the_repo(
+    hook_repo: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """Run from outside the work tree, the two variables are the only
+    coordinates there are; dropping them would fail every push."""
+    outside = tmp_path_factory.mktemp("outside")
+    result, seen = _push_new_commit_with_git_env(hook_repo, cwd=outside)
+    assert result.returncode == 0, result.stderr
+    assert seen == f"{hook_repo / '.git'}|{hook_repo}"
