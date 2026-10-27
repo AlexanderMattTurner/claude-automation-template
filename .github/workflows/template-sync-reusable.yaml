@@ -142,6 +142,16 @@ jobs:
           filter: blob:none
           persist-credentials: false
 
+      # Every script below runs from this read-only copy, outside the working
+      # tree. The resolve step's model works in that tree, where `_template`
+      # sits, and the steps after it hold the org PAT, so a script it could edit
+      # would run with that token.
+      - name: Stage the template's tooling outside the working tree
+        run: |
+          mkdir -p "$RUNNER_TEMP/template-tools"
+          cp -a _template/.github "$RUNNER_TEMP/template-tools/"
+          chmod -R a-w "$RUNNER_TEMP/template-tools"
+
       - name: Check token workflow scope
         env:
           # Mirrors the checkout step above — validates whichever token is
@@ -151,7 +161,7 @@ jobs:
           TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.GITHUB_TOKEN }}
           # The secret TOKEN reads first, so the error names the one to fix.
           TOKEN_SECRET_NAME: TEMPLATE_SYNC_TOKEN_ORG
-        run: bash _template/.github/scripts/check-token-scope.sh
+        run: bash "$RUNNER_TEMP/template-tools/.github/scripts/check-token-scope.sh"
 
       # run-with-pyyaml.sh fetches PyYAML through uv. No cache: this job holds
       # credentials, and a cache another run wrote is input it never reviewed.
@@ -162,14 +172,14 @@ jobs:
       # A caller's `env:` never reaches this workflow, so path lists a consumer
       # kept there from the pre-reusable caller would be ignored without a word.
       - name: Refuse path lists left in the caller's env
-        run: bash _template/.github/scripts/run-with-pyyaml.sh _template/.github/scripts/template-sync-stale-env.py .github/workflows/template-sync.yaml
+        run: bash "$RUNNER_TEMP/template-tools/.github/scripts/run-with-pyyaml.sh" "$RUNNER_TEMP/template-tools/.github/scripts/template-sync-stale-env.py" .github/workflows/template-sync.yaml
 
       - name: Sync template files with conflict detection
         id: sync
         env:
           EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
           OPT_IN_PATHS: ${{ inputs.opt-in-paths }}
-        run: bash _template/.github/scripts/template-sync.sh
+        run: bash "$RUNNER_TEMP/template-tools/.github/scripts/template-sync.sh"
 
       - name: Show diff (dry run)
         if: inputs.dry-run == true && steps.sync.outputs.has_changes == 'true'
@@ -178,7 +188,7 @@ jobs:
           HAS_DELETIONS: ${{ steps.sync.outputs.has_deletions }}
           CONFLICT_FILES: ${{ steps.sync.outputs.conflict_files }}
           DELETED_FILES: ${{ steps.sync.outputs.deleted_files }}
-        run: bash _template/.github/scripts/show-sync-diff.sh
+        run: bash "$RUNNER_TEMP/template-tools/.github/scripts/show-sync-diff.sh"
 
       # The body is a script, not an inline `format()` chain: a chain that long
       # is invisible to shellcheck, cannot be tested, and grew a shape nobody
@@ -200,7 +210,7 @@ jobs:
           CONFLICT_REPORT: ${{ steps.sync.outputs.conflict_report }}
           MARKERLESS_FILES: ${{ steps.sync.outputs.markerless_files }}
           PR_BODY_PATH: ${{ runner.temp }}/template-sync-body.md
-        run: bash _template/.github/scripts/template-sync-pr-body.sh
+        run: bash "$RUNNER_TEMP/template-tools/.github/scripts/template-sync-pr-body.sh"
 
       - name: Create Pull Request
         if: inputs.dry-run != true && (steps.sync.outputs.has_changes == 'true' || steps.sync.outputs.has_conflicts == 'true' || steps.sync.outputs.has_deletions == 'true')
@@ -232,7 +242,7 @@ jobs:
       # conflict_files, and template-sync-resolve.sh refuses an empty list.
       - name: Install mergiraf (pinned, digest-verified)
         if: inputs.dry-run != true && steps.sync.outputs.conflict_files != '' && steps.create-pr.outputs.pull-request-number
-        run: bash _template/.github/scripts/install-mergiraf.sh
+        run: bash "$RUNNER_TEMP/template-tools/.github/scripts/install-mergiraf.sh"
 
       # Tier 2 is the resolver's own fan-out, from the same pinned commit the
       # template's auto-resolve-conflicts.yaml calls: its `uses:` line is the one
@@ -240,7 +250,7 @@ jobs:
       - name: Read the resolver pin
         id: resolver-pin
         if: inputs.dry-run != true && steps.sync.outputs.conflict_files != '' && steps.create-pr.outputs.pull-request-number
-        run: bash _template/.github/scripts/run-with-pyyaml.sh _template/.github/scripts/resolver-ref.py --github-output _template
+        run: bash "$RUNNER_TEMP/template-tools/.github/scripts/run-with-pyyaml.sh" "$RUNNER_TEMP/template-tools/.github/scripts/resolver-ref.py" --github-output "$RUNNER_TEMP/template-tools"
 
       - name: Resolve the sync conflicts
         id: resolve
@@ -266,7 +276,7 @@ jobs:
           git -C "${resolver_dir}" fetch --no-tags --depth 1 origin "${RESOLVER_REF}"
           git -C "${resolver_dir}" checkout --detach FETCH_HEAD
           RESOLVER_DIR="${resolver_dir}/.github/resolver" \
-            bash _template/.github/scripts/template-sync-resolve.sh
+            bash "$RUNNER_TEMP/template-tools/.github/scripts/template-sync-resolve.sh"
 
       - name: Push the resolutions
         if: steps.resolve.outcome == 'success' && (steps.resolve.outputs.deterministic != '' || steps.resolve.outputs.by_model != '')
@@ -275,7 +285,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.GITHUB_TOKEN }}
           DETERMINISTIC: ${{ steps.resolve.outputs.deterministic }}
           BY_MODEL: ${{ steps.resolve.outputs.by_model }}
-        run: bash _template/.github/scripts/template-sync-push.sh
+        run: bash "$RUNNER_TEMP/template-tools/.github/scripts/template-sync-push.sh"
 
       # The markers reach the branch before either resolver tier runs, because
       # create-pull-request commits the whole synced tree. So this is the step
@@ -289,7 +299,7 @@ jobs:
           CONFLICT_FILES: ${{ steps.sync.outputs.conflict_files }}
           # token-fallback-ok: designed graceful degradation, not an accident.
           GITHUB_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || secrets.GITHUB_TOKEN }}
-        run: bash _template/.github/scripts/template-sync-marker-gate.sh
+        run: bash "$RUNNER_TEMP/template-tools/.github/scripts/template-sync-marker-gate.sh"
 
       # A sync merges itself only when NOTHING needed judgement. See the script
       # for the full predicate; the two carve-outs are that a model-resolved file
@@ -307,4 +317,4 @@ jobs:
           ALL_DETERMINISTIC: ${{ steps.resolve.outputs.all_deterministic }}
           CHANGED_PATHS: ${{ steps.sync.outputs.changed_paths }}
           MARKERLESS_FILES: ${{ steps.sync.outputs.markerless_files }}
-        run: bash _template/.github/scripts/template-sync-automerge.sh
+        run: bash "$RUNNER_TEMP/template-tools/.github/scripts/template-sync-automerge.sh"

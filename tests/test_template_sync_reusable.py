@@ -34,22 +34,30 @@ def _load(path):
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def _script_refs() -> list[tuple[str, str]]:
-    """(step name, prefix) for every `.github/scripts/` path a step runs."""
+def _script_refs() -> list[tuple[str, str, str]]:
+    """(job id, step name, prefix) for every `.github/scripts/` path a step runs."""
     refs = []
-    for job in _load(REUSABLE)["jobs"].values():
+    for job_id, job in _load(REUSABLE)["jobs"].items():
         for step in job["steps"]:
             for match in SCRIPT_REF.finditer(step.get("run", "")):
-                refs.append((step.get("name", step.get("id", "?")), match["prefix"]))
+                refs.append(
+                    (job_id, step.get("name", step.get("id", "?")), match["prefix"])
+                )
     return refs
 
 
-def test_every_script_runs_from_the_template_checkout():
+# The sync job's resolve step lets a model edit the working tree, and later steps
+# hold the PAT, so the sync job runs only the read-only copy staged outside it.
+EXPECTED_PREFIX = {"preflight": "_template/", "sync": '"$RUNNER_TEMP/template-tools/'}
+
+
+def test_every_script_runs_from_the_template_tooling():
     refs = _script_refs()
     # Non-vacuity: every step of the sync runs a script, so an empty or short
     # list means this test stopped seeing the steps, not that they are clean.
-    assert len(refs) >= 10, refs
-    assert [r for r in refs if r[1] != "_template/"] == []
+    assert len([r for r in refs if r[0] == "sync"]) >= 10, refs
+    assert [r for r in refs if r[0] == "preflight"], refs
+    assert [r for r in refs if r[2] != EXPECTED_PREFIX[r[0]]] == []
 
 
 def test_the_caller_grants_every_permission_a_called_job_requests():
@@ -126,4 +134,3 @@ def test_the_stale_env_check_runs_before_the_sync():
     check = next(i for i, run in enumerate(runs) if STALE_ENV.name in run)
     sync = next(i for i, step in enumerate(steps) if step.get("id") == "sync")
     assert check < sync
-    assert "_template/.github/scripts/" in runs[check]
