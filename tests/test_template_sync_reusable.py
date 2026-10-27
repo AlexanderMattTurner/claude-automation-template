@@ -85,7 +85,10 @@ def test_the_caller_names_a_template_ref_and_passes_its_secrets():
         ".github/workflows/template-sync-reusable.yaml@"
     )
     assert job["with"]["template-ref"]
-    assert job["secrets"] == "inherit"
+    declared = _load(REUSABLE)[ON_KEY]["workflow_call"]["secrets"]
+    # An explicit map, not `inherit`, which reaches no caller in another owner's
+    # organization. Each declared secret passes through under its own name.
+    assert job["secrets"] == {name: f"${{{{ secrets.{name} }}}}" for name in declared}
 
 
 STALE_ENV = REPO_ROOT / ".github" / "scripts" / "template-sync-stale-env.py"
