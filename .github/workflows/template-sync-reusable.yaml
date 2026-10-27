@@ -159,6 +159,11 @@ jobs:
         with:
           enable-cache: false
 
+      # A caller's `env:` never reaches this workflow, so path lists a consumer
+      # kept there from the pre-reusable caller would be ignored without a word.
+      - name: Refuse path lists left in the caller's env
+        run: bash _template/.github/scripts/run-with-pyyaml.sh _template/.github/scripts/template-sync-stale-env.py .github/workflows/template-sync.yaml
+
       - name: Sync template files with conflict detection
         id: sync
         env:

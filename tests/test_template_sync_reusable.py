@@ -14,7 +14,10 @@ fails until the cron fires in a consumer:
 """
 
 import re
+import subprocess
+import sys
 
+import pytest
 import yaml
 
 from tests._helpers import REPO_ROOT
@@ -75,3 +78,52 @@ def test_the_caller_names_a_template_ref_and_passes_its_secrets():
     )
     assert job["with"]["template-ref"]
     assert job["secrets"] == "inherit"
+
+
+STALE_ENV = REPO_ROOT / ".github" / "scripts" / "template-sync-stale-env.py"
+
+
+@pytest.mark.parametrize(
+    ("caller_yaml", "moved"),
+    [
+        (
+            'env:\n  EXCLUDE_PATHS: ".github/scripts/lib"\n'
+            '  OPT_IN_PATHS: ".github/workflows/auto-version.yaml"\njobs: {}\n',
+            [
+                'exclude-paths: ".github/scripts/lib"',
+                'opt-in-paths: ".github/workflows/auto-version.yaml"',
+            ],
+        ),
+        ("env:\n  TEMPLATE_REPO: x/y\njobs: {}\n", []),
+        (None, []),
+    ],
+    ids=["stale-lists", "clean-env", "no-caller-file"],
+)
+def test_a_caller_that_kept_its_env_path_lists_stops_the_sync(
+    tmp_path, caller_yaml, moved
+):
+    """A caller's `env:` never reaches the called workflow, so a pre-reusable
+    `EXCLUDE_PATHS` line would be ignored and its frozen paths synced over."""
+    caller = tmp_path / "template-sync.yaml"
+    if caller_yaml is not None:
+        caller.write_text(caller_yaml, encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(STALE_ENV), str(caller)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == (1 if moved else 0), result.stdout + result.stderr
+    errors = [line for line in result.stdout.splitlines() if "::error" in line]
+    assert len(errors) == len(moved)
+    for line, entry in zip(errors, moved):
+        assert entry in line
+
+
+def test_the_stale_env_check_runs_before_the_sync():
+    steps = _load(REUSABLE)["jobs"]["sync"]["steps"]
+    runs = [step.get("run", "") for step in steps]
+    check = next(i for i, run in enumerate(runs) if STALE_ENV.name in run)
+    sync = next(i for i, step in enumerate(steps) if step.get("id") == "sync")
+    assert check < sync
+    assert "_template/.github/scripts/" in runs[check]
