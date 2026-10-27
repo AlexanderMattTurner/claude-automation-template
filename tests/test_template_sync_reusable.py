@@ -147,3 +147,12 @@ def test_a_caller_can_turn_off_auto_merge():
     arming = [s for s in steps if "template-sync-automerge.sh" in s.get("run", "")]
     assert len(arming) == 1
     assert arming[0]["if"].startswith("inputs.automerge && ")
+
+
+def test_a_caller_can_pin_the_resolver_model():
+    doc = _load(REUSABLE)
+    model = doc[ON_KEY]["workflow_call"]["inputs"]["model"]
+    assert (model["type"], model["default"]) == ("string", "")
+    steps = doc["jobs"]["sync"]["steps"]
+    resolve = next(s for s in steps if s.get("id") == "resolve")
+    assert resolve["env"]["AUTO_RESOLVE_MODEL"] == "${{ inputs.model }}"
