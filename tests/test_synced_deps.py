@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 import tree_sitter_bash
+import yaml
 from tree_sitter import Language, Parser
 
 from ._helpers import REPO_ROOT
@@ -49,13 +50,24 @@ def tracked_files() -> frozenset[str]:
     return frozenset(out.split())
 
 
+# Where each list lives: the template's own SYNC_PATHS is workflow `env`, read by
+# template-sync.sh from the template checkout; the two repo-tunable lists are what
+# the caller passes the reusable sync job.
+PATH_LISTS = {
+    "SYNC_PATHS": ("env", "SYNC_PATHS"),
+    "EXCLUDE_PATHS": ("jobs", "sync", "with", "exclude-paths"),
+    "OPT_IN_PATHS": ("jobs", "sync", "with", "opt-in-paths"),
+}
+
+
 @functools.cache
 def path_list(name: str) -> tuple[str, ...]:
     """One of the workflow's space-separated path lists."""
-    text = TEMPLATE_SYNC_YAML.read_text(encoding="utf-8")
-    match = re.search(rf'^\s*{name}:\s*"(?P<paths>[^"]*)"', text, re.MULTILINE)
-    assert match, f"template-sync.yaml declares {name}"
-    return tuple(match.group("paths").split())
+    node = yaml.safe_load(TEMPLATE_SYNC_YAML.read_text(encoding="utf-8"))
+    for key in PATH_LISTS[name]:
+        node = node[key]
+    assert isinstance(node, str) and node.split(), f"template-sync.yaml declares {name}"
+    return tuple(node.split())
 
 
 def sync_paths() -> tuple[str, ...]:

@@ -1,6 +1,6 @@
 """A repository must never sync itself from a copy of itself.
 
-The template ships `template-sync.yaml` to its consumers, so the workflow also
+The template ships `template-sync.yaml` to its consumers, so the sync also
 runs in the template repo — where there is no upstream to import from. Left
 unguarded that is not a harmless no-op: pointed at a fork of itself (what a
 stale `TEMPLATE_SYNC_ORG` variable produces), the sync rewrites the source of
@@ -22,7 +22,7 @@ import yaml
 from tests._helpers import REPO_ROOT
 
 SCRIPT = REPO_ROOT / ".github" / "scripts" / "template-sync-preflight.sh"
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "template-sync.yaml"
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "template-sync-reusable.yaml"
 
 
 def run(tmp_path: Path, template_repo: str, running_repo: str, parent: str = ""):

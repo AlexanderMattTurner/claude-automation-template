@@ -11,7 +11,7 @@ import regexp from "eslint-plugin-regexp";
 // downstream, so a regression is caught here rather than in someone else's CI.
 export default [
   {
-    // `_template/` is the transient template checkout template-sync.sh creates
+    // `_template/` is the transient template checkout the sync workflow places
     // in the consumer's working tree; linting it would report the template's
     // files as the consumer's.
     ignores: ["node_modules/", ".venv/", "dist/", "build/", "_template/"],

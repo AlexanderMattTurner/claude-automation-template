@@ -64,7 +64,7 @@ def test_each_section_renders_when_its_variable_is_set(tmp_path: Path) -> None:
         ("CONFLICT_REPORT", "Conflicts needing a merge decision"),
         ("DELETED_FILES", "Deleted in the template"),
         ("DECLINED_FILES", "Declined"),
-        ("INERT_ENTRIES", "Inert EXCLUDE_PATHS"),
+        ("INERT_ENTRIES", "Inert exclude-paths"),
         ("AUTO_MERGED_FILES", "merged with no conflict"),
     ):
         body = render(tmp_path, CHANGED_FILES="a.md", **{var: "z.md"})
