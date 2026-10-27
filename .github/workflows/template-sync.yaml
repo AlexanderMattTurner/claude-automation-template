@@ -138,7 +138,7 @@ jobs:
     # TEMPLATE_SYNC_ORG. A fork that hosts its own template sets that variable,
     # which redirects the files the sync copies, and edits the owner on this line
     # to run its own copy of the sync tooling too.
-    uses: AlexanderMattTurner/claude-automation-template/.github/workflows/template-sync-reusable.yaml@main
+    uses: AlexanderMattTurner/claude-automation-template/.github/workflows/template-sync-reusable.yaml@main # zizmor: ignore[unpinned-uses, secrets-inherit] — the moving ref is the design (see above), and the reusable declares each secret it reads
     secrets: inherit
     with:
       template-ref: main

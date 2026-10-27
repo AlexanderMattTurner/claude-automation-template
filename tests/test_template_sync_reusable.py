@@ -61,7 +61,7 @@ def test_the_caller_grants_every_permission_a_called_job_requests():
 
 def test_every_secret_the_reusable_reads_is_declared():
     text = REUSABLE.read_text(encoding="utf-8")
-    read = set(re.findall(r"secrets\.([A-Z0-9_]+)", text)) - {"GITHUB_TOKEN"}
+    read = set(re.findall(r"secrets\.(?P<name>[A-Z0-9_]+)", text)) - {"GITHUB_TOKEN"}
     declared = set(_load(REUSABLE)[ON_KEY]["workflow_call"]["secrets"])
     assert "TEMPLATE_SYNC_TOKEN_ORG" in read
     assert read == declared
