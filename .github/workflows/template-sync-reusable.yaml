@@ -94,7 +94,7 @@ jobs:
         run: ': "${TEMPLATE_REF:?pass template-ref, the template ref whose sync tooling this run uses}"'
 
       - name: Checkout the template's sync scripts
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ env.TEMPLATE_REPO }}
           ref: ${{ inputs.template-ref }}
@@ -122,7 +122,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout child repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           filter: blob:none
@@ -133,7 +133,7 @@ jobs:
       # registers `_template` in the child's info/exclude, so the checkout
       # survives the branch switches below and never lands in the sync commit.
       - name: Checkout template repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ env.TEMPLATE_REPO }}
           ref: ${{ inputs.template-ref }}
@@ -170,7 +170,7 @@ jobs:
 
       # run-with-pyyaml.sh fetches PyYAML through uv. No cache: this job holds
       # credentials, and a cache another run wrote is input it never reviewed.
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: false
 
