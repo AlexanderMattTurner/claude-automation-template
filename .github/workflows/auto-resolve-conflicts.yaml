@@ -101,7 +101,7 @@ jobs:
       # the one place GitHub requires a literal and Dependabot moves. This checks
       # out only that file and its reader, at the commit this run's workflow file
       # came from, so it trusts no author the `uses:` line did not already trust.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -113,7 +113,7 @@ jobs:
           sparse-checkout-cone-mode: false
       # run-with-pyyaml.sh fetches PyYAML through uv. No cache: this job holds
       # credentials, and a cache another run wrote is input it never reviewed.
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: false
       - name: Read the resolver pin
@@ -220,7 +220,7 @@ jobs:
       issues: write # `gh label create` for auto-resolve-blocked rides the issues API
       statuses: write # the per-head attempt mark is a commit status
       actions: write # `land` re-dispatches the resolver after a lost race
-    uses: AlexanderMattTurner/agent-resolve-merge-conflicts/.github/workflows/auto-resolve.yaml@f6dea60f29ba915171ac9bf96e7dbcdcc4c819a0 # v1.40.2
+    uses: AlexanderMattTurner/agent-resolve-merge-conflicts/.github/workflows/auto-resolve.yaml@003d48685040968390123f189684ec7c8bd48993 # v1.43.2
     with:
       pr: ${{ matrix.pr.number }}
       resolver-repository: ${{ needs.discover.outputs.resolver-repository }}

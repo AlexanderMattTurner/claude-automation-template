@@ -55,7 +55,7 @@ jobs:
     steps:
       # Sparse-checkout only the base repo's own scripts (the trusted base ref for
       # pull_request_target, never the PR head), so cancel-pr-runs.sh is present.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github/scripts
           persist-credentials: false
@@ -99,7 +99,7 @@ jobs:
       group: merge-conflict-labeler-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/scripts
@@ -109,7 +109,7 @@ jobs:
           persist-credentials: false
       # run-with-pyyaml.sh fetches PyYAML through uv. No cache: this job holds
       # credentials, and a cache another run wrote is input it never reviewed.
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           enable-cache: false
       # The labeler runs with a write token, so it comes from the SAME pinned
@@ -121,7 +121,7 @@ jobs:
       # The labeler ships WITH the resolver it triggers, so no repository keeps a
       # copy of it to drift from the label the resolver reads.
       - name: Check out the resolver that provides the labeler
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ steps.pin.outputs.repository }}
           ref: ${{ steps.pin.outputs.ref }}
