@@ -7,6 +7,7 @@ name: Sync from Template
 # This file only calls the template's template-sync-reusable.yaml, which holds
 # the sync job. Every script that job runs comes from the template, so a stale
 # local copy of the sync scripts cannot break the sync that would replace it.
+# allow-workflow-ref: template-sync-reusable.yaml lives in the template repository.
 #
 # Features:
 # - Skips entirely in the template repository itself, and fails loud when
