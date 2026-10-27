@@ -137,3 +137,13 @@ def test_the_stale_env_check_runs_before_the_sync():
     check = next(i for i, run in enumerate(runs) if STALE_ENV.name in run)
     sync = next(i for i, step in enumerate(steps) if step.get("id") == "sync")
     assert check < sync
+
+
+def test_a_caller_can_turn_off_auto_merge():
+    doc = _load(REUSABLE)
+    automerge = doc[ON_KEY]["workflow_call"]["inputs"]["automerge"]
+    assert (automerge["type"], automerge["default"]) == ("boolean", True)
+    steps = doc["jobs"]["sync"]["steps"]
+    arming = [s for s in steps if "template-sync-automerge.sh" in s.get("run", "")]
+    assert len(arming) == 1
+    assert arming[0]["if"].startswith("inputs.automerge && ")

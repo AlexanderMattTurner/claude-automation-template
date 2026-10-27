@@ -47,6 +47,11 @@ on:
         required: false
         default: ""
         type: string
+      automerge:
+        description: "Arm auto-merge on a sync PR that needed no judgement call. Pass false to leave every sync PR for a person to merge."
+        required: false
+        default: true
+        type: boolean
     secrets:
       TEMPLATE_SYNC_TOKEN_ORG:
         description: "Optional PAT with the `workflow` scope. Without it the sync PR triggers no CI, and a private template cannot be read."
@@ -305,7 +310,7 @@ jobs:
       # for the full predicate; the two carve-outs are that a model-resolved file
       # never qualifies, and neither does a change to the supervision surface.
       - name: Enable auto-merge on a fully deterministic sync
-        if: inputs.dry-run != true && steps.create-pr.outputs.pull-request-number && vars.TEMPLATE_SYNC_AUTOMERGE != 'false'
+        if: inputs.automerge && inputs.dry-run != true && steps.create-pr.outputs.pull-request-number
         env:
           # token-fallback-ok: designed graceful degradation, not an accident.
           GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || github.token }}
