@@ -52,6 +52,11 @@ on:
         required: false
         default: true
         type: boolean
+      model:
+        description: "Model the conflict resolver runs on. Empty uses the resolver's own default."
+        required: false
+        default: ""
+        type: string
     secrets:
       TEMPLATE_SYNC_TOKEN_ORG:
         description: "Optional PAT with the `workflow` scope. Without it the sync PR triggers no CI, and a private template cannot be read."
@@ -273,6 +278,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RESOLVER_REPOSITORY: ${{ steps.resolver-pin.outputs.repository }}
           RESOLVER_REF: ${{ steps.resolver-pin.outputs.ref }}
+          AUTO_RESOLVE_MODEL: ${{ inputs.model }}
         run: |
           git fetch --no-tags origin "+refs/heads/template-sync:refs/remotes/origin/template-sync"
           git checkout -B template-sync origin/template-sync
