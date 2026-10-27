@@ -79,11 +79,11 @@ test("the release checkout falls back to GITHUB_TOKEN and names no cross-account
 
 // A repo that already publishes must not receive a second publisher. The sync
 // only UPDATES this workflow, never INTRODUCES it — which is only true while
-// its path is in template-sync.yaml's OPT_IN_PATHS.
+// its path is in template-sync.yaml's opt-in-paths.
 test("auto-version.yaml is opt-in, so the sync never introduces a second publisher", () => {
   const yaml = readFileSync(TEMPLATE_SYNC_YAML, "utf8");
-  const optIn = yaml.match(/^\s*OPT_IN_PATHS:\s*"(?<paths>[^"]*)"/m);
-  assert.ok(optIn, "template-sync.yaml must define OPT_IN_PATHS");
+  const optIn = yaml.match(/^\s*opt-in-paths:\s*"(?<paths>[^"]*)"/m);
+  assert.ok(optIn, "template-sync.yaml must pass opt-in-paths");
   assert.ok(
     optIn.groups.paths
       .split(/\s+/)

@@ -677,9 +677,11 @@ def test_survives_self_overwrite_with_longer_file(workdir: Path) -> None:
     with "unexpected EOF". The script must re-exec from an immutable copy so
     self-overwrite (even with a longer, deliberately broken tail) is harmless.
 
-    Runs the CHILD's own committed copy (relative path, exactly like CI), not
-    the repo SCRIPT, because only overwriting the file bash is executing
-    triggers the bug. Removing the re-exec guard flips this test red.
+    Runs the CHILD's own committed copy (relative path), not the repo SCRIPT,
+    because only overwriting the file bash is executing triggers the bug. CI runs
+    the template's copy, but the script still ships under a synced path, so a
+    consumer that runs its own copy by hand hits this. Removing the re-exec guard
+    flips this test red.
     """
     child = workdir / "child"
     template = workdir / "template"
@@ -722,7 +724,7 @@ def test_survives_self_overwrite_with_longer_file(workdir: Path) -> None:
         "GITHUB_OUTPUT": str(output_file),
         "TEMPLATE_SYNC_WORK_DIR": str(work),
     }
-    # Invoke the child's own copy relatively, the way template-sync.yaml does.
+    # Invoke the child's own copy relatively, the way a consumer's manual run does.
     result = subprocess.run(
         ["bash", script_rel], cwd=child, env=env, capture_output=True, text=True
     )
@@ -878,8 +880,8 @@ def test_a_file_no_commit_in_range_explains_is_listed_apart(workdir: Path) -> No
 
 def test_bookkeeping_paths_stay_out_of_the_unexplained_list(workdir: Path) -> None:
     """`.template-version` is rewritten by this script and the template ships
-    none, so no commit can ever explain it; `_template` is the script's own
-    untracked checkout. Both would sit under "no commit in that range" on every
+    none, so no commit can ever explain it; `_template` is the template checkout,
+    untracked in the child. Both would sit under "no commit in that range" on every
     single sync, which is the noise the attributed changelog exists to remove."""
     child = workdir / "child"
     template = workdir / "template"
@@ -904,6 +906,37 @@ def test_bookkeeping_paths_stay_out_of_the_unexplained_list(workdir: Path) -> No
     assert ".template-version" not in outputs["changelog"]
     assert "_template" not in outputs["changelog"]
     assert outputs["changed_files"].split() == ["config/a.txt"]
+
+
+def test_the_template_checkout_outlives_the_sync_but_never_reaches_its_commit(
+    workdir: Path,
+) -> None:
+    """Every step after the sync runs its script from `_template`, so the sync
+    must leave that checkout in place. create-pull-request then stages with
+    `git add -A`, so the child's git must not see it, or the sync PR would commit
+    the whole template under `_template/`."""
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / "a.txt", "a\n")
+    commit_all(template)
+    commit_all(child)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    assert (child / "_template" / "config" / "a.txt").is_file()
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=child,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    assert sorted(line[3:] for line in status) == [".template-version", "config/a.txt"]
+    assert parse_outputs(output_file)["changed_paths"].split() == [
+        ".template-version",
+        "config/a.txt",
+    ]
 
 
 def test_a_merge_commit_is_not_counted_as_touching_nothing(workdir: Path) -> None:

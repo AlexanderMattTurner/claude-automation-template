@@ -12,7 +12,7 @@ name: Auto version bump and publish
 # repo opts in by dropping `private` and setting a real, publishable name.
 #
 # Versioned-app workflow: only adopt this in a repo that is published to npm and
-# has no publisher of its own. It is listed in the template-sync OPT_IN_PATHS, so
+# has no publisher of its own. It is listed in the template-sync opt-in-paths, so
 # the sync never introduces it — a repo that does not have this file keeps not
 # having it, and deleting it is how you opt back out. Two publishers on one
 # default branch race the same semver bump and the loser fails with an

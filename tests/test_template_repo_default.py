@@ -52,7 +52,7 @@ def test_the_declarations_are_still_here():
     # renamed variable or a changed quoting style would empty the list and every
     # case would pass by never running.
     names = {name for name, _, _ in _declarations()}
-    assert {"template-sync.yaml", "phone-home.yaml"} <= names, (
+    assert {"template-sync-reusable.yaml", "phone-home.yaml"} <= names, (
         f"TEMPLATE_REPO declarations found in {names or 'no workflow'}"
     )
 

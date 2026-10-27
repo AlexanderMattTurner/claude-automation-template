@@ -8,17 +8,22 @@ dispatch opened a real pull request, with no error and nothing in the log to say
 so.
 
 That is invisible from inside the workflow, which is why it survived long enough
-to reach every downstream repo. These tests read the workflow GitHub actually
-executes and pin the type agreement between the declaration and its readers.
+to reach every downstream repo. These tests read the workflows GitHub actually
+executes and pin the type agreement between each declaration and its readers:
+the shipped caller declares the dispatch input and forwards it, and the reusable
+sync workflow declares it again and reads it in its step conditions.
 """
 
 import re
 
+import pytest
 import yaml
 
 from tests._helpers import REPO_ROOT
 
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "template-sync.yaml"
+WORKFLOWS = REPO_ROOT / ".github" / "workflows"
+CALLER = WORKFLOWS / "template-sync.yaml"
+REUSABLE = WORKFLOWS / "template-sync-reusable.yaml"
 INPUT_NAME = "dry-run"
 
 # `on` is the YAML 1.1 boolean True, which is what safe_load gives back for the
@@ -27,8 +32,15 @@ INPUT_NAME = "dry-run"
 ON_KEY = True
 
 
-def _workflow() -> dict:
-    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+def _workflow(path=REUSABLE) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+DECLARATIONS = pytest.mark.parametrize(
+    ("path", "trigger"),
+    [(CALLER, "workflow_dispatch"), (REUSABLE, "workflow_call")],
+    ids=["caller", "reusable"],
+)
 
 
 def _conditions() -> list[str]:
@@ -42,16 +54,25 @@ def _conditions() -> list[str]:
     return found
 
 
-def test_the_input_is_declared_boolean():
-    spec = _workflow()[ON_KEY]["workflow_dispatch"]["inputs"][INPUT_NAME]
+@DECLARATIONS
+def test_the_input_is_declared_boolean(path, trigger):
+    spec = _workflow(path)[ON_KEY][trigger]["inputs"][INPUT_NAME]
     assert spec["type"] == "boolean"
 
 
-def test_the_default_is_a_boolean_not_a_string():
+@DECLARATIONS
+def test_the_default_is_a_boolean_not_a_string(path, trigger):
     # A quoted "false" default is the same type confusion one step earlier: it
     # reads as truthy wherever a caller forwards it verbatim.
-    spec = _workflow()[ON_KEY]["workflow_dispatch"]["inputs"][INPUT_NAME]
+    spec = _workflow(path)[ON_KEY][trigger]["inputs"][INPUT_NAME]
     assert spec["default"] is False, f"default is {spec['default']!r}, not a boolean"
+
+
+def test_the_caller_forwards_a_boolean():
+    # A scheduled run carries no inputs, so a bare `inputs.dry-run` forwards
+    # null. The comparison yields a real boolean on both triggers.
+    forwarded = _workflow(CALLER)["jobs"]["sync"]["with"][INPUT_NAME]
+    assert forwarded == "${{ inputs.dry-run == true }}"
 
 
 def test_every_condition_compares_the_input_to_a_boolean():
