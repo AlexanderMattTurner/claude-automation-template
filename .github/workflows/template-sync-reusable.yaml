@@ -273,9 +273,15 @@ jobs:
           # credential the ladder ends on, so the fallback costs nothing but order.
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_FALLBACK || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-          # token-fallback-ok: designed graceful degradation, not an accident.
-          GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN_ORG || github.token }}
+          # The job token, never the org PAT. The model in this step reads
+          # template text an outsider's merged change may carry. Fanout reads
+          # this token only to ask this repository about the actor and the sync
+          # PR, which the job token answers.
+          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          # Confines every model Read to the merged tree, so an instruction in a
+          # conflicted file cannot read a token out of /proc/<pid>/environ.
+          AUTO_RESOLVE_UNTRUSTED_HEAD: "true"
           RESOLVER_REPOSITORY: ${{ steps.resolver-pin.outputs.repository }}
           RESOLVER_REF: ${{ steps.resolver-pin.outputs.ref }}
           AUTO_RESOLVE_MODEL: ${{ inputs.model }}

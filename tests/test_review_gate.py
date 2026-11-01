@@ -272,3 +272,13 @@ def test_auto_approve_re_runs_the_gate_after_approving(tmp_path: Path) -> None:
         head=REPORT_SHA,
     )
     assert state == "success"
+
+
+def test_the_merge_delta_publish_runs_unless_its_review_was_skipped():
+    """A review skipped by its own `if:` (a `labeled` event, a draft, a bot PR)
+    renders nothing, so publish skips too. A cancelled or timed-out review must
+    still reach publish, which reports it red rather than leaving `skipped`."""
+    jobs = yaml.safe_load(CLAUDE_REVIEW.read_text(encoding="utf-8"))["jobs"]
+    publish = jobs["merge_delta_publish"]
+    assert publish["needs"] == "merge_delta_review"
+    assert publish["if"] == "always() && needs.merge_delta_review.result != 'skipped'"

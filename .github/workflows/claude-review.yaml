@@ -219,14 +219,15 @@ jobs:
   #      input.sh fetches refs/pull/N/head with per-command auth and never checks it
   #      out), renders the remerge-diff with the trusted base-checkout renderer, and
   #      sanitizes it before the model sees it — treated as untrusted DATA;
-  #   3. holds least privilege — contents:read + pull-requests:write only, so even a
-  #      successful injection can post a PR comment but cannot push, merge, or reach
-  #      any other scope; the reviewer only ANALYZES and the post step is advisory.
+  #   3. holds least privilege — the model job holds contents:read and
+  #      pull-requests:read only, so a successful injection reaches no write at all.
+  #      merge_delta_publish holds pull-requests:write, runs no model, and posts
+  #      the staged review as an advisory comment.
   # Because pull_request_target always runs the workflow from the base branch, this
   # reviewer only takes effect once merged to the default branch.
   # ────────────────────────────────────────────────────────────────────────────
   merge_delta_review:
-    name: Review the PR's merge-resolution deltas
+    name: Read the PR's merge-resolution deltas
     # Skip drafts (can't merge) and bot-authored PRs (never Claude-reviewed). The
     # action guard keeps it off the union's `labeled` escape hatch — the source
     # workflow fired only on opened/ready_for_review/synchronize.
@@ -241,9 +242,14 @@ jobs:
     concurrency:
       group: claude-merge-delta-review-${{ github.event.pull_request.number }}
       cancel-in-progress: true
+    # READ scopes only: the model below reads deltas an outsider can write, so
+    # the write lives on merge_delta_publish, which runs no model.
     permissions:
       contents: read # checkout the trusted base commit
-      pull-requests: write # post the advisory comment
+      pull-requests: read # the renderer reads the pull request
+    outputs:
+      prepared: ${{ steps.prepare.outcome == 'success' }}
+      staged: ${{ steps.stage.outputs.artifact-id }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
@@ -312,12 +318,90 @@ jobs:
           untrusted_files: |
             merge deltas: ${{ runner.temp }}/pr-input/merge-delta.txt
 
+      - name: Stage the review for the publish job
+        id: stage
+        if: always() && steps.prepare.conclusion == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: merge-delta-review-${{ github.event.pull_request.number }}
+          path: ${{ runner.temp }}/pr-input/merge-review.md
+          # Absent when there were no deltas or the reviewer wrote nothing; the
+          # post script reads that absence as its no-deltas verdict.
+          if-no-files-found: ignore
+          retention-days: 1
+
+  merge_delta_publish:
+    name: Review the PR's merge-resolution deltas
+    needs: merge_delta_review
+    # Posts whenever the review finished — including has_deltas=false — so a
+    # sticky comment about a since-removed merge is refreshed to the clean
+    # verdict. Skipped only when the review job was skipped by its own `if:` (a
+    # `labeled` event, a draft, a bot PR). A review that failed, timed out or was
+    # cancelled on the CURRENT head ends this check red, because `skipped` would
+    # pass branch protection. Only a head that moved on stands this job down.
+    if: always() && needs.merge_delta_review.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: claude-merge-delta-publish-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read # checkout the trusted base commit for the post script
+      pull-requests: write # post the advisory comment
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Stand down when a newer head superseded this review
+        # The post rewrites one sticky comment by PR number, so a review of an
+        # older head must not post once the PR has moved on. The newer head's own
+        # run posts that head's verdict.
+        id: current
+        env:
+          REVIEWED: ${{ github.event.pull_request.head.sha }}
+        run: |
+          head="$(gh api "repos/${GH_REPO}/pulls/${PR}" --jq .head.sha)"
+          printf 'current=%s\n' "$([[ -n "$REVIEWED" && "$head" == "$REVIEWED" ]] && echo true || echo false)" >>"$GITHUB_OUTPUT"
+
+      - name: Fail when the render failed
+        # A required check under this job's name must not pass a head nothing
+        # rendered. Every step after this one is skipped once it fails.
+        if: steps.current.outputs.current == 'true' && needs.merge_delta_review.outputs.prepared != 'true'
+        run: |
+          echo "::error::the merge-delta render failed, so no reviewer read this head's merge-resolution deltas" >&2
+          exit 1
+
+      - name: Checkout base (trusted) branch
+        if: steps.current.outputs.current == 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Install the input sanitizer
+        if: steps.current.outputs.current == 'true'
+        run: bash .github/scripts/install-input-sanitizer.sh
+
+      - name: Fetch the staged review
+        if: steps.current.outputs.current == 'true' && needs.merge_delta_review.outputs.staged != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: merge-delta-review-${{ github.event.pull_request.number }}
+          path: ${{ runner.temp }}/pr-input
+
       - name: Post the advisory merge-delta review
-        # Runs whenever prepare SUCCEEDED — including has_deltas=false — so a
-        # sticky comment about a since-removed merge is refreshed to the clean
-        # verdict rather than left stale. Skipped when prepare failed loud (an
-        # octopus / renderer error), where the red job IS the signal.
-        if: steps.prepare.conclusion == 'success'
+        # Only after a reviewer finished: this post script reads a missing review
+        # file as "no deltas", which would be a clean comment over a dead reviewer.
+        if: steps.current.outputs.current == 'true' && needs.merge_delta_review.result == 'success'
         env:
           PR_INPUT_DIR: ${{ runner.temp }}/pr-input
         run: bash .github/scripts/post-merge-delta-review.sh
+
+      - name: Fail when the reviewer did not finish
+        # A green check under this job's name would pass a head nobody read.
+        if: steps.current.outputs.current == 'true' && needs.merge_delta_review.result != 'success'
+        run: |
+          echo "::error::the merge-delta reviewer did not finish on this head" >&2
+          exit 1
