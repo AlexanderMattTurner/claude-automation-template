@@ -332,11 +332,11 @@ jobs:
   merge_delta_publish:
     name: Review the PR's merge-resolution deltas
     needs: merge_delta_review
-    # Runs whenever prepare SUCCEEDED — including has_deltas=false — so a sticky
-    # comment about a since-removed merge is refreshed to the clean verdict
-    # rather than left stale. Skipped when prepare failed loud, where the red job
-    # IS the signal, and when a newer head cancelled the review.
-    if: always() && needs.merge_delta_review.result != 'cancelled' && needs.merge_delta_review.outputs.prepared == 'true'
+    # Posts whenever the review finished — including has_deltas=false — so a
+    # sticky comment about a since-removed merge is refreshed to the clean
+    # verdict. Skipped when a newer head cancelled the review. Red whenever the
+    # render or the reviewer failed, as the single job was.
+    if: always() && needs.merge_delta_review.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -350,6 +350,14 @@ jobs:
       GH_REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
     steps:
+      - name: Fail when the render failed
+        # A required check under this job's name must not read `skipped`, which
+        # branch protection counts as passing, for a head nothing rendered.
+        if: needs.merge_delta_review.outputs.prepared != 'true'
+        run: |
+          echo "::error::the merge-delta render failed, so no reviewer read this head's merge-resolution deltas" >&2
+          exit 1
+
       - name: Checkout base (trusted) branch
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -367,7 +375,28 @@ jobs:
           name: merge-delta-review-${{ github.event.pull_request.number }}
           path: ${{ runner.temp }}/pr-input
 
+      - name: Stand down when a newer head superseded this review
+        # The post rewrites one sticky comment by PR number, so a review of an
+        # older head must not post once the PR has moved on. The newer head's own
+        # run posts that head's verdict, and its review cancels this run's.
+        id: current
+        env:
+          REVIEWED: ${{ github.event.pull_request.head.sha }}
+        run: |
+          head="$(gh api "repos/${GH_REPO}/pulls/${PR}" --jq .head.sha)"
+          printf 'current=%s\n' "$([[ -n "$REVIEWED" && "$head" == "$REVIEWED" ]] && echo true || echo false)" >>"$GITHUB_OUTPUT"
+
       - name: Post the advisory merge-delta review
+        # Only after a reviewer finished: this post script reads a missing review
+        # file as "no deltas", which would be a clean comment over a dead reviewer.
+        if: steps.current.outputs.current == 'true' && needs.merge_delta_review.result == 'success'
         env:
           PR_INPUT_DIR: ${{ runner.temp }}/pr-input
         run: bash .github/scripts/post-merge-delta-review.sh
+
+      - name: Fail when the reviewer did not finish
+        # A green check under this job's name would pass a head nobody read.
+        if: needs.merge_delta_review.result != 'success'
+        run: |
+          echo "::error::the merge-delta reviewer did not finish on this head" >&2
+          exit 1
