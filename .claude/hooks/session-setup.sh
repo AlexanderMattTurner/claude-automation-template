@@ -36,12 +36,15 @@ emit_path_prepend() {
   echo "export PATH=${dir@Q}:\$PATH" >>"$CLAUDE_ENV_FILE"
 }
 
-# Install a command via uv if missing
-uv_install_if_missing() {
-  local cmd="$1" pkg="${2:-$1}"
-  if ! command -v "$cmd" &>/dev/null; then
-    uv tool install --quiet "$pkg" || warn "Failed to install $pkg"
-  fi
+# Install $1 — a `name==version` spec — as a uv tool, unconditionally. A
+# presence test would answer whether SOME version is on PATH, so a base image
+# carrying its own ruff keeps it and the pin never takes effect: the session
+# then lints with a different ruff from the one pre-commit and CI run. `uv tool
+# install` is a sub-second no-op when the spec is already satisfied, and
+# replaces the tool when it is not.
+uv_tool_pin() {
+  local pkg="$1"
+  uv tool install --quiet "$pkg" || warn "Failed to install $pkg"
 }
 
 # Install a command via webi if missing
@@ -135,8 +138,8 @@ fi
 # and zizmor additional_dependencies:). A contract test in tests/test_version_sync.py
 # enforces this.
 if { [[ -f "$PROJECT_DIR/pyproject.toml" ]] || [[ -f "$PROJECT_DIR/uv.lock" ]]; } && command -v uv &>/dev/null; then
-  uv_install_if_missing ruff "ruff==0.14.5"
-  uv_install_if_missing zizmor "zizmor==1.25.2"
+  uv_tool_pin "ruff==0.14.5"
+  uv_tool_pin "zizmor==1.25.2"
 fi
 
 #######################################

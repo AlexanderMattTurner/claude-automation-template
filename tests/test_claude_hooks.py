@@ -647,3 +647,42 @@ def test_a_global_driver_does_not_answer_for_this_checkout(
 
     assert result.returncode == 0, result.stderr
     assert "merge.mergiraf.driver is unset" in result.stderr
+
+
+def test_a_preinstalled_ruff_does_not_skip_the_pinned_install(sandbox: Path) -> None:
+    """A base image that ships its own ruff must not keep it. `command -v ruff`
+    answers presence, not version, so a presence test leaves the session linting
+    with a ruff that pre-commit and CI never run."""
+    (sandbox / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    stub_bin = sandbox / "stub-bin"
+    stub_bin.mkdir()
+    # Created here, not by the stub: an absent log would fail the assertion
+    # below with a FileNotFoundError that reads as a broken harness.
+    argv_log = sandbox / "uv-argv"
+    argv_log.touch()
+    # `uv tool install` reaches the network and would rewrite the host's own
+    # toolchain, so the stub records argv instead. `uv sync` lands here too.
+    _write_stub(stub_bin / "uv", f'printf "%s\\n" "$*" >>{argv_log}\n')
+    _write_stub(stub_bin / "ruff", 'echo "ruff 9.9.9"\n')
+
+    _, result = run_session_setup(
+        sandbox,
+        extra_env={
+            "PATH": f"{stub_bin}:{os.environ['PATH']}",
+            "HOME": str(_fake_home(sandbox)),
+        },
+        scrub=("GH_REPO", "CLAUDE_CODE_BASE_REF"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    installed = [
+        line.removeprefix("tool install --quiet ").split("==")[0]
+        for line in argv_log.read_text(encoding="utf-8").splitlines()
+        if line.startswith("tool install ")
+    ]
+    assert installed == ["ruff", "zizmor"]
+
+
+def _write_stub(path: Path, body: str) -> None:
+    path.write_text(f"#!/usr/bin/env bash\n{body}", encoding="utf-8")
+    path.chmod(0o755)

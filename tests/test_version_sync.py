@@ -4,11 +4,11 @@ Versioned tools are pinned in more than one place, and a mismatch makes local
 hooks behave differently from CI:
 
   ruff:
-    - .claude/hooks/session-setup.sh   (uv_install_if_missing ruff "ruff==X")
+    - .claude/hooks/session-setup.sh   (uv_tool_pin "ruff==X")
     - .pre-commit-config.yaml          (ruff-pre-commit rev: vX)
 
   zizmor:
-    - .claude/hooks/session-setup.sh   (uv_install_if_missing zizmor "zizmor==X")
+    - .claude/hooks/session-setup.sh   (uv_tool_pin "zizmor==X")
     - .pre-commit-config.yaml          (additional_dependencies: ["zizmor==X"])
     - .github/workflows/zizmor.yaml    (uvx zizmor==X)
 
@@ -66,9 +66,9 @@ def _search(pattern: str, path: Path, *, flags: int = 0) -> str:
 
 
 def _session_setup_pin(tool: str) -> str:
-    """Version pinned for *tool* by an uv_install_if_missing call in session-setup.sh."""
+    """Version pinned for *tool* by a uv_tool_pin call in session-setup.sh."""
     return _search(
-        rf'uv_install_if_missing\s+{re.escape(tool)}\s+"[^"]*?==([^"]+)"',
+        rf'uv_tool_pin\s+"{re.escape(tool)}==([^"]+)"',
         SESSION_SETUP,
     )
 
