@@ -219,9 +219,10 @@ jobs:
   #      input.sh fetches refs/pull/N/head with per-command auth and never checks it
   #      out), renders the remerge-diff with the trusted base-checkout renderer, and
   #      sanitizes it before the model sees it — treated as untrusted DATA;
-  #   3. holds least privilege — contents:read + pull-requests:write only, so even a
-  #      successful injection can post a PR comment but cannot push, merge, or reach
-  #      any other scope; the reviewer only ANALYZES and the post step is advisory.
+  #   3. holds least privilege — the model job holds contents:read and
+  #      pull-requests:read only, so a successful injection reaches no write at all.
+  #      merge_delta_publish holds pull-requests:write, runs no model, and posts
+  #      the staged review as an advisory comment.
   # Because pull_request_target always runs the workflow from the base branch, this
   # reviewer only takes effect once merged to the default branch.
   # ────────────────────────────────────────────────────────────────────────────
@@ -334,9 +335,10 @@ jobs:
     needs: merge_delta_review
     # Posts whenever the review finished — including has_deltas=false — so a
     # sticky comment about a since-removed merge is refreshed to the clean
-    # verdict. Skipped when a newer head cancelled the review. Red whenever the
-    # render or the reviewer failed, as the single job was.
-    if: always() && needs.merge_delta_review.result != 'cancelled'
+    # verdict. Skipped when the review job was skipped (a `labeled` event, a
+    # draft, a bot PR) or cancelled by a newer head. Red whenever the render or
+    # the reviewer failed, as the single job was.
+    if: always() && contains(fromJSON('["success","failure"]'), needs.merge_delta_review.result)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
