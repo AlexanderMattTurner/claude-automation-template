@@ -156,3 +156,14 @@ def test_a_caller_can_pin_the_resolver_model():
     steps = doc["jobs"]["sync"]["steps"]
     resolve = next(s for s in steps if s.get("id") == "resolve")
     assert resolve["env"]["AUTO_RESOLVE_MODEL"] == "${{ inputs.model }}"
+
+
+def test_the_model_step_holds_no_org_token_and_reads_only_the_tree():
+    """The resolve step runs a model over template text an outsider's merged
+    change may carry. It gets the job token, never the org PAT, and its reads are
+    confined to the merged tree so no token in /proc reaches it."""
+    steps = _load(REUSABLE)["jobs"]["sync"]["steps"]
+    env = next(s for s in steps if s.get("id") == "resolve")["env"]
+    assert env["GH_TOKEN"] == "${{ github.token }}"
+    assert env["AUTO_RESOLVE_UNTRUSTED_HEAD"] == "true"
+    assert not any("TEMPLATE_SYNC_TOKEN_ORG" in str(value) for value in env.values())
