@@ -282,6 +282,6 @@ def test_the_merge_delta_publish_runs_only_after_its_review_ran():
     publish = jobs["merge_delta_publish"]
     assert publish["needs"] == "merge_delta_review"
     assert publish["if"] == (
-        "always() && contains(fromJSON('[\"success\",\"failure\"]'), "
+        'always() && contains(fromJSON(\'["success","failure"]\'), '
         "needs.merge_delta_review.result)"
     )
