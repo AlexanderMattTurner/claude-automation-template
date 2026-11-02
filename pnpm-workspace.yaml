@@ -16,3 +16,11 @@ minimumReleaseAgeExclude:
 # only the wasm through web-tree-sitter, so its native build never runs.
 allowBuilds:
   tree-sitter-bash: false
+
+# Security overrides: patched versions of transitive dev dependencies
+# (markdownlint-cli2). Remove once markdownlint-cli2 ships them itself.
+overrides:
+  markdown-it: ">=15.0.3"
+  smol-toml: ">=1.8.1"
+  katex: ">=0.18.2"
+  minimatch: ">=11.0.1"

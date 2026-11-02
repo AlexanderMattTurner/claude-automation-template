@@ -55,7 +55,7 @@ jobs:
         # RELEASE_BYPASS_TOKEN must belong to this repo's own owner. A
         # cross-account PAT (e.g. a TEMPLATE_SYNC_TOKEN minted for a different
         # owner) is rejected 403 and strands the release exactly the same way.
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 # zizmor: ignore[artipacked]
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # zizmor: ignore[artipacked]
         with:
           # Need full history so `git describe`/`git log` can find the last tag.
           fetch-depth: 0
