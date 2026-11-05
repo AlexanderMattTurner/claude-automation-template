@@ -22,8 +22,8 @@ SETTINGS = REPO_ROOT / ".claude" / "settings.json"
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
-    """A project with the real hooks, the predicate they call, and a pyproject so
-    pre-push-check.sh runs `ruff` — a stub that records its call."""
+    """A project with the real hooks, the predicate and ruff wrapper they call, and
+    a pyproject so pre-push-check.sh runs `ruff` — a stub that records its call."""
     root = tmp_path / "proj"
     shutil.copytree(REPO_ROOT / ".claude" / "hooks", root / ".claude" / "hooks")
     # The bash parser the hooks load at fire time: web-tree-sitter and
@@ -32,6 +32,9 @@ def project(tmp_path: Path) -> Path:
     scripts = root / ".github" / "scripts"
     scripts.mkdir(parents=True)
     shutil.copy(REPO_ROOT / ".github" / "scripts" / "script-configured.sh", scripts)
+    hooks = root / ".hooks"
+    hooks.mkdir()
+    shutil.copy(REPO_ROOT / ".hooks" / "ruff.sh", hooks)
     (root / "pyproject.toml").write_text("", encoding="utf-8")
     return root
 
