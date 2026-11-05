@@ -17,6 +17,7 @@ SAFE_LAUNCH = REPO_ROOT / ".claude" / "hooks" / "safe-launch.sh"
 PRE_PUSH_CHECK = REPO_ROOT / ".claude" / "hooks" / "pre-push-check.sh"
 LIB_CHECKS = REPO_ROOT / ".claude" / "hooks" / "lib-checks.sh"
 SCRIPT_CONFIGURED = REPO_ROOT / ".github" / "scripts" / "script-configured.sh"
+RUFF_WRAPPER = REPO_ROOT / ".hooks" / "ruff.sh"
 
 
 def _run_parser_raw(
@@ -380,9 +381,9 @@ def test_safe_launch_degraded_path_allows_real_self_repair(
 
 @pytest.fixture
 def pre_push_sandbox(tmp_path: Path) -> Path:
-    """Project dir containing pre-push-check.sh, lib-checks.sh and the
-    script-configured.sh predicate lib-checks.sh calls."""
-    for src in (PRE_PUSH_CHECK, LIB_CHECKS, SCRIPT_CONFIGURED):
+    """Project dir containing pre-push-check.sh, lib-checks.sh, the
+    script-configured.sh predicate it calls, and the .hooks/ruff.sh wrapper."""
+    for src in (PRE_PUSH_CHECK, LIB_CHECKS, SCRIPT_CONFIGURED, RUFF_WRAPPER):
         dst = tmp_path / src.relative_to(REPO_ROOT)
         dst.parent.mkdir(parents=True, exist_ok=True)
         dst.write_bytes(src.read_bytes())
@@ -460,40 +461,56 @@ def test_pre_push_check_runs_ruff_when_available(
     assert marker.read_text(encoding="utf-8").splitlines() == ["check", "."]
 
 
-def test_pre_push_check_runs_ruff_at_the_pre_commit_pin(
+RUFF_PIN_CONFIG = (
+    "repos:\n"
+    "  - repo: https://github.com/pre-commit/pre-commit-hooks\n"
+    "    rev: v6.0.0\n"
+    "  - repo: https://github.com/astral-sh/ruff-pre-commit\n"
+    '    rev: "v0.14.5"\n'
+    "  - repo: https://github.com/example/after\n"
+    "    rev: v9.9.9\n"
+)
+NO_RUFF_CONFIG = "repos:\n  - repo: https://github.com/example/other\n    rev: v1.0.0\n"
+
+
+@pytest.mark.parametrize(
+    ("config", "lockfile", "tools", "expected"),
+    [
+        (RUFF_PIN_CONFIG, False, ("uvx", "uv", "ruff"), ("uvx", "ruff@0.14.5 check .")),
+        (RUFF_PIN_CONFIG, True, ("uv", "ruff"), ("uv", "run ruff check .")),
+        (NO_RUFF_CONFIG, True, ("uvx", "uv", "ruff"), ("uv", "run ruff check .")),
+        (None, False, ("uvx", "uv", "ruff"), ("ruff", "check .")),
+    ],
+    ids=["pinned", "pinned-no-uvx", "no-ruff-entry-locked", "no-config"],
+)
+def test_pre_push_check_picks_the_pinned_ruff_first(
     pre_push_sandbox: Path,
+    config: str | None,
+    lockfile: bool,
+    tools: tuple[str, ...],
+    expected: tuple[str, str],
 ) -> None:
     """A PATH ruff of another version enables other default rules, so it reds a
-    tree CI passes. With .hooks/ruff.sh, a pre-commit pin and uvx present, the
-    check must run ruff at that pin, read from the ruff entry, not a neighbour's."""
+    tree CI passes. The pre-commit pin wins (read from the ruff entry, never a
+    neighbour's rev), then the locked `uv run ruff`, then the PATH ruff."""
     (pre_push_sandbox / "pyproject.toml").write_text("", encoding="utf-8")
-    wrapper = pre_push_sandbox / ".hooks" / "ruff.sh"
-    wrapper.parent.mkdir()
-    wrapper.write_bytes((REPO_ROOT / ".hooks" / "ruff.sh").read_bytes())
-    (pre_push_sandbox / ".pre-commit-config.yaml").write_text(
-        "repos:\n"
-        "  - repo: https://github.com/pre-commit/pre-commit-hooks\n"
-        "    rev: v6.0.0\n"
-        "  - repo: https://github.com/astral-sh/ruff-pre-commit\n"
-        '    rev: "v0.14.5"\n'
-        "    hooks:\n"
-        "      - id: ruff-check\n",
-        encoding="utf-8",
-    )
+    if config is not None:
+        (pre_push_sandbox / ".pre-commit-config.yaml").write_text(
+            config, encoding="utf-8"
+        )
+    if lockfile:
+        (pre_push_sandbox / "uv.lock").write_text("", encoding="utf-8")
     path = _minimal_path(pre_push_sandbox)
-    bin_dir = Path(path)
-    for tool in ("uvx", "ruff"):
-        script = bin_dir / tool
+    log = pre_push_sandbox / "tool-calls.txt"
+    for tool in tools:
+        script = Path(path) / tool
         script.write_text(
-            f'#!/bin/bash\nprintf "%s\\n" "$@" > "{pre_push_sandbox}/{tool}.args"\n',
-            encoding="utf-8",
+            f'#!/bin/bash\necho "{tool} $*" >> "{log}"\n', encoding="utf-8"
         )
         script.chmod(0o755)
     result = _run_pre_push_check(pre_push_sandbox, path)
     assert result.returncode == 0, result.stderr
-    uvx_args = (pre_push_sandbox / "uvx.args").read_text(encoding="utf-8")
-    assert uvx_args.splitlines() == ["ruff@0.14.5", "check", "."]
-    assert not (pre_push_sandbox / "ruff.args").exists()
+    assert log.read_text(encoding="utf-8").splitlines() == [" ".join(expected)]
 
 
 def test_preserves_pre_set_gh_repo(sandbox: Path) -> None:

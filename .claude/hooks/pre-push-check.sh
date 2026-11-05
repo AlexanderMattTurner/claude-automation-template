@@ -35,22 +35,10 @@ else
   has_script test && run_check "tests" pnpm test
 fi
 
-# Python checks
+# Python checks. .hooks/ruff.sh runs ruff at the pre-commit pin CI uses; a PATH
+# ruff of another version enables other rules, so it denies a push CI passes.
 if [[ -f pyproject.toml ]] || [[ -f uv.lock ]]; then
-  # .hooks/ruff.sh runs ruff at the pre-commit pin CI uses; a PATH ruff of another
-  # version enables other rules, so it denies a push of a tree CI passes.
-  ruff_wrapper="$HOOK_DIR/../../.hooks/ruff.sh"
-  if [[ -f "$ruff_wrapper" ]]; then
-    run_check "ruff" "$BASH" "$ruff_wrapper" check .
-  elif [[ -f uv.lock ]] && exists uv; then
-    run_check "ruff" uv run ruff check .
-  elif exists ruff; then
-    run_check "ruff" ruff check .
-  else
-    echo "=== ruff FAILED ===" >&2
-    echo "Neither ruff nor uv (with uv.lock) is available to run Python checks." >&2
-    FAILED=1
-  fi
+  run_check "ruff" "$BASH" "$HOOK_DIR/../../.hooks/ruff.sh" check .
 fi
 
 exit "$FAILED"
