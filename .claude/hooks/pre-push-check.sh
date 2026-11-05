@@ -37,7 +37,12 @@ fi
 
 # Python checks
 if [[ -f pyproject.toml ]] || [[ -f uv.lock ]]; then
-  if [[ -f uv.lock ]] && exists uv; then
+  # .hooks/ruff.sh runs ruff at the pre-commit pin CI uses; a PATH ruff of another
+  # version enables other rules, so it denies a push of a tree CI passes.
+  ruff_wrapper="$HOOK_DIR/../../.hooks/ruff.sh"
+  if [[ -f "$ruff_wrapper" ]]; then
+    run_check "ruff" "$BASH" "$ruff_wrapper" check .
+  elif [[ -f uv.lock ]] && exists uv; then
     run_check "ruff" uv run ruff check .
   elif exists ruff; then
     run_check "ruff" ruff check .

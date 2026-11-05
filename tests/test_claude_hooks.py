@@ -460,6 +460,42 @@ def test_pre_push_check_runs_ruff_when_available(
     assert marker.read_text(encoding="utf-8").splitlines() == ["check", "."]
 
 
+def test_pre_push_check_runs_ruff_at_the_pre_commit_pin(
+    pre_push_sandbox: Path,
+) -> None:
+    """A PATH ruff of another version enables other default rules, so it reds a
+    tree CI passes. With .hooks/ruff.sh, a pre-commit pin and uvx present, the
+    check must run ruff at that pin, read from the ruff entry, not a neighbour's."""
+    (pre_push_sandbox / "pyproject.toml").write_text("", encoding="utf-8")
+    wrapper = pre_push_sandbox / ".hooks" / "ruff.sh"
+    wrapper.parent.mkdir()
+    wrapper.write_bytes((REPO_ROOT / ".hooks" / "ruff.sh").read_bytes())
+    (pre_push_sandbox / ".pre-commit-config.yaml").write_text(
+        "repos:\n"
+        "  - repo: https://github.com/pre-commit/pre-commit-hooks\n"
+        "    rev: v6.0.0\n"
+        "  - repo: https://github.com/astral-sh/ruff-pre-commit\n"
+        '    rev: "v0.14.5"\n'
+        "    hooks:\n"
+        "      - id: ruff-check\n",
+        encoding="utf-8",
+    )
+    path = _minimal_path(pre_push_sandbox)
+    bin_dir = Path(path)
+    for tool in ("uvx", "ruff"):
+        script = bin_dir / tool
+        script.write_text(
+            f'#!/bin/bash\nprintf "%s\\n" "$@" > "{pre_push_sandbox}/{tool}.args"\n',
+            encoding="utf-8",
+        )
+        script.chmod(0o755)
+    result = _run_pre_push_check(pre_push_sandbox, path)
+    assert result.returncode == 0, result.stderr
+    uvx_args = (pre_push_sandbox / "uvx.args").read_text(encoding="utf-8")
+    assert uvx_args.splitlines() == ["ruff@0.14.5", "check", "."]
+    assert not (pre_push_sandbox / "ruff.args").exists()
+
+
 def test_preserves_pre_set_gh_repo(sandbox: Path) -> None:
     """Pre-existing $GH_REPO must not be overwritten by extraction."""
     set_remote(sandbox, "http://local_proxy@127.0.0.1:18393/git/other-owner/other-repo")

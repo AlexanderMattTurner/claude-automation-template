@@ -55,8 +55,8 @@
       "shfmt -i 2 -w"
     ],
     "*.py": [
-      "ruff check --fix",
-      "ruff format"
+      "bash .hooks/ruff.sh check --fix",
+      "bash .hooks/ruff.sh format"
     ]
   },
   "devDependencies": {
