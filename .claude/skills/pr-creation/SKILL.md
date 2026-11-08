@@ -123,7 +123,7 @@ Each pass:
 3. Commit the fixes (Conventional Commits format, per `CLAUDE.md`)
 4. Start a fresh critique pass—the previous output is now stale
 
-**Stop** when a full pass returns no actionable issues. Cap at ~5 passes; if issues are still being found at pass 5, stop, summarize what’s left, and ask the user how to proceed rather than looping silently.
+**Stop** when a full pass returns no actionable issues. Cap at ~5 passes; if issues are still being found at pass 5, stop, name what’s left in the PR body, and proceed (`CLAUDE.md` → Self-Critique Loop).
 
 **Skip the loop** for trivial changes (typo fixes, single-line config tweaks, pure docs edits)—say so explicitly when you skip.
 

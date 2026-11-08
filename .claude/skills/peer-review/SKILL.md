@@ -46,8 +46,8 @@ Do not weaken or delete tests to make a finding “go away” (see `CLAUDE.md`).
 
 After fixing, launch a fresh `code-reviewer` pass (with the updated diff)—fixes introduce their
 own bugs and the prior review is now stale. Stop when a full pass returns nothing actionable. Cap at
-~5 passes; if findings persist at pass 5, summarize what is left and ask the user rather than looping
-silently.
+~5 passes; if findings persist at pass 5, summarize what is left in the report and proceed
+(`CLAUDE.md` → Self-Critique Loop).
 
 ### 5. Report
 
