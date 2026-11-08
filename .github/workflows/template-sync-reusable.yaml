@@ -82,7 +82,7 @@ jobs:
   # silently opts out of.
   preflight:
     name: Refuse a self-sync
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -120,7 +120,7 @@ jobs:
     name: Sync template files
     needs: preflight
     if: needs.preflight.outputs.self_sync != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       pull-requests: write
