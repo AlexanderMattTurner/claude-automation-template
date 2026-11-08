@@ -29,6 +29,8 @@ passing the diff text from step 1 **in the prompt**—the agent is read-only (Re
 `model: opus`) with no shell, so it cannot fetch the diff itself. It reads the surrounding files for
 context on its own.
 
+Put the change's threat model in the prompt too: what the code defends against, and what it leaves out.
+
 ### 3. Triage and fix
 
 For each finding, assess validity first—the reviewer can be wrong. Then:
@@ -36,6 +38,7 @@ For each finding, assess validity first—the reviewer can be wrong. Then:
 - **Blocker / Should-fix**: fix it, re-running the project’s tests/lint as needed.
 - **Nit**: apply if cheap; otherwise note and move on.
 - **Invalid**: state why in one line and skip.
+- **Out of scope** (real, but outside the threat model): name it in the report and leave it. It does not restart the loop.
 
 Do not weaken or delete tests to make a finding “go away” (see `CLAUDE.md`).
 
