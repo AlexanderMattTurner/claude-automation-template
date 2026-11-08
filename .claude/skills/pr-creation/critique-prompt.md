@@ -52,6 +52,6 @@ Fill in the **Threat model** line before you send the prompt. A finding outside 
 > - Features, refactors, or files touched beyond what the task asked for
 > - Configuration churn unrelated to the change
 >
-> **Out of scope:** list each real case that the threat model leaves out, with the code its fix would add. The author decides on these; do not mix them into the categories above.
+> **Out of scope:** list each real case that the threat model leaves out, with the code its fix would add. The author decides on these; do not mix them into the categories above. If the threat model leaves out an input that the code's own callers, configs or CI already produce, report that as a Correctness finding.
 >
 > For every issue, give a one-line statement of the problem and a concrete fix. If you find nothing in a category, say so explicitly—silence is ambiguous.
