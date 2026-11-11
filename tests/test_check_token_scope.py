@@ -120,4 +120,6 @@ def test_a_403_with_quota_left_still_reports_the_query_failure(tmp_path: Path) -
         curl_exit=22,
     )
     assert result.returncode == 1
-    assert "Could not query GitHub to validate SYNC_PAT_UNDER_TEST scopes" in result.stderr
+    assert (
+        "Could not query GitHub to validate SYNC_PAT_UNDER_TEST scopes" in result.stderr
+    )
