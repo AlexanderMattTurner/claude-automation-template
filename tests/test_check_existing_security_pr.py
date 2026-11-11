@@ -41,8 +41,13 @@ def run_script(tmp_path: Path, *, related: bool) -> subprocess.CompletedProcess:
     fake_gh = bin_dir / "gh"
     fake_gh.write_text(f"#!/usr/bin/env bash\necho {ROLLUP}\n", encoding="utf-8")
     fake_gh.chmod(0o755)
+    # No global or system git config, so no identity: a GitHub runner has none.
+    home = tmp_path / "home"
+    home.mkdir()
     env = {
         **os.environ,
+        "HOME": str(home),
+        "GIT_CONFIG_NOSYSTEM": "1",
         "GH_TOKEN": "fake",
         "DEFAULT_BRANCH": "main",
         "GITHUB_OUTPUT": str(tmp_path / "out"),
