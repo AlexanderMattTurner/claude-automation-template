@@ -85,3 +85,39 @@ def test_the_error_names_the_secret_the_workflow_reads(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert "SYNC_PAT_UNDER_TEST" in result.stdout + result.stderr
     assert "TEMPLATE_SYNC_TOKEN " not in result.stdout + result.stderr
+
+
+def test_names_an_exhausted_rate_limit_instead_of_the_scopes(tmp_path: Path) -> None:
+    """A shared token out of quota gets a 403 from /user. The error must say the
+    quota ran out, not that the scopes could not be checked."""
+    result = run_scope_check(
+        tmp_path,
+        [
+            "HTTP/2 403",
+            "x-ratelimit-limit: 5000",
+            "x-ratelimit-remaining: 0",
+            "x-ratelimit-reset: 1762800000",
+            "curl: (22) The requested URL returned error: 403",
+        ],
+        curl_exit=22,
+    )
+    assert result.returncode == 1
+    assert (
+        "::error::SYNC_PAT_UNDER_TEST has used its whole GitHub API rate limit until 18:40 UTC."
+        in result.stderr
+    )
+    assert "validate" not in result.stderr
+
+
+def test_a_403_with_quota_left_still_reports_the_query_failure(tmp_path: Path) -> None:
+    result = run_scope_check(
+        tmp_path,
+        [
+            "HTTP/2 403",
+            "x-ratelimit-remaining: 4999",
+            "curl: (22) The requested URL returned error: 403",
+        ],
+        curl_exit=22,
+    )
+    assert result.returncode == 1
+    assert "Could not query GitHub to validate SYNC_PAT_UNDER_TEST scopes" in result.stderr
