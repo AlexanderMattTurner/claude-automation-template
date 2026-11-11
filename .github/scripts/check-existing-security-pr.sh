@@ -21,6 +21,11 @@ if [[ -n "$EXISTING_BRANCH" ]]; then
   echo "Found existing security PR branch: $EXISTING_BRANCH"
   timeout --kill-after=10 60 git fetch origin "$EXISTING_BRANCH"
   git checkout "$EXISTING_BRANCH"
+  # actions/checkout clones at depth 1, which leaves the default branch with no
+  # parents and so no merge base with the rollup branch.
+  if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
+    timeout --kill-after=10 120 git fetch --unshallow origin "$DEFAULT_BRANCH"
+  fi
   if ! git merge "origin/$DEFAULT_BRANCH" --no-edit; then
     echo "::error::Merging origin/$DEFAULT_BRANCH into $EXISTING_BRANCH failed (see git's message above)."
     # A refused merge (e.g. unrelated histories in a shallow clone) starts no
