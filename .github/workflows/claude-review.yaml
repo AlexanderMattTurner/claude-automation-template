@@ -166,7 +166,7 @@ jobs:
       statuses: write # re-post the "Automated review posted" gate on the head
     steps:
       - name: Checkout base (trusted) approval script
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Default branch only (trusted) — never the untrusted PR head, and
           # never base.ref, which a PR author can write. Matches the
@@ -256,7 +256,7 @@ jobs:
       PR: ${{ github.event.pull_request.number }}
     steps:
       - name: Checkout base (trusted) branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Default branch (trusted repo content), never the untrusted PR head
           # and never the author-writable base.ref — same rationale as the
@@ -321,7 +321,7 @@ jobs:
       - name: Stage the review for the publish job
         id: stage
         if: always() && steps.prepare.conclusion == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: merge-delta-review-${{ github.event.pull_request.number }}
           path: ${{ runner.temp }}/pr-input/merge-review.md
@@ -374,7 +374,7 @@ jobs:
 
       - name: Checkout base (trusted) branch
         if: steps.current.outputs.current == 'true'
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
@@ -386,7 +386,7 @@ jobs:
 
       - name: Fetch the staged review
         if: steps.current.outputs.current == 'true' && needs.merge_delta_review.outputs.staged != ''
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: merge-delta-review-${{ github.event.pull_request.number }}
           path: ${{ runner.temp }}/pr-input
