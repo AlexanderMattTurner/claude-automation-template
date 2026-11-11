@@ -71,8 +71,15 @@ fi
 # rc 0 with empty output is the honest "no hand-authored deltas" case (no merge
 # commits, or only clean mechanical merges) — that legitimately skips the review.
 if [[ -s "$raw" ]]; then
-  node .github/scripts/sanitize-pr-input.mjs \
-    <"$raw" >"${PR_INPUT_DIR}/merge-delta.txt" 2>"${PR_INPUT_DIR}/merge-delta.report.txt"
+  # The sanitizer's stderr is its report, so a crash's stack trace lands in that
+  # file and nowhere in the log unless this prints it.
+  report="${PR_INPUT_DIR}/merge-delta.report.txt"
+  if ! node .github/scripts/sanitize-pr-input.mjs \
+    <"$raw" >"${PR_INPUT_DIR}/merge-delta.txt" 2>"$report"; then
+    echo "::error::the input sanitizer crashed on this PR's merge deltas — they were not reviewed. The sanitizer is the default branch's pin in install-input-sanitizer.sh, so a PR that bumps that pin cannot fix its own run. The sanitizer's stderr:" >&2
+    cat "$report" >&2
+    exit 1
+  fi
   emit_output "has_deltas=true"
 else
   emit_output "has_deltas=false"
