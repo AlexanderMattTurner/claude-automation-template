@@ -22,8 +22,12 @@ if [[ -n "$EXISTING_BRANCH" ]]; then
   timeout --kill-after=10 60 git fetch origin "$EXISTING_BRANCH"
   git checkout "$EXISTING_BRANCH"
   if ! git merge "origin/$DEFAULT_BRANCH" --no-edit; then
-    echo "::error::Merge conflict with default branch. Aborting merge."
-    git merge --abort
+    echo "::error::Merging origin/$DEFAULT_BRANCH into $EXISTING_BRANCH failed (see git's message above)."
+    # A refused merge (e.g. unrelated histories in a shallow clone) starts no
+    # merge, and an unconditional abort would exit 128 over the real error.
+    if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+      git merge --abort
+    fi
     exit 1
   fi
   {
