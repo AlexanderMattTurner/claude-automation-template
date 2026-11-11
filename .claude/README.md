@@ -106,8 +106,8 @@ Skills are automatically available to Claude Code when working in this repositor
 Edit `hooks/session-setup.sh` to add more tools:
 
 ```bash
-# Via uv
-uv_install_if_missing mycommand mypackage
+# Via uv — one exact pin, reinstalled each session so a preinstalled copy can't win
+uv_tool_pin "mypackage==1.2.3"
 
 # Via webi (https://webinstall.dev) — pin versions for supply-chain safety
 webi_install_if_missing mytool mytool@1
