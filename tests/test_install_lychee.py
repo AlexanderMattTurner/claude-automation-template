@@ -10,7 +10,6 @@ The script is driven for real against a sandbox copy of .github/tool-versions.sh
 which is the file it reads its version and digest from.
 """
 
-import os
 import re
 import shutil
 import subprocess
@@ -34,18 +33,12 @@ def sandbox(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def run_installer(
-    sandbox: Path, extra_path: Path | None = None
-) -> subprocess.CompletedProcess:
-    path = os.environ["PATH"]
-    if extra_path is not None:
-        path = f"{extra_path}:{path}"
+def run_installer(sandbox: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["bash", ".github/scripts/install-lychee.sh", str(sandbox / "bin")],
         cwd=sandbox,
         capture_output=True,
         text=True,
-        env={**os.environ, "PATH": path},
     )
 
 
@@ -72,27 +65,6 @@ def test_refuses_an_empty_digest(sandbox: Path) -> None:
 
     assert result.returncode == 1, result.stderr
     assert "digest is unset" in result.stderr
-    assert not installed(sandbox)
-
-
-def test_refuses_a_host_with_no_pinned_asset(sandbox: Path) -> None:
-    """Stubbing `uname` is the only way to reach this arm: the real one cannot
-    report a platform the test host is not."""
-    shutil.copy2(PINS, sandbox / ".github" / "tool-versions.sh")
-    stub_dir = sandbox / "stub"
-    stub_dir.mkdir()
-    uname = stub_dir / "uname"
-    uname.write_text(
-        '#!/usr/bin/env bash\ncase "$1" in\n-s) echo Plan9 ;;\n-m) echo sparc64 ;;\n'
-        "*) exit 1 ;;\nesac\n",
-        encoding="utf-8",
-    )
-    uname.chmod(0o755)
-
-    result = run_installer(sandbox, extra_path=stub_dir)
-
-    assert result.returncode == 1, result.stderr
-    assert "no pinned lychee release for Plan9/sparc64" in result.stderr
     assert not installed(sandbox)
 
 

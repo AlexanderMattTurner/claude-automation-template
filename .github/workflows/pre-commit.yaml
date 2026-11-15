@@ -46,9 +46,21 @@ jobs:
         uses: ./.github/actions/setup-base-env
         with:
           node-version-file: ${{ hashFiles('.nvmrc') != '' && '.nvmrc' || '' }}
+      # Keyed on the whole pin file rather than on LYCHEE_VERSION, which lives in
+      # a sourced shell file that no `key:` expression can read. A bump to any
+      # other pin there costs one extra download.
+      - name: Restore cached lychee binary
+        if: hashFiles('.pre-commit-config.yaml') != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /usr/local/bin/lychee
+          key: lychee-${{ runner.os }}-${{ hashFiles('.github/tool-versions.sh') }}
+
       # The lychee hook is `language: system`, so pre-commit errors out unless the
       # binary is already on PATH. /usr/local/bin — the script's default
-      # destination — is on PATH on every hosted runner.
+      # destination — is on PATH on every hosted runner. Not gated on cache-hit:
+      # the script's own skip compares the binary's --version against the pin, so
+      # a restored binary that no longer matches is replaced rather than trusted.
       - name: Install lychee (pinned, digest-verified)
         if: hashFiles('.pre-commit-config.yaml') != ''
         run: bash .github/scripts/install-lychee.sh

@@ -99,9 +99,11 @@ tar xzf "${workdir}/${tarball}" -C "$workdir" --strip-components=1 "lychee-${ass
 # release that stopped reporting that would leave the hook green on exactly the
 # link rot it exists to catch — no red anywhere — so the drift is caught here, at
 # the version bump, where it is loud.
-probe="${workdir}/probe.md"
-printf '%s\n' '[missing](./no-such-file.md)' >"$probe"
-if "${workdir}/lychee" --offline --no-progress "$probe" >/dev/null 2>&1; then
+# Run from the workdir, not the caller's: lychee reads a lychee.toml in the
+# current directory, and a repo whose config excluded the probe's link would make
+# this check pass without checking anything.
+printf '%s\n' '[missing](./no-such-file.md)' >"${workdir}/probe.md"
+if (cd "$workdir" && ./lychee --offline --no-progress probe.md) >/dev/null 2>&1; then
   echo "install-lychee: 'lychee --offline' exited 0 on a link to a missing file, so the" >&2
   echo "  ${LYCHEE_VERSION} hook would pass every broken internal link. Refusing to install it." >&2
   exit 1
