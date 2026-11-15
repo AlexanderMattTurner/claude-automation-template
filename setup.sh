@@ -61,6 +61,18 @@ else
   echo "Skipping mergiraf: no pinned asset for this host — this checkout keeps git's line merge"
 fi
 
+# The lychee pre-commit hook runs the system binary, so until this lands the hook
+# refuses to run and the pre-push gate cannot pass. Gated on the config, because
+# a consumer that receives no .pre-commit-config.yaml has no hook to feed.
+if [[ -f .pre-commit-config.yaml ]]; then
+  lychee_dest="${HOME}/.local/bin"
+  echo "Installing lychee (pinned, digest-verified) into ${lychee_dest}..."
+  if ! bash .github/scripts/install-lychee.sh "$lychee_dest"; then
+    echo "⚠ lychee install failed — the lychee pre-commit hook will refuse to run until it" >&2
+    echo "  succeeds: bash .github/scripts/install-lychee.sh \"${lychee_dest}\"" >&2
+  fi
+fi
+
 # Verify setup
 if [[ "$(git config core.hooksPath)" = ".hooks" ]]; then
   echo ""

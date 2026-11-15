@@ -46,6 +46,13 @@ jobs:
         uses: ./.github/actions/setup-base-env
         with:
           node-version-file: ${{ hashFiles('.nvmrc') != '' && '.nvmrc' || '' }}
+      # The lychee hook is `language: system`, so pre-commit errors out unless the
+      # binary is already on PATH. /usr/local/bin — the script's default
+      # destination — is on PATH on every hosted runner.
+      - name: Install lychee (pinned, digest-verified)
+        if: hashFiles('.pre-commit-config.yaml') != ''
+        run: bash .github/scripts/install-lychee.sh
+
       - name: Restore pre-commit cache
         if: hashFiles('.pre-commit-config.yaml') != ''
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

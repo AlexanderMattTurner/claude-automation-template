@@ -84,14 +84,18 @@ repos:
 
   # Fail on an internal Markdown link that points at a missing repo-relative
   # file (link rot from a moved or renamed target). `--offline` resolves only
-  # local file links and skips every http(s)/mailto link, so the check is
-  # deterministic and never flakes on a slow or unreachable external site.
-  - repo: https://github.com/lycheeverse/lychee
-    rev: lychee-v0.24.2
+  # local file links and skips every http(s)/mailto link, so the check never
+  # flakes on an unreachable external site. .github/scripts/install-lychee.sh
+  # supplies the binary; its header says why the upstream hook cannot.
+  - repo: local
     hooks:
       - id: lychee
+        name: lychee (offline internal-link check)
+        entry: lychee
+        language: system
         args: [--offline, --no-progress]
         types: [markdown]
+        require_serial: true
 
   # Honesty + identity CI lints: catch a green check that hides a failed
   # command (pipefail/|| true/2>/dev/null), a path-filtered required check that
