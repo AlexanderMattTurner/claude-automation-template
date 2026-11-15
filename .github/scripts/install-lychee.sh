@@ -73,11 +73,14 @@ tarball="lychee-${asset}.tar.gz"
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
-# --fail so a 5xx is an error rather than an error page saved as the tarball,
-# and --max-time because --connect-timeout does not cap an established transfer,
-# so a stalled download would otherwise hang the caller forever.
+# --fail so a 5xx is an error rather than an error page saved as the tarball.
+# The two time bounds are what keep a session start from stalling: --max-time
+# caps ONE transfer (--connect-timeout does not), and --retry-max-time caps the
+# retry sequence, without which 6 retries of a 300s transfer is half an hour.
+# The asset is ~7.6 MB, so 120s per attempt covers a very slow link; 180 + 120
+# is the 300s ceiling this repo already gives install-mergiraf.sh.
 curl -fsSL --retry 6 --retry-all-errors --retry-delay 15 \
-  --connect-timeout 30 --max-time 300 \
+  --connect-timeout 30 --max-time 120 --retry-max-time 180 \
   -o "${workdir}/${tarball}" \
   "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/${tarball}"
 

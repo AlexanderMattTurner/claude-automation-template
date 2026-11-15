@@ -240,8 +240,8 @@ install_lychee() {
   }
 
   # A warn, not an exit: a session must still start, and it can install this by
-  # hand. No `timeout` wrapper — the installer caps its own download with curl
-  # --max-time, and a wrapper would instead strand an interactive sudo prompt.
+  # hand. No `timeout` wrapper — the installer bounds its own download time, and
+  # a wrapper would instead strand an interactive sudo prompt it cannot answer.
   (cd "$PROJECT_DIR" && bash "$installer" "$bindir") >/dev/null ||
     warn "Failed to install lychee — the lychee pre-commit hook refuses to run, so a push that touches a markdown file fails"
 }
