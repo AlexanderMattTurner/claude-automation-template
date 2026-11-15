@@ -238,6 +238,13 @@ jobs:
       # widens the flagged set without editing a synced file, which template-sync
       # would hand straight back on the next run.
       protected-paths-regex: ${{ vars.AUTO_RESOLVE_PROTECTED_RE || '^(\.github/|\.claude/|\.hooks/)' }}
+      # bundle.py runs this tree's own pre-commit hooks over the resolved paths,
+      # and the `lychee` hook is `language: system`. Without the binary a conflict
+      # touching any markdown file fails with "Executable `lychee` not found" and
+      # the resolution never bundles. The script's default destination,
+      # /usr/local/bin, is on PATH on a hosted runner; it exits 0 when this tree
+      # declares no lychee hook.
+      setup-command: bash .github/scripts/install-lychee.sh
     # Named rather than `secrets: inherit`, so this call passes only what the
     # resolver declares and a consumer repository can copy the block verbatim.
     # An unset secret arrives empty, which drops that ladder rung.
