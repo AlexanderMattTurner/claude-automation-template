@@ -20,11 +20,12 @@ set -euo pipefail
 dest="${1:-/usr/local/bin}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# allow-unsynced: .pre-commit-config.yaml — consumer-owned, and its absence is a
+# valid answer here rather than a missing input.
 # The one place that decides whether this checkout needs lychee, so no caller
-# re-derives it and drifts. .pre-commit-config.yaml belongs to the consumer and
-# template-sync never delivers it, so a consumer with no lychee hook must not pay
-# a download — nor a refusal from a pin file they trimmed. Matched on the name
-# alone: a false positive costs one download, a miss costs a confusing push.
+# re-derives it. A consumer with no lychee hook must not pay a download — nor a
+# refusal from a pin file they trimmed. Matched on the name alone: a false
+# positive costs one download, a miss costs a confusing push failure.
 config="${here}/../../.pre-commit-config.yaml"
 if [[ ! -f "$config" ]] || ! grep -q lychee "$config"; then
   echo "install-lychee: no lychee hook in ${config}; nothing to install"

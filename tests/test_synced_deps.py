@@ -141,11 +141,13 @@ def _resolutions(containing_file: str, literal: str) -> set[str]:
 
 def undelivered_in_source(containing_file: str, source: str) -> list[tuple[int, str]]:
     """(line, referenced path) for each undelivered template file the code names."""
+    # The annotation's own field, not a path-shaped token anywhere on the line:
+    # a repo-root file has no slash for PATH_LITERAL to match, and the reason
+    # prose must not excuse a path it happens to name.
     excused = {
-        path
+        line.split(ALLOW, 1)[1].split("—")[0].strip()
         for line in source.splitlines()
         if ALLOW in line
-        for path in PATH_LITERAL.findall(line)
     }
     found = []
     for lineno, line in enumerate(code_only(source).splitlines(), start=1):
@@ -212,6 +214,18 @@ def test_an_annotation_excuses_only_the_path_it_names() -> None:
     other = undelivered_examples()[1]
     blind = f'#!/bin/bash\n# {ALLOW} {target} — consumer-owned\ncat "{other}"\n'
     assert undelivered_in_source(".hooks/probe.sh", blind) == [(3, other)]
+
+
+def test_an_annotation_excuses_a_repo_root_file() -> None:
+    """A file at the repo root carries no slash, so the annotation is read as its
+    own field rather than as a path-shaped token on the line. The reference that
+    needs excusing still does carry slashes: a script reaches the root through
+    its own directory."""
+    source = (
+        f"#!/bin/bash\n# {ALLOW} .pre-commit-config.yaml — consumer-owned\n"
+        'cat "${here}/../../.pre-commit-config.yaml"\n'
+    )
+    assert undelivered_in_source(".github/scripts/probe.sh", source) == []
 
 
 def test_delivery_subtracts_excluded_and_opt_in_paths() -> None:
