@@ -20,6 +20,17 @@ set -euo pipefail
 dest="${1:-/usr/local/bin}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# The one place that decides whether this checkout needs lychee, so no caller
+# re-derives it and drifts. .pre-commit-config.yaml belongs to the consumer and
+# template-sync never delivers it, so a consumer with no lychee hook must not pay
+# a download — nor a refusal from a pin file they trimmed. Matched on the name
+# alone: a false positive costs one download, a miss costs a confusing push.
+config="${here}/../../.pre-commit-config.yaml"
+if [[ ! -f "$config" ]] || ! grep -q lychee "$config"; then
+  echo "install-lychee: no lychee hook in ${config}; nothing to install"
+  exit 0
+fi
+
 pins="${here}/../tool-versions.sh"
 # The file check has to come BEFORE the source. Under `set -euo pipefail` a
 # source of a missing file aborts the script on the spot, so the refusal below
@@ -73,38 +84,43 @@ tarball="lychee-${asset}.tar.gz"
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
+# LYCHEE_TARBALL_CACHE holds the downloaded asset across runs (a CI cache). It
+# sits UPSTREAM of the digest check below, so a poisoned cache entry is refused
+# by the same reviewed digest a poisoned download is. Caching the installed
+# BINARY instead would put a writable store downstream of that check.
+archive="${LYCHEE_TARBALL_CACHE:-$workdir}/${tarball}"
+mkdir -p "$(dirname "$archive")" # bare-mkdir-ok: the curl below is the post-condition
+
 # --fail so a 5xx is an error rather than an error page saved as the tarball.
-# The two time bounds are what keep a session start from stalling: --max-time
-# caps ONE transfer (--connect-timeout does not), and --retry-max-time caps the
-# retry sequence, without which 6 retries of a 300s transfer is half an hour.
-# The asset is ~7.6 MB, so 120s per attempt covers a very slow link; 180 + 120
-# is the 300s ceiling this repo already gives install-mergiraf.sh.
-curl -fsSL --retry 6 --retry-all-errors --retry-delay 15 \
-  --connect-timeout 30 --max-time 120 --retry-max-time 180 \
-  -o "${workdir}/${tarball}" \
-  "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/${tarball}"
+# The two time bounds keep a session start from stalling: --max-time caps ONE
+# transfer (--connect-timeout does not), and --retry-max-time caps the retry
+# sequence, without which 6 retries of a 120s transfer is half an hour.
+[[ -f "$archive" ]] ||
+  curl -fsSL --retry 6 --retry-all-errors --retry-delay 15 \
+    --connect-timeout 30 --max-time 120 --retry-max-time 180 \
+    -o "$archive" \
+    "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/${tarball}"
 
 # This refusal is what blocks a swapped, re-tagged or corrupted release asset
 # from reaching PATH: the digest is the reviewed one from tool-versions.sh, so a
 # mismatch aborts the install rather than certifying a binary nobody vetted.
 # macOS ships shasum, not sha256sum; both read this one-line check format.
-if command -v sha256sum >/dev/null 2>&1; then
-  sha256sum --check <<<"${digest}  ${workdir}/${tarball}"
-else
-  shasum -a 256 --check <<<"${digest}  ${workdir}/${tarball}"
-fi
+checker=(sha256sum --check)
+command -v sha256sum >/dev/null 2>&1 || checker=(shasum -a 256 --check)
+"${checker[@]}" <<<"${digest}  ${archive}" || {
+  # Delete it, or a cached asset that fails once fails every later run too.
+  rm -f "$archive"
+  exit 1
+}
 # The release tarball nests everything under a single lychee-<asset>/ directory,
 # so name the member and strip that one level.
-tar xzf "${workdir}/${tarball}" -C "$workdir" --strip-components=1 "lychee-${asset}/lychee"
+tar xzf "$archive" -C "$workdir" --strip-components=1 "lychee-${asset}/lychee"
 
-# Prove the one contract the hook depends on, BEFORE the binary reaches PATH:
+# Prove the contract the hook depends on, BEFORE the binary reaches PATH:
 # `--offline` must FAIL on a repo-relative link whose target is missing. A
-# release that stopped reporting that would leave the hook green on exactly the
-# link rot it exists to catch — no red anywhere — so the drift is caught here, at
-# the version bump, where it is loud.
-# Run from the workdir, not the caller's: lychee reads a lychee.toml in the
-# current directory, and a repo whose config excluded the probe's link would make
-# this check pass without checking anything.
+# release that stopped reporting that leaves the hook green on the link rot it
+# exists to catch. Run from the workdir: lychee reads a lychee.toml in the
+# current directory, and one excluding the probe's link makes this pass vacuously.
 printf '%s\n' '[missing](./no-such-file.md)' >"${workdir}/probe.md"
 if (cd "$workdir" && ./lychee --offline --no-progress probe.md) >/dev/null 2>&1; then
   echo "install-lychee: 'lychee --offline' exited 0 on a link to a missing file, so the" >&2

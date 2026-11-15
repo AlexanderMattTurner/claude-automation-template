@@ -76,6 +76,14 @@ jobs:
           # release publishes to npm with its CHANGELOG section stranded.
           setup-python: true
 
+      # That same pre-push run reaches the `language: system` lychee hook, which
+      # claims the CHANGELOG.md this job edits. Without the binary the hook fails
+      # with "Executable `lychee` not found" and strands the release exactly as
+      # the comment above describes. The script exits 0 when no lychee hook is
+      # declared, so a consumer without one pays nothing here.
+      - name: Install lychee (pinned, digest-verified)
+        run: bash .github/scripts/install-lychee.sh
+
       - name: Bump version and publish if commits warrant a release
         # The changelog-prose call walks the claude-oauth-ladder.bash
         # subscription tokens; there is no metered API-key rung.

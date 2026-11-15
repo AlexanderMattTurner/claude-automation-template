@@ -62,15 +62,13 @@ else
 fi
 
 # The lychee pre-commit hook runs the system binary, so until this lands the hook
-# refuses to run and the pre-push gate cannot pass. Gated on the config, because
-# a consumer that receives no .pre-commit-config.yaml has no hook to feed.
-if [[ -f .pre-commit-config.yaml ]]; then
-  lychee_dest="${HOME}/.local/bin"
-  echo "Installing lychee (pinned, digest-verified) into ${lychee_dest}..."
-  if ! bash .github/scripts/install-lychee.sh "$lychee_dest"; then
-    echo "⚠ lychee install failed — the lychee pre-commit hook will refuse to run until it" >&2
-    echo "  succeeds: bash .github/scripts/install-lychee.sh \"${lychee_dest}\"" >&2
-  fi
+# refuses to run and the pre-push gate cannot pass. The script decides whether
+# this checkout declares that hook, and exits 0 when it does not.
+lychee_dest="${HOME}/.local/bin"
+if ! bash .github/scripts/install-lychee.sh "$lychee_dest"; then
+  echo "⚠ The pinned lychee is not on PATH, so the lychee pre-commit hook runs an" >&2
+  echo "  unvetted binary or refuses to run. Fix the cause above, then re-run:" >&2
+  echo "  bash .github/scripts/install-lychee.sh \"${lychee_dest}\"" >&2
 fi
 
 # Verify setup

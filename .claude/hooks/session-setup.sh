@@ -223,14 +223,12 @@ install_mergiraf
 
 # The lychee pre-commit hook runs the system binary, so until it is on PATH the
 # hook refuses to run and every push that touches markdown fails. The hook cannot
-# fetch it itself — install-lychee.sh's header says why — and that script owns the
-# pinned download, the sha256 refusal, the `--offline` contract probe and the skip
-# when the pinned version already answers to bare `lychee`.
+# fetch it itself — install-lychee.sh's header says why — and that script owns
+# every decision: whether this checkout declares the hook at all, the pinned
+# download, the sha256 refusal, the `--offline` probe, and the already-done skip.
 install_lychee() {
   local installer="$PROJECT_DIR/.github/scripts/install-lychee.sh"
   [[ -f "$installer" ]] || return 0
-  # No config means no hook to feed, which is a consumer that never receives one.
-  [[ -f "$PROJECT_DIR/.pre-commit-config.yaml" ]] || return 0
 
   local bindir="$HOME/.local/bin"
   mkdir -p "$bindir" # bare-mkdir-ok: the post-condition is checked on the next line
@@ -240,10 +238,10 @@ install_lychee() {
   }
 
   # A warn, not an exit: a session must still start, and it can install this by
-  # hand. No `timeout` wrapper — the installer bounds its own download time, and
-  # a wrapper would instead strand an interactive sudo prompt it cannot answer.
-  (cd "$PROJECT_DIR" && bash "$installer" "$bindir") >/dev/null ||
-    warn "Failed to install lychee — the lychee pre-commit hook refuses to run, so a push that touches a markdown file fails"
+  # hand. No `timeout` wrapper — the installer's curl bounds one transfer and the
+  # whole retry sequence, so the download cannot stall a session start.
+  bash "$installer" "$bindir" >/dev/null ||
+    warn "Failed to install the pinned lychee — see the message above. The lychee pre-commit hook now runs an unvetted binary, or refuses to run at all"
 }
 
 install_lychee
