@@ -81,6 +81,42 @@ test("template-sync delivers the mergiraf pin install-mergiraf reads", () => {
   }
 });
 
+// install-lychee reads the same pin file, and decides for itself whether the
+// consumer needs lychee at all: .pre-commit-config.yaml belongs to the consumer
+// and the sync never delivers one.
+const LYCHEE_STUBS = { curl: 'echo "REACHED-DOWNLOAD" >&2\nexit 42' };
+
+test("template-sync delivers the lychee pin install-lychee reads", () => {
+  const root = consumerTree();
+  try {
+    writeFileSync(
+      join(root, ".pre-commit-config.yaml"),
+      "repos:\n  - repo: local\n    hooks:\n      - id: lychee\n",
+    );
+    const run = runInstaller(root, "install-lychee.sh", LYCHEE_STUBS, [
+      join(root, "dest"),
+    ]);
+    assert.doesNotMatch(run.stderr, /No such file or directory/);
+    assert.match(run.stderr, /REACHED-DOWNLOAD/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("install-lychee downloads nothing in a consumer that declares no hook", () => {
+  const root = consumerTree();
+  try {
+    const run = runInstaller(root, "install-lychee.sh", LYCHEE_STUBS, [
+      join(root, "dest"),
+    ]);
+    assert.equal(run.status, 0, run.stderr);
+    assert.doesNotMatch(run.stderr, /REACHED-DOWNLOAD/);
+    assert.match(run.stdout, /nothing to install/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // install-claude-cli reads the repo's own override when it exists, else the
 // template's synced default, and refuses naming both paths when neither exists.
 const CLI_OVERRIDE = join(".github", "claude-cli", "package.json");

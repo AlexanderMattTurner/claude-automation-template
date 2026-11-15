@@ -1,10 +1,10 @@
-"""setup.sh's mergiraf leg — the adopt-the-template installer's half of the
-merge-driver wiring.
+"""setup.sh's two tool-install legs — mergiraf, which wires the merge driver, and
+lychee, which backs the `lychee` pre-commit hook.
 
-The installer itself is stubbed: the real one downloads a pinned tarball from
-Codeberg, which a unit test must not depend on. What is driven for real is
-setup.sh's decision — whether it calls the installer, where it installs, and
-whether it reports a driver that never got bound.
+Both installers are stubbed: the real ones download a pinned tarball, which a
+unit test must not depend on. What is driven for real is setup.sh's decision —
+whether it calls each installer, where it installs, and whether it reports a
+post-condition that never held.
 """
 
 import os
@@ -39,13 +39,22 @@ def sandbox(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def run_setup(sandbox: Path, installer_body: str) -> subprocess.CompletedProcess:
-    installer = sandbox / ".github" / "scripts" / "install-mergiraf.sh"
+def stub_installer(sandbox: Path, name: str, body: str) -> None:
+    """An installer that records the destination setup.sh asked for, then ends in
+    the post-state `body` describes."""
+    installer = sandbox / ".github" / "scripts" / name
     installer.write_text(
-        f'#!/usr/bin/env bash\nprintf "%s\\n" "$1" >>installer-calls\n{installer_body}',
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$1" >>{name}-calls\n{body}',
         encoding="utf-8",
     )
     installer.chmod(0o755)
+
+
+def run_setup(
+    sandbox: Path, installer_body: str, lychee_body: str = "exit 0\n"
+) -> subprocess.CompletedProcess:
+    stub_installer(sandbox, "install-mergiraf.sh", installer_body)
+    stub_installer(sandbox, "install-lychee.sh", lychee_body)
     home = sandbox / "home"
     home.mkdir(exist_ok=True)
     return subprocess.run(
@@ -91,10 +100,39 @@ def test_setup_registers_the_merge_driver(sandbox: Path) -> None:
     # Under $HOME even when it is not on PATH, and created before the call: a
     # root-owned destination would send the installer through `sudo install`.
     bindir = sandbox / "home" / ".local" / "bin"
-    assert (sandbox / "installer-calls").read_text(encoding="utf-8").splitlines() == [
-        str(bindir)
-    ]
+    assert installer_calls(sandbox, "install-mergiraf.sh") == [str(bindir)]
     assert bindir.is_dir()
+
+
+def installer_calls(sandbox: Path, name: str) -> list[str]:
+    record = sandbox / f"{name}-calls"
+    if not record.exists():
+        return []
+    return record.read_text(encoding="utf-8").splitlines()
+
+
+def test_setup_installs_lychee_under_home(sandbox: Path) -> None:
+    """install-lychee.sh owns the pin, the digest and the does-this-repo-need-it
+    decision, so setup.sh calls it unconditionally and only chooses where."""
+    result = run_setup(sandbox, REGISTERS)
+
+    assert result.returncode == 0, result.stderr
+    assert installer_calls(sandbox, "install-lychee.sh") == [
+        str(sandbox / "home" / ".local" / "bin")
+    ]
+
+
+def test_setup_completes_and_warns_when_lychee_is_not_the_pinned_binary(
+    sandbox: Path,
+) -> None:
+    """An adopter whose lychee install failed still gets a configured checkout.
+    The warn says what the hook does now, which is run an unvetted binary or
+    refuse — not the install step that failed."""
+    result = run_setup(sandbox, REGISTERS, lychee_body=FAILS)
+
+    assert result.returncode == 0, result.stderr
+    assert "unvetted binary or refuses to run" in result.stderr
+    assert "Setup complete" in result.stdout
 
 
 @pytest.mark.parametrize(

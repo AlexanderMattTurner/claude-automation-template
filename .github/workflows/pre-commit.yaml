@@ -46,6 +46,27 @@ jobs:
         uses: ./.github/actions/setup-base-env
         with:
           node-version-file: ${{ hashFiles('.nvmrc') != '' && '.nvmrc' || '' }}
+      # The release TARBALL, never the installed binary: the installer verifies a
+      # cached tarball against the pinned digest exactly as it verifies a fresh
+      # download, so the cache cannot put bytes on PATH that no digest vetted.
+      # Keyed on the whole pin file, because LYCHEE_VERSION lives in a sourced
+      # shell file that no `key:` expression can read.
+      - name: Restore cached lychee tarball
+        if: hashFiles('.pre-commit-config.yaml') != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/lychee-cache
+          key: lychee-${{ runner.os }}-${{ hashFiles('.github/tool-versions.sh') }}
+
+      # The lychee hook is `language: system`, so pre-commit errors out unless the
+      # binary is already on PATH. /usr/local/bin — the script's default
+      # destination — is on PATH on every hosted runner.
+      - name: Install lychee (pinned, digest-verified)
+        if: hashFiles('.pre-commit-config.yaml') != ''
+        env:
+          LYCHEE_TARBALL_CACHE: ${{ runner.temp }}/lychee-cache
+        run: bash .github/scripts/install-lychee.sh
+
       - name: Restore pre-commit cache
         if: hashFiles('.pre-commit-config.yaml') != ''
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

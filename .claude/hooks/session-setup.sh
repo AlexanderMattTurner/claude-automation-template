@@ -218,6 +218,35 @@ install_mergiraf() {
 install_mergiraf
 
 #######################################
+# Internal-link check (lychee)
+#######################################
+
+# The lychee pre-commit hook runs the system binary, so until it is on PATH the
+# hook refuses to run and every push that touches markdown fails. The hook cannot
+# fetch it itself — install-lychee.sh's header says why — and that script owns
+# every decision: whether this checkout declares the hook at all, the pinned
+# download, the sha256 refusal, the `--offline` probe, and the already-done skip.
+install_lychee() {
+  local installer="$PROJECT_DIR/.github/scripts/install-lychee.sh"
+  [[ -f "$installer" ]] || return 0
+
+  local bindir="$HOME/.local/bin"
+  mkdir -p "$bindir" # bare-mkdir-ok: the post-condition is checked on the next line
+  [[ -d "$bindir" ]] || {
+    warn "lychee: $bindir is not a directory — the lychee pre-commit hook cannot run"
+    return 0
+  }
+
+  # A warn, not an exit: a session must still start, and it can install this by
+  # hand. No `timeout` wrapper — the installer's curl bounds one transfer and the
+  # whole retry sequence, so the download cannot stall a session start.
+  bash "$installer" "$bindir" >/dev/null ||
+    warn "Failed to install the pinned lychee — see the message above. The lychee pre-commit hook now runs an unvetted binary, or refuses to run at all"
+}
+
+install_lychee
+
+#######################################
 # GitHub CLI auth
 #######################################
 

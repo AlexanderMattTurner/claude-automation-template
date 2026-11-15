@@ -61,6 +61,16 @@ else
   echo "Skipping mergiraf: no pinned asset for this host — this checkout keeps git's line merge"
 fi
 
+# The lychee pre-commit hook runs the system binary, so until this lands the hook
+# refuses to run and the pre-push gate cannot pass. The script decides whether
+# this checkout declares that hook, and exits 0 when it does not.
+lychee_dest="${HOME}/.local/bin"
+if ! bash .github/scripts/install-lychee.sh "$lychee_dest"; then
+  echo "⚠ The pinned lychee is not on PATH, so the lychee pre-commit hook runs an" >&2
+  echo "  unvetted binary or refuses to run. Fix the cause above, then re-run:" >&2
+  echo "  bash .github/scripts/install-lychee.sh \"${lychee_dest}\"" >&2
+fi
+
 # Verify setup
 if [[ "$(git config core.hooksPath)" = ".hooks" ]]; then
   echo ""

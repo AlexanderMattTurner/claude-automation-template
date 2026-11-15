@@ -700,3 +700,66 @@ def test_a_global_driver_does_not_answer_for_this_checkout(
 
     assert result.returncode == 0, result.stderr
     assert "merge.mergiraf.driver is unset" in result.stderr
+
+
+@pytest.fixture
+def lychee_sandbox(sandbox: Path) -> Path:
+    """`sandbox` plus a stub install-lychee.sh. The real one downloads a pinned
+    release asset, which a unit test must not depend on; what is driven for real
+    is the hook's decision to call it and what it reports when it fails."""
+    scripts = sandbox / ".github" / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    _write_lychee_installer(sandbox, "exit 0\n")
+    return sandbox
+
+
+def _write_lychee_installer(sandbox: Path, body: str) -> None:
+    installer = sandbox / ".github" / "scripts" / "install-lychee.sh"
+    installer.write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$1" >>lychee-calls\n{body}',
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+
+
+def _lychee_calls(sandbox: Path) -> list[str]:
+    record = sandbox / "lychee-calls"
+    if not record.exists():
+        return []
+    return record.read_text(encoding="utf-8").splitlines()
+
+
+def test_the_hook_installs_lychee_into_the_bin_directory_it_puts_on_path(
+    lychee_sandbox: Path,
+) -> None:
+    """The lychee pre-commit hook invokes bare `lychee`, so the destination has to
+    be a directory on PATH. install-lychee.sh owns the pin, the digest and the
+    does-this-repo-need-it decision, so the hook re-derives none of them."""
+    home = _fake_home(lychee_sandbox)
+
+    _, result = run_session_setup(
+        lychee_sandbox,
+        extra_env={"HOME": str(home)},
+        scrub=("GH_REPO", "CLAUDE_CODE_BASE_REF"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _lychee_calls(lychee_sandbox) == [str(home / ".local" / "bin")]
+
+
+def test_a_failed_lychee_install_warns_and_the_session_still_starts(
+    lychee_sandbox: Path,
+) -> None:
+    """Every other tool here is optional, and a session must start without lychee.
+    The warn names what the hook does afterwards — run a binary no digest vetted,
+    or refuse — because a PATH refusal still leaves a foreign lychee in place."""
+    _write_lychee_installer(lychee_sandbox, "exit 1\n")
+
+    _, result = run_session_setup(
+        lychee_sandbox,
+        extra_env={"HOME": str(_fake_home(lychee_sandbox))},
+        scrub=("GH_REPO", "CLAUDE_CODE_BASE_REF"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "runs an unvetted binary, or refuses to run at all" in result.stderr
