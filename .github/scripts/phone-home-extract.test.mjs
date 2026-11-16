@@ -148,6 +148,17 @@ describe("phone-home-extract", () => {
     );
   });
 
+  it("strips a comment that nested removal would splice back together", async () => {
+    const body =
+      "## Lessons Learned\n\n- A real, generalizable lesson. <!<!-- x -->-- hidden --> Tail.\n";
+    const outputs = await run(body);
+    assert.equal(outputs.has_lessons, "true");
+    assert.equal(
+      readFileSync(LESSONS_FILE, "utf8"),
+      "- A real, generalizable lesson.  Tail.",
+    );
+  });
+
   it("does not fire when the PR is the template repo itself", async () => {
     const body = "## Lessons Learned\n\n- A real, generalizable lesson here.\n";
     const outputs = await run(body, { repo: TEMPLATE_REPO });
