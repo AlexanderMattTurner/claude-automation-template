@@ -45,6 +45,25 @@ describe("parseNumstat", () => {
       { file: "new-top.md", added: 1, deleted: 0 },
     ]);
   });
+
+  it("decodes the octal C-quoting git uses for a non-ASCII or escaped path", () => {
+    // git quotes a path holding a non-ASCII byte, `"` or `\` and spells each
+    // byte it cannot name as OCTAL, so one character is several escapes. A
+    // decoder that handles only `\"`/`\\`/`\t`/`\n` leaves the literal
+    // `src/caf\303\251.txt`, which matches no file in any later partition.
+    const rows = parseNumstat(
+      '1\t0\t"src/caf\\303\\251.txt"\n' +
+        '2\t0\t"a/has\\"quote.txt"\n' +
+        '3\t0\t"a/back\\\\slash.txt"\n' +
+        '4\t0\t"dir/{\\303\\251old.js => \\303\\251new.js}"\n',
+    );
+    assert.deepEqual(rows, [
+      { file: "src/café.txt", added: 1, deleted: 0 },
+      { file: 'a/has"quote.txt', added: 2, deleted: 0 },
+      { file: "a/back\\slash.txt", added: 3, deleted: 0 },
+      { file: "dir/énew.js", added: 4, deleted: 0 },
+    ]);
+  });
 });
 
 describe("parsePatch", () => {

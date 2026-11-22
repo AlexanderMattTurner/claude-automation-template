@@ -1410,3 +1410,79 @@ def test_a_clean_json_merge_without_duplicates_still_merges(workdir: Path) -> No
     outputs = parse_outputs(output_file)
     assert outputs["has_conflicts"] == "false"
     assert (child / "config" / "settings.json").read_text(encoding="utf-8") == merged
+
+
+@pytest.mark.parametrize("name", ["café.txt", 'has"quote.txt', "back\\slash.txt"])
+def test_outputs_name_a_synced_path_git_would_quote(workdir: Path, name: str) -> None:
+    """git quotes each of these names in `--name-only` and `ls-files`, so the sync
+    emitted `changed_paths=".github/caf\\303\\251.txt"` — a path no later step can
+    open. RED before the `-z` reads: the outputs carried the quoted spelling.
+    """
+    write(workdir / "template" / ".github" / name, "from the template\n")
+    commit_all(workdir / "template")
+
+    result, output_file = run_sync(
+        workdir / "child", workdir / "template", sync_paths=".github"
+    )
+    assert result.returncode == 0, result.stderr
+    outputs = parse_outputs(output_file)
+    assert outputs["has_changes"] == "true", outputs
+    assert f".github/{name}" in outputs["changed_paths"], outputs["changed_paths"]
+    assert f".github/{name}" in outputs["changed_files"], outputs["changed_files"]
+
+
+@pytest.mark.parametrize("name", ["café.txt", 'has"quote.txt', "back\\slash.txt"])
+def test_detects_a_deletion_of_a_path_git_would_quote(workdir: Path, name: str) -> None:
+    """`ls-tree -r --name-only` without `-z` listed `"config/caf\\303\\251.txt"`,
+    which does not prefix-match `config/`, so the loop skipped the entry and the
+    template's deletion never reached the child. RED before the `ls-tree -r --name-only -z`
+    read — has_deletions stayed false for all three names.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+
+    write(template / "config" / "keep.txt", "x\n")
+    write(template / "config" / name, "y\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / "keep.txt", "x\n")
+    write(child / "config" / name, "y\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    (template / "config" / name).unlink()
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_deletions"] == "true", result.stdout
+    assert f"config/{name}" in outputs["deleted_files"], outputs["deleted_files"]
+
+
+@pytest.mark.parametrize("name", ["café.txt", 'has"quote.txt', "back\\slash.txt"])
+def test_the_changelog_attributes_a_path_git_would_quote(
+    workdir: Path, name: str
+) -> None:
+    """`comm -12` intersects two path lists: the tree's own changes and the
+    template commit's files. Both sides must spell the path the same way, so the
+    `git show --pretty=format: --name-only -z` read matters as much as the diff
+    read. RED before it — the commit landed in the "touched nothing" count and
+    the file in the unexplained bucket.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / name, "base\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / name, "base\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    write(template / "config" / name, "moved\n")
+    commit_all(template, message="feat(config): move the quoted file")
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+    changelog = parse_outputs(output_file)["changelog"]
+
+    assert "feat(config): move the quoted file" in changelog, changelog
+    assert f"- `config/{name}`" in changelog, changelog
+    assert "touched nothing this repo syncs" not in changelog, changelog

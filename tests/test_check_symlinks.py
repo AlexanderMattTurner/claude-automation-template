@@ -53,3 +53,19 @@ def test_ignores_untracked_absolute_symlink(empty_git_repo: Path, copy_script) -
     # Don't commit — link stays untracked.
     result = run_script(empty_git_repo, copy_script)
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("name", ["café-link", 'has"quote-link', "back\\slash-link"])
+def test_reports_the_real_path_of_a_quoted_name(
+    empty_git_repo: Path, copy_script, name: str
+) -> None:
+    """git quotes these three names in every human-readable listing, so a
+    `git ls-files -s` read without `-z` reported `"caf\\303\\251-link"` — a path
+    the reader cannot find. RED before the `-z` read: the violation line carried
+    the quoted spelling instead of the name on disk."""
+    (empty_git_repo / name).symlink_to("/etc/passwd")
+    commit_all(empty_git_repo)
+
+    result = run_script(empty_git_repo, copy_script)
+    assert result.returncode == 1
+    assert f"{name} -> /etc/passwd" in result.stdout + result.stderr

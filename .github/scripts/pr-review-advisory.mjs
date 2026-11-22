@@ -94,15 +94,60 @@ function resolveRename(path) {
   return whole ? whole.groups.to : out;
 }
 
-// git C-quotes paths with unusual bytes; strip the quotes and the common
-// escapes so the path at least round-trips for matching (display still gates).
+// A Map, not a plain object: the key comes from untrusted diff text, and a
+// lookup on a plain object answers for `constructor` and `__proto__`.
+const C_ESCAPES = new Map([
+  ["a", 0x07],
+  ["b", 0x08],
+  ["f", 0x0c],
+  ["n", 0x0a],
+  ["r", 0x0d],
+  ["t", 0x09],
+  ["v", 0x0b],
+  ['"', 0x22],
+  ["\\", 0x5c],
+]);
+
+// PROBLEM CLASS — a git path consumed as display text instead of as data. git
+// C-quotes a path holding a non-ASCII byte, `"`, `\` or a control character, and
+// spells every byte it has no named escape for as OCTAL: `src/café.txt` arrives
+// as `"src/caf\303\251.txt"`. So the decode runs over BYTES and only then over
+// UTF-8 — one character can be several escapes. A `--name-only`-style listing
+// takes `-z` instead and skips all of this, but a unified patch's `---`/`+++`
+// headers have no NUL form, so this decoder is the only way to read them.
 function unquotePath(path) {
-  if (!(path.startsWith('"') && path.endsWith('"'))) return path;
-  return path
-    .slice(1, -1)
-    .replace(/\\(?<esc>["\\])/g, (_, esc) => esc)
-    .replace(/\\t/g, "\t")
-    .replace(/\\n/g, "\n");
+  if (path.length < 2 || !path.startsWith('"') || !path.endsWith('"')) {
+    return path;
+  }
+  const body = path.slice(1, -1);
+  const encoder = new TextEncoder();
+  const bytes = [];
+  let i = 0;
+  while (i < body.length) {
+    if (body[i] !== "\\") {
+      let end = i;
+      while (end < body.length && body[end] !== "\\") end += 1;
+      for (const byte of encoder.encode(body.slice(i, end))) bytes.push(byte);
+      i = end;
+      continue;
+    }
+    const octal = body.slice(i + 1, i + 4);
+    const named = C_ESCAPES.get(body[i + 1]);
+    if (/^[0-7]{3}$/.test(octal)) {
+      bytes.push(Number.parseInt(octal, 8));
+      i += 4;
+    } else if (named !== undefined) {
+      bytes.push(named);
+      i += 2;
+    } else {
+      // A lone backslash git would have escaped. Keep it rather than drop a
+      // character, so the name still fails to match loudly instead of quietly
+      // matching the wrong file.
+      bytes.push(0x5c);
+      i += 1;
+    }
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes));
 }
 
 export function parseNumstat(text) {

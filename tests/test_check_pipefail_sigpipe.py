@@ -217,13 +217,13 @@ def shell_files() -> list[str]:
     assert len(hooks) == 1, f"{HOOK_ID} must be configured exactly once"
     pattern = re.compile(hooks[0]["files"])
     tracked = subprocess.run(
-        ["git", "ls-files"],
+        ["git", "ls-files", "-z"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=True,
-    ).stdout.split()
-    return [p for p in tracked if pattern.search(p)]
+    ).stdout.split("\0")
+    return [p for p in tracked if p and pattern.search(p)]
 
 
 def test_tests_run_the_parser_version_the_hook_pins() -> None:
