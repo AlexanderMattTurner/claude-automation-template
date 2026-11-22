@@ -1435,8 +1435,8 @@ def test_outputs_name_a_synced_path_git_would_quote(workdir: Path, name: str) ->
 def test_detects_a_deletion_of_a_path_git_would_quote(workdir: Path, name: str) -> None:
     """`ls-tree -r --name-only` without `-z` listed `"config/caf\\303\\251.txt"`,
     which does not prefix-match `config/`, so the loop skipped the entry and the
-    template's deletion never reached the child. RED before the `-z` read at
-    template-sync.sh:629 — has_deletions stayed false for all three names.
+    template's deletion never reached the child. RED before the `ls-tree -r --name-only -z`
+    read — has_deletions stayed false for all three names.
     """
     child = workdir / "child"
     template = workdir / "template"
@@ -1457,3 +1457,32 @@ def test_detects_a_deletion_of_a_path_git_would_quote(workdir: Path, name: str) 
     outputs = parse_outputs(output_file)
     assert outputs["has_deletions"] == "true", result.stdout
     assert f"config/{name}" in outputs["deleted_files"], outputs["deleted_files"]
+
+
+@pytest.mark.parametrize("name", ["café.txt", 'has"quote.txt', "back\\slash.txt"])
+def test_the_changelog_attributes_a_path_git_would_quote(
+    workdir: Path, name: str
+) -> None:
+    """`comm -12` intersects two path lists: the tree's own changes and the
+    template commit's files. Both sides must spell the path the same way, so the
+    `git show --pretty=format: --name-only -z` read matters as much as the diff
+    read. RED before it — the commit landed in the "touched nothing" count and
+    the file in the unexplained bucket.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+    write(template / "config" / name, "base\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / name, "base\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    write(template / "config" / name, "moved\n")
+    commit_all(template, message="feat(config): move the quoted file")
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+    changelog = parse_outputs(output_file)["changelog"]
+
+    assert "feat(config): move the quoted file" in changelog, changelog
+    assert f"- `config/{name}`" in changelog, changelog
+    assert "touched nothing this repo syncs" not in changelog, changelog

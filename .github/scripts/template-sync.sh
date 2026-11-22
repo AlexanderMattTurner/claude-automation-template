@@ -776,7 +776,9 @@ main() {
     changed_paths=$({
       git diff --name-only -z
       git ls-files --others --exclude-standard -z
-    } | tr '\0' ' ')
+      # A newline folds to a space like every other separator: this value is one
+      # `key=value` line, and a second line aborts the whole step or forges a key.
+    } | tr '\0\n' '  ')
     {
       echo "has_changes=true"
       echo "changed_paths=$changed_paths"
