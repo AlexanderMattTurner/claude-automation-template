@@ -41,13 +41,13 @@ PATH_LITERAL = re.compile(r"(?:\$\{\w+\}/)?[\w.\-/]*/[\w.\-]+")
 @functools.cache
 def tracked_files() -> frozenset[str]:
     out = subprocess.run(
-        ["git", "ls-files"],
+        ["git", "ls-files", "-z"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=True,
     ).stdout
-    return frozenset(out.split())
+    return frozenset(filter(None, out.split("\0")))
 
 
 # Where each list lives: the template's own SYNC_PATHS is workflow `env`, read by
