@@ -109,7 +109,7 @@ fi
 # are not the PR's commits, so scanning their titles for a trigger keyword fires the
 # gate spuriously (a costly eval). `git log A..B` (2-dot) is commits reachable from
 # B but not A — exactly the PR's own commits.
-changed="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+changed="$(git diff --name-only -z "$BASE_SHA...$HEAD_SHA" | tr '\0' '\n')"
 # Keyword scope: 'head' scans only the head commit's title, so a keyword fires the
 # gate once for the commit that carries it and NOT again on later untagged pushes
 # to the same PR (each opt-in is per-commit). 'range' (default) scans every commit
@@ -204,7 +204,7 @@ esac
 if [[ -n "${MEMO_ANCHOR_JOBS:-}" && -n "${BASE_REF:-}" ]]; then
   memo_base="$(HEAD_SHA="$HEAD_SHA" python3 "$HERE/decide-memo-base.py" || true)"
   if [[ -n "$memo_base" ]]; then
-    memo_changed="$(git diff --name-only "$memo_base...$HEAD_SHA")"
+    memo_changed="$(git diff --name-only -z "$memo_base...$HEAD_SHA" | tr '\0' '\n')"
     memo_run=false
     # BASE_SHA is overridden for this call alone because paths_trigger reaches
     # diff-comment-only.sh, which reads the range from the environment — without it

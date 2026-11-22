@@ -75,9 +75,9 @@ emit_attributed_changelog() {
   # and the template ships none, so no commit can ever explain it, and it would
   # land in the unexplained list on every single sync.
   {
-    git diff --name-only
-    git ls-files --others --exclude-standard
-  } | sed -e '/^\.template-version$/d' | sort -u >"$changed"
+    git diff --name-only -z
+    git ls-files --others --exclude-standard -z
+  } | tr '\0' '\n' | sed -e '/^\.template-version$/d' | sort -u >"$changed"
   [[ -s "$changed" ]] || return 0
   local changed_list
   changed_list="$(tr '\n' ' ' <"$changed")"
@@ -107,7 +107,7 @@ emit_attributed_changelog() {
     # over two sorted lists, so a commit touching only unsynced paths yields
     # nothing and is skipped.
     touched=$(comm -12 \
-      <(git -C _template show --pretty=format: --name-only "$sha" | sed '/^$/d' | sort -u) \
+      <(git -C _template show --pretty=format: --name-only -z "$sha" | tr '\0' '\n' | sed '/^$/d' | sort -u) \
       "$changed")
     if [[ -z "$touched" ]]; then
       skipped=$((skipped + 1))
@@ -626,7 +626,8 @@ main() {
   # A path counts as deleted only if it existed at PREV_SHA but not at template
   # HEAD — avoids flagging project-specific files that were never in the template.
   if [[ "$PREV_SHA" != "" ]]; then
-    if ! git -C _template ls-tree -r --name-only "$PREV_SHA" 2>/dev/null >"$PREV_TEMPLATE_FILES"; then
+    if ! git -C _template ls-tree -r --name-only -z "$PREV_SHA" 2>/dev/null |
+      tr '\0' '\n' >"$PREV_TEMPLATE_FILES"; then
       : >"$PREV_TEMPLATE_FILES" # PREV_SHA not in template history; treat as no prior files
     fi
   fi
@@ -768,13 +769,14 @@ main() {
     echo "has_deletions=false" >>"$GITHUB_OUTPUT"
   fi
 
-  if git diff --quiet && [[ "$(git ls-files --others --exclude-standard)" = "" ]]; then
+  if git diff --quiet &&
+    [[ "$(git ls-files --others --exclude-standard -z | tr '\0' '\n')" = "" ]]; then
     echo "has_changes=false" >>"$GITHUB_OUTPUT"
   else
     changed_paths=$({
-      git diff --name-only
-      git ls-files --others --exclude-standard
-    } | tr '\n' ' ')
+      git diff --name-only -z
+      git ls-files --others --exclude-standard -z
+    } | tr '\0' ' ')
     {
       echo "has_changes=true"
       echo "changed_paths=$changed_paths"

@@ -1410,3 +1410,22 @@ def test_a_clean_json_merge_without_duplicates_still_merges(workdir: Path) -> No
     outputs = parse_outputs(output_file)
     assert outputs["has_conflicts"] == "false"
     assert (child / "config" / "settings.json").read_text(encoding="utf-8") == merged
+
+
+@pytest.mark.parametrize("name", ["café.txt", 'has"quote.txt', "back\\slash.txt"])
+def test_outputs_name_a_synced_path_git_would_quote(workdir: Path, name: str) -> None:
+    """git quotes each of these names in `--name-only` and `ls-files`, so the sync
+    emitted `changed_paths=".github/caf\\303\\251.txt"` — a path no later step can
+    open. RED before the `-z` reads: the outputs carried the quoted spelling.
+    """
+    write(workdir / "template" / ".github" / name, "from the template\n")
+    commit_all(workdir / "template")
+
+    result, output_file = run_sync(
+        workdir / "child", workdir / "template", sync_paths=".github"
+    )
+    assert result.returncode == 0, result.stderr
+    outputs = parse_outputs(output_file)
+    assert outputs["has_changes"] == "true", outputs
+    assert f".github/{name}" in outputs["changed_paths"], outputs["changed_paths"]
+    assert f".github/{name}" in outputs["changed_files"], outputs["changed_files"]

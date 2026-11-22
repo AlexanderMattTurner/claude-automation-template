@@ -22,6 +22,7 @@ import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tests._fake_gh import run_jobs, workflow_runs, write_gh_stub
@@ -865,3 +866,22 @@ def test_the_reanchor_fetch_scopes_its_auth_header_to_github(tmp_path: Path) -> 
     assert fetches, "the re-anchor fetch must have run, or this pins nothing"
     assert all("http.https://github.com/.extraheader=" in line for line in fetches)
     assert not any(re.search(r"(?<![.\w])http\.extraheader=", line) for line in fetches)
+
+
+@pytest.mark.parametrize("name", ["café.txt", 'has"quote.txt', "back\\slash.txt"])
+def test_path_gate_fires_for_a_name_git_would_quote(tmp_path: Path, name: str) -> None:
+    """git quotes each of these three names in `--name-only`, so the gate matched
+    `"src/caf\\303\\251.txt"` against `^src/` and lost. The skip is the dangerous
+    direction: report-job-result greens a skipped job, so a required check passed
+    having scanned nothing. RED before the `-z` read — all three gave run=false.
+
+    `core.quotePath=false` fixes only the first name, which is why the other two
+    are here.
+    """
+    repo = tmp_path / "r"
+    init_test_repo(repo)
+    base = _commit(repo, "seed", "seed", "base: fork point")
+    head = _commit(repo, f"src/{name}", "body", "feat: add a watched file")
+
+    output = _run_realgit_out(repo, BASE_SHA=base, HEAD_SHA=head, PATHS_REGEX="^src/")
+    assert "run=true" in output, output

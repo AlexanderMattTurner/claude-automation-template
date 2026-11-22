@@ -4,6 +4,10 @@
 
 set -euo pipefail
 
+# INVARIANT — this guard never passes on a git failure: it reports a required
+# check, and an empty listing reads as "no symlinks here". Capturing lets git's
+# status abort the script, where a `< <(git …)` loop swallows it.
+entries="$(git ls-files -s -z | tr '\0' '\n')"
 violations=""
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
@@ -18,7 +22,7 @@ while IFS= read -r line; do
   case "$target" in
   /*) violations="${violations}${path} -> ${target}"$'\n' ;;
   esac
-done < <(git ls-files -s)
+done <<<"$entries"
 
 if [[ -n "$violations" ]]; then
   echo "::error::Tracked symlinks resolve to absolute paths (not portable across machines):"
