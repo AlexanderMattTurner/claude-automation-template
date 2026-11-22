@@ -1429,3 +1429,31 @@ def test_outputs_name_a_synced_path_git_would_quote(workdir: Path, name: str) ->
     assert outputs["has_changes"] == "true", outputs
     assert f".github/{name}" in outputs["changed_paths"], outputs["changed_paths"]
     assert f".github/{name}" in outputs["changed_files"], outputs["changed_files"]
+
+
+@pytest.mark.parametrize("name", ["café.txt", 'has"quote.txt', "back\\slash.txt"])
+def test_detects_a_deletion_of_a_path_git_would_quote(workdir: Path, name: str) -> None:
+    """`ls-tree -r --name-only` without `-z` listed `"config/caf\\303\\251.txt"`,
+    which does not prefix-match `config/`, so the loop skipped the entry and the
+    template's deletion never reached the child. RED before the `-z` read at
+    template-sync.sh:629 — has_deletions stayed false for all three names.
+    """
+    child = workdir / "child"
+    template = workdir / "template"
+
+    write(template / "config" / "keep.txt", "x\n")
+    write(template / "config" / name, "y\n")
+    prev_sha = commit_all(template)
+    write(child / "config" / "keep.txt", "x\n")
+    write(child / "config" / name, "y\n")
+    (child / ".template-version").write_text(prev_sha, encoding="utf-8")
+    commit_all(child)
+    (template / "config" / name).unlink()
+    commit_all(template)
+
+    result, output_file = run_sync(child, template, sync_paths="config")
+    assert result.returncode == 0, result.stderr
+
+    outputs = parse_outputs(output_file)
+    assert outputs["has_deletions"] == "true", result.stdout
+    assert f"config/{name}" in outputs["deleted_files"], outputs["deleted_files"]
