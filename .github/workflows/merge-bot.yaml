@@ -1,0 +1,66 @@
+name: Merge bot
+
+# Lands pull requests as a GitHub App, so a merge commit carries +0000 and not a
+# person's UTC offset. merge-bot-arm.sh states why.
+#
+# OPT-IN: the job is skipped until the repository (or organization) defines the
+# MERGE_BOT_CLIENT_ID variable. The README lists the App's permissions.
+#
+# Two ways in, both needing a person:
+#   * arm auto-merge as usual, and this job re-arms it as the App;
+#   * add the `merge-bot` label, which also covers a PR whose checks are
+#     already green, where GitHub offers no auto-merge button.
+# The App's own re-arm fires `auto_merge_enabled` again; its sender is a Bot, so
+# the `if:` below ends the loop there.
+#
+# SECURITY — pull_request_target is what keeps the App's private key away from
+# PR code: the workflow file and the one script it runs both come from the base
+# ref, and the checkout never fetches the PR head. The App merges through the
+# same required checks as anyone else; never register it as a ruleset bypass.
+
+on:
+  pull_request_target: # zizmor: ignore[dangerous-triggers] — base-only sparse checkout, no PR code run; see the header
+    types: [auto_merge_enabled, labeled]
+
+permissions: {}
+
+jobs:
+  arm:
+    name: Arm the merge as the merge-bot App
+    if: >-
+      vars.MERGE_BOT_CLIENT_ID != '' &&
+      github.event.sender.type == 'User' &&
+      (github.event.action == 'auto_merge_enabled' || github.event.label.name == 'merge-bot')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # sparse-checkout the trusted script
+    concurrency:
+      # Per job, so a run this `if:` skips never enters the group. Never
+      # cancelled: a run stopped between the disable and the re-arm would leave
+      # the PR with auto-merge off.
+      group: merge-bot-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - name: Mint the App's installation token
+        id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.MERGE_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write # land a PR that changes a workflow file
+      - name: Arm the merge as the App
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BOT_LOGIN: ${{ steps.app.outputs.app-slug }}[bot]
+          EVENT_ACTION: ${{ github.event.action }}
+          SENDER: ${{ github.event.sender.login }}
+        run: bash .github/scripts/merge-bot-arm.sh

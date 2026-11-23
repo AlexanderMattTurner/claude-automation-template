@@ -14,6 +14,8 @@ the prose from the release's commits.
 
 ### Added
 
+- `merge-bot.yaml`, an opt-in workflow that lands pull requests as a GitHub App you own. GitHub stamps a merge commit with the timezone of whoever armed the merge, so your merges publish your UTC offset; the App's merges carry `+0000` and still start push workflows. Arm auto-merge as usual or add the `merge-bot` label, and the App takes the merge over. It stays off until you set the `MERGE_BOT_CLIENT_ID` variable; the README lists the App's permissions.
+
 - `bullshit-check.mjs`, an advisory hook that once per twelve-minute window, at
   a moment hashed from the session id, drops one short self-audit question into
   the agent's context: the evidence check ("name the command whose output backs
