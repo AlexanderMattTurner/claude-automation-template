@@ -117,6 +117,7 @@ Enabled at project scope, so every session in this repo loads them—local and c
 | `validate-config.yaml`             | Validates `.claude/` and `.hooks/` config on every push                                                                                                                                                               |
 | `decide-reusable.yaml`             | Reusable path-gate job: diffs the change range and tells expensive jobs whether to run                                                                                                                                |
 | `dependabot-auto-merge.yaml`       | Auto-merges minor/patch Dependabot PRs after CI passes                                                                                                                                                                |
+| `merge-bot.yaml`                   | Lands PRs as a GitHub App, so merge commits carry `+0000` and not your UTC offset (opt-in via `MERGE_BOT_CLIENT_ID`)                                                                                                  |
 | `auto-version.yaml`                | Post-merge, publishes to npm and tags `vX.Y.Z` (non-private packages)                                                                                                                                                 |
 | `release-canary.yaml`              | Publishes a canary prerelease from main                                                                                                                                                                               |
 | `ci-failure-notify.yaml`           | Files a `ci-failure` issue when a post-merge or scheduled run fails                                                                                                                                                   |
@@ -243,6 +244,7 @@ Repository **settings and secrets are never copied** when you create a repo from
 | `PUSH_TOKEN`                              | `security-vulnerability-scan`                                                            | Optional—falls back to `GITHUB_TOKEN`                                                              |
 | `GH_NTFY_SUBJECT`                         | `build-publish-notify`                                                                   | Optional—enables the ntfy failure alert (a no-op if unset)                                         |
 | `GH_NTFY_URL`                             | `build-publish-notify`                                                                   | Optional—targets a self-hosted ntfy server (defaults to ntfy.sh)                                   |
+| `MERGE_BOT_PRIVATE_KEY`                   | `merge-bot`                                                                              | Optional—the workflow stays off until the `MERGE_BOT_CLIENT_ID` variable is set                    |
 
 `TEMPLATE_SYNC_TOKEN` should be a **fine-grained PAT** (it lets sync/release PRs touch workflow files and clear tag protection, which `GITHUB_TOKEN` can’t):
 
@@ -251,6 +253,20 @@ Repository **settings and secrets are never copied** when you create a repo from
 | `contents`      | Read and write |
 | `workflows`     | Read and write |
 | `pull requests` | Read and write |
+
+`merge-bot` lands PRs as a **GitHub App**, because GitHub stamps a merge commit with the timezone of whoever armed the merge. An App has none, so its merges carry `+0000`, and they still start your push workflows. To turn it on:
+
+1. Create a GitHub App you own (Settings → Developer settings → GitHub Apps, no webhook) with the permissions below, and install it on the repo.
+2. Set the `MERGE_BOT_CLIENT_ID` **variable** to the App's Client ID, and the `MERGE_BOT_PRIVATE_KEY` secret to a private key you generate for it.
+3. Arm auto-merge as usual, or add the `merge-bot` label to a PR. The label also covers a PR whose checks are already green.
+
+| Permission      | Access         | Why                                 |
+| --------------- | -------------- | ----------------------------------- |
+| `contents`      | Read and write | Merge the PR                        |
+| `pull requests` | Read and write | Arm and disarm auto-merge           |
+| `workflows`     | Read and write | Land PRs that change workflow files |
+
+Never add the App to a ruleset's bypass list: it merges through the same required checks as you do.
 
 **Enable [GitHub security features](https://docs.github.com/en/code-security) per repo** (Settings → Code security): secret scanning, push protection, and Dependabot alerts + security updates. The committed `.github/dependabot.yml` assumes Dependabot is on at the repo level. These are settings, not files, so they don’t sync—turn them on when you adopt the template.
 
