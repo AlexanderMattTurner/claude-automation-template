@@ -266,7 +266,7 @@ Repository **settings and secrets are never copied** when you create a repo from
 | `pull requests` | Read and write | Arm and disarm auto-merge           |
 | `workflows`     | Read and write | Land PRs that change workflow files |
 
-Never add the App to a ruleset's bypass list: it merges through the same required checks as you do.
+Never add the App to a ruleset's bypass list: it merges through the same required checks as you do. The workflow is untested on a branch that uses a merge queue.
 
 **Enable [GitHub security features](https://docs.github.com/en/code-security) per repo** (Settings → Code security): secret scanning, push protection, and Dependabot alerts + security updates. The committed `.github/dependabot.yml` assumes Dependabot is on at the repo level. These are settings, not files, so they don’t sync—turn them on when you adopt the template.
 

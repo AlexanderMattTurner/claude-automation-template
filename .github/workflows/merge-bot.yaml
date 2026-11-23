@@ -1,9 +1,7 @@
 name: Merge bot
 
-# Lands pull requests as a GitHub App instead of as a person. GitHub stamps a
-# merge commit with the timezone of whoever armed the merge, so a person's merges
-# publish their UTC offset. An App's merges carry +0000 and still start the push
-# workflows, which a merge armed with GITHUB_TOKEN does not.
+# Lands pull requests as a GitHub App, so a merge commit carries +0000 and not a
+# person's UTC offset. merge-bot-arm.sh states why.
 #
 # OPT-IN: the job is skipped until the repository (or organization) defines the
 # MERGE_BOT_CLIENT_ID variable. The README lists the App's permissions.
@@ -38,9 +36,9 @@ jobs:
     permissions:
       contents: read # sparse-checkout the trusted script
     concurrency:
-      # Per job, so an unrelated label's skipped run never displaces a queued
-      # arming. Never cancelled: a run stopped between the disable and the
-      # re-arm would leave the PR with auto-merge off.
+      # Per job, so a run this `if:` skips never enters the group. Never
+      # cancelled: a run stopped between the disable and the re-arm would leave
+      # the PR with auto-merge off.
       group: merge-bot-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     steps:
@@ -54,6 +52,9 @@ jobs:
         with:
           client-id: ${{ vars.MERGE_BOT_CLIENT_ID }}
           private-key: ${{ secrets.MERGE_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write # land a PR that changes a workflow file
       - name: Arm the merge as the App
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

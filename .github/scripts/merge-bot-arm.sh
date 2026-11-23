@@ -9,7 +9,8 @@
 #
 # Two events reach this script (see merge-bot.yaml):
 #   auto_merge_enabled  a person armed auto-merge; take the arming over.
-#   labeled             a person added the `merge-bot` label; arm from scratch.
+#   labeled             a person added the `merge-bot` label; arm from scratch,
+#                       or take over an arming that is already there.
 #
 # Env: GH_TOKEN (the App's token), GH_REPO, PR_NUMBER, BOT_LOGIN (the App's REST
 # login, `<slug>[bot]`), EVENT_ACTION, SENDER (who fired the event).
@@ -20,8 +21,6 @@ set -euo pipefail
 : "${BOT_LOGIN:?BOT_LOGIN required}"
 : "${EVENT_ACTION:?EVENT_ACTION required}"
 
-# REST spells an App's login with its `[bot]` suffix, as BOT_LOGIN does, and the
-# merge method in the lowercase that `gh pr merge` takes as a flag.
 read_pr() { gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}"; }
 
 pr="$(read_pr)"
@@ -36,46 +35,36 @@ if [[ "$armed_by" == "$BOT_LOGIN" ]]; then
   exit 0
 fi
 
-case "$EVENT_ACTION" in
-auto_merge_enabled)
-  if [[ -z "$armed_by" ]]; then
-    echo "Auto-merge on PR #${PR_NUMBER} was switched off again before this run; leaving it off."
-    exit 0
-  fi
-  ;;
-labeled)
-  # pull_request_target lets a triage-role user add a label, and that role may
-  # not merge. Only a sender who could merge by hand may arm the App's merge.
-  : "${SENDER:?SENDER required}"
-  permission="$(gh api "repos/${GH_REPO}/collaborators/${SENDER}/permission" | jq -r '.permission')"
-  if [[ "$permission" != "admin" && "$permission" != "write" ]]; then
-    echo "::error::${SENDER} has '${permission}' access to ${GH_REPO}, which cannot merge; not arming PR #${PR_NUMBER}."
-    exit 1
-  fi
-  ;;
-*)
-  echo "::error::merge-bot-arm.sh does not handle the '${EVENT_ACTION}' event."
-  exit 1
-  ;;
-esac
-
 merge_args=(--auto)
 if [[ -n "$armed_by" ]]; then
-  # Keep what the person chose when they armed it.
+  # Someone who may merge armed this PR, so either event may hand it to the App
+  # with their choices kept. REST spells the method as the flag does.
   merge_args+=("--$(jq -r '.auto_merge.merge_method' <<<"$pr")")
   title="$(jq -r '.auto_merge.commit_title // ""' <<<"$pr")"
   message="$(jq -r '.auto_merge.commit_message // ""' <<<"$pr")"
   [[ -z "$title" ]] || merge_args+=(--subject "$title")
   [[ -z "$message" ]] || merge_args+=(--body "$message")
   gh pr merge "$PR_NUMBER" --disable-auto
-else
+elif [[ "$EVENT_ACTION" == "labeled" ]]; then
+  # pull_request_target lets a triage-role user add a label, and that role may
+  # not merge. Only a sender who could merge by hand may arm from scratch.
+  : "${SENDER:?SENDER required}"
+  permission="$(gh api "repos/${GH_REPO}/collaborators/${SENDER}/permission" | jq -r '.permission')"
+  if [[ "$permission" != "admin" && "$permission" != "write" ]]; then
+    echo "::error::${SENDER} has '${permission}' access to ${GH_REPO}, which cannot merge; not arming PR #${PR_NUMBER}."
+    exit 1
+  fi
   merge_args+=("--$(gh api "repos/${GH_REPO}" | jq -r '
     if .allow_merge_commit then "merge" elif .allow_squash_merge then "squash" else "rebase" end')")
+else
+  echo "Auto-merge on PR #${PR_NUMBER} is off, so there is no arming to take over."
+  exit 0
 fi
 
 # The read-back below is the verdict, so a refusal here is reported, not fatal.
-gh pr merge "$PR_NUMBER" "${merge_args[@]}" ||
-  echo "::warning::gh pr merge exited non-zero on PR #${PR_NUMBER}; reading the PR back."
+if ! gh pr merge "$PR_NUMBER" "${merge_args[@]}"; then
+  echo "::warning::gh pr merge exited non-zero on PR #${PR_NUMBER}; reading the PR back." >&2
+fi
 
 pr="$(read_pr)"
 if [[ "$(jq -r '.merged' <<<"$pr")" == "true" ]]; then
@@ -86,5 +75,7 @@ if [[ "$(jq -r '.auto_merge.enabled_by.login // ""' <<<"$pr")" == "$BOT_LOGIN" ]
   echo "PR #${PR_NUMBER} is armed by ${BOT_LOGIN}. The required checks still gate the merge."
   exit 0
 fi
-echo "::error::PR #${PR_NUMBER} is not armed by ${BOT_LOGIN}, and its auto-merge may now be OFF. Arm it again by hand, and check that the App is installed on ${GH_REPO} with contents, pull requests and workflows write access."
+now_off=""
+[[ -z "$armed_by" ]] || now_off=" ${armed_by} had armed its auto-merge, which is now OFF: arm it again by hand."
+echo "::error::PR #${PR_NUMBER} is not armed by ${BOT_LOGIN}.${now_off} Check that the App is installed on ${GH_REPO} with contents, pull requests and workflows write access."
 exit 1

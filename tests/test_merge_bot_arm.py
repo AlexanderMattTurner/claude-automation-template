@@ -46,12 +46,14 @@ if args[:1] == ["api"] and len(args) == 2:
     else:
         sys.exit(f"fake gh: unmodelled path {path}")
 elif args == ["pr", "merge", "7", "--disable-auto"]:
+    if world["refuse"] == "disable":
+        sys.exit("fake gh: Resource not accessible by integration")
     world["pr"]["auto_merge"] = None
     save()
 elif args[:4] == ["pr", "merge", "7", "--auto"] and args[4] in ("--merge", "--squash", "--rebase"):
-    if world["arm"] == "refused":
+    if world["refuse"] == "arm":
         sys.exit("fake gh: Resource not accessible by integration")
-    if world["arm"] == "clean":
+    if world["clean"]:
         world["pr"].update(state="closed", merged=True)
     else:
         world["pr"]["auto_merge"] = {
@@ -79,7 +81,8 @@ def run(
     *,
     auto_merge=None,
     state="open",
-    arm="armed",
+    refuse=None,
+    clean=False,
     repo=None,
     sender="owner",
 ):
@@ -87,8 +90,14 @@ def run(
     world = {
         "pr": {"state": state, "merged": False, "auto_merge": auto_merge},
         "repo": repo or {"allow_merge_commit": True, "allow_squash_merge": True},
-        "permissions": {"owner": "admin", "triager": "read"},
-        "arm": arm,
+        "permissions": {
+            "owner": "admin",
+            "writer": "write",
+            "triager": "read",
+            "outsider": "none",
+        },
+        "refuse": refuse,
+        "clean": clean,
     }
     (tmp_path / "world.json").write_text(json.dumps(world), encoding="utf-8")
     stub = tmp_path / "gh"
@@ -111,13 +120,9 @@ def run(
         },
     )
     log = tmp_path / "calls.jsonl"
-    calls = (
-        [json.loads(line) for line in log.read_text().splitlines()]
-        if log.exists()
-        else []
-    )
+    calls = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
     merges = [c[3:] for c in calls if c[:2] == ["pr", "merge"]]
-    pr = json.loads((tmp_path / "world.json").read_text())["pr"]
+    pr = json.loads((tmp_path / "world.json").read_text(encoding="utf-8"))["pr"]
     return res, merges, pr
 
 
@@ -138,11 +143,12 @@ def test_a_person_arming_auto_merge_is_taken_over_with_their_choices(tmp_path: P
 @pytest.mark.parametrize(
     ("action", "auto_merge", "state"),
     [
-        # The App's own arming must not be re-armed, or the two events loop.
+        # The App's own arming is left alone, or the two events would loop.
         ("auto_merge_enabled", armed(BOT), "open"),
         ("labeled", armed(BOT), "open"),
         # The person switched auto-merge off again before the job started.
         ("auto_merge_enabled", None, "open"),
+        # The PR merged or closed before the job started.
         ("auto_merge_enabled", armed("alice"), "closed"),
     ],
 )
@@ -164,42 +170,64 @@ def test_nothing_to_arm_touches_nothing(tmp_path: Path, action, auto_merge, stat
 def test_the_label_arms_an_unarmed_pr_with_a_method_the_repo_allows(
     tmp_path: Path, repo, flag
 ):
-    res, merges, pr = run(tmp_path, "labeled", repo=repo)
+    res, merges, pr = run(tmp_path, "labeled", repo=repo, sender="writer")
     assert res.returncode == 0, res.stdout + res.stderr
     assert merges == [["--auto", flag]]
     assert pr["auto_merge"]["enabled_by"]["login"] == BOT
 
 
-def test_the_label_keeps_the_method_a_person_already_armed(tmp_path: Path):
-    res, merges, _ = run(tmp_path, "labeled", auto_merge=armed("alice", "rebase"))
+@pytest.mark.parametrize(
+    ("sender", "access"), [("triager", "read"), ("outsider", "none")]
+)
+def test_a_label_from_someone_who_cannot_merge_arms_nothing(
+    tmp_path: Path, sender, access
+):
+    res, merges, pr = run(tmp_path, "labeled", sender=sender)
+    assert res.returncode == 1
+    assert merges == []
+    assert pr["auto_merge"] is None
+    assert f"{sender} has '{access}' access" in res.stdout
+
+
+def test_any_label_sender_may_hand_over_what_a_person_already_armed(tmp_path: Path):
+    res, merges, _ = run(
+        tmp_path, "labeled", auto_merge=armed("alice", "rebase"), sender="triager"
+    )
     assert res.returncode == 0, res.stdout + res.stderr
     assert merges == [["--disable-auto"], ["--auto", "--rebase"]]
 
 
-def test_a_label_from_someone_who_cannot_merge_is_refused(tmp_path: Path):
-    res, merges, _ = run(tmp_path, "labeled", sender="triager")
-    assert res.returncode == 1
-    assert merges == []
-    assert "triager has 'read' access" in res.stdout
-
-
 def test_a_pr_that_merges_at_once_counts_as_landed(tmp_path: Path):
-    res, _, pr = run(tmp_path, "labeled", arm="clean")
+    res, merges, pr = run(tmp_path, "labeled", clean=True)
     assert res.returncode == 0, res.stdout + res.stderr
+    assert merges == [["--auto", "--merge"]]
     assert pr["merged"] is True
+
+
+def test_a_refused_disable_leaves_the_persons_arming_in_place(tmp_path: Path):
+    before = armed("alice")
+    res, merges, pr = run(
+        tmp_path, "auto_merge_enabled", auto_merge=before, refuse="disable"
+    )
+    assert res.returncode != 0
+    assert merges == [["--disable-auto"]]
+    assert pr["auto_merge"] == before
 
 
 def test_a_refused_re_arm_goes_red_and_says_auto_merge_is_off(tmp_path: Path):
     res, merges, pr = run(
-        tmp_path, "auto_merge_enabled", auto_merge=armed("alice"), arm="refused"
+        tmp_path, "auto_merge_enabled", auto_merge=armed("alice"), refuse="arm"
     )
     assert res.returncode == 1
-    assert merges[0] == ["--disable-auto"]
+    assert merges == [["--disable-auto"], ["--auto", "--squash"]]
     assert pr["auto_merge"] is None
-    assert "auto-merge may now be OFF" in res.stdout
+    assert "alice had armed its auto-merge, which is now OFF" in res.stdout
 
 
-def test_an_unknown_event_is_refused(tmp_path: Path):
-    res, merges, _ = run(tmp_path, "closed")
+def test_a_refused_arm_from_scratch_does_not_claim_auto_merge_was_switched_off(
+    tmp_path: Path,
+):
+    res, merges, _ = run(tmp_path, "labeled", refuse="arm")
     assert res.returncode == 1
-    assert merges == []
+    assert merges == [["--auto", "--merge"]]
+    assert "now OFF" not in res.stdout
