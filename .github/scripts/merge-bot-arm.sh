@@ -57,8 +57,9 @@ elif [[ "$EVENT_ACTION" == "labeled" ]]; then
     echo "::error::${SENDER} has '${permission}' access to ${GH_REPO}, which cannot merge; not arming PR #${PR_NUMBER}."
     exit 1
   fi
-  merge_args+=("--$(gh api "repos/${GH_REPO}" | jq -r '
-    if .allow_merge_commit then "merge" elif .allow_squash_merge then "squash" else "rebase" end')")
+  merge_args+=("--$(gh repo view "$GH_REPO" --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed | jq -r '
+    if .mergeCommitAllowed then "merge" elif .squashMergeAllowed then "squash"
+    elif .rebaseMergeAllowed then "rebase" else error("the repository allows no merge method") end')")
 else
   echo "Auto-merge on PR #${PR_NUMBER} is off, so there is no arming to take over."
   exit 0

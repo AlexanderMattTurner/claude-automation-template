@@ -35,16 +35,18 @@ def save():
     (here / "world.json").write_text(json.dumps(world))
 
 
+REPO_FIELDS = "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed"
+
 if args[:1] == ["api"] and len(args) == 2:
     path = args[1]
     if path == "repos/o/r/pulls/7":
         print(json.dumps(world["pr"]))
-    elif path == "repos/o/r":
-        print(json.dumps(world["repo"]))
     elif path.startswith("repos/o/r/collaborators/") and path.endswith("/permission"):
         print(json.dumps({"permission": world["permissions"][path.split("/")[4]]}))
     else:
         sys.exit(f"fake gh: unmodelled path {path}")
+elif args == ["repo", "view", "o/r", "--json", REPO_FIELDS]:
+    print(json.dumps(world["repo"]))
 elif args == ["pr", "merge", "7", "--disable-auto"]:
     if world["refuse"] == "disable":
         sys.exit("fake gh: Resource not accessible by integration")
@@ -64,6 +66,14 @@ elif args[:4] == ["pr", "merge", "7", "--auto"] and args[4] in ("--merge", "--sq
 else:
     sys.exit(f"fake gh: unmodelled call {args}")
 """
+
+
+def allowed(*, merge=False, squash=False, rebase=False) -> dict:
+    return {
+        "mergeCommitAllowed": merge,
+        "squashMergeAllowed": squash,
+        "rebaseMergeAllowed": rebase,
+    }
 
 
 def armed(login: str, method: str = "squash", title=None, message=None) -> dict:
@@ -89,7 +99,7 @@ def run(
     """Run the script against a fake PR #7. Returns (result, merge calls, PR)."""
     world = {
         "pr": {"state": state, "merged": False, "auto_merge": auto_merge},
-        "repo": repo or {"allow_merge_commit": True, "allow_squash_merge": True},
+        "repo": allowed(merge=True, squash=True, rebase=True) if repo is None else repo,
         "permissions": {
             "owner": "admin",
             "writer": "write",
@@ -172,9 +182,9 @@ def test_nothing_to_arm_touches_nothing(tmp_path: Path, action, auto_merge, stat
 @pytest.mark.parametrize(
     ("repo", "flag"),
     [
-        ({"allow_merge_commit": True, "allow_squash_merge": True}, "--merge"),
-        ({"allow_merge_commit": False, "allow_squash_merge": True}, "--squash"),
-        ({"allow_merge_commit": False, "allow_squash_merge": False}, "--rebase"),
+        (allowed(merge=True, squash=True, rebase=True), "--merge"),
+        (allowed(squash=True, rebase=True), "--squash"),
+        (allowed(rebase=True), "--rebase"),
     ],
 )
 def test_the_label_arms_an_unarmed_pr_with_a_method_the_repo_allows(
@@ -184,6 +194,17 @@ def test_the_label_arms_an_unarmed_pr_with_a_method_the_repo_allows(
     assert res.returncode == 0, res.stdout + res.stderr
     assert merges == [["--auto", flag]]
     assert pr["auto_merge"]["enabled_by"]["login"] == BOT
+
+
+@pytest.mark.parametrize("repo", [allowed(), {}])
+def test_the_label_arms_nothing_when_no_method_is_allowed_or_readable(
+    tmp_path: Path, repo
+):
+    res, merges, pr = run(tmp_path, "labeled", repo=repo)
+    assert res.returncode != 0
+    assert merges == []
+    assert pr["auto_merge"] is None
+    assert "the repository allows no merge method" in res.stderr
 
 
 @pytest.mark.parametrize(
