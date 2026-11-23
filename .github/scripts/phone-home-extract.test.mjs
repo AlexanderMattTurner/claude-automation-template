@@ -68,6 +68,18 @@ describe("phone-home-extract", () => {
     assert.match(readFileSync(LESSONS_FILE, "utf8"), /retry to the fetch/);
   });
 
+  it("strips a comment nested inside another so no marker survives", async () => {
+    const body = [
+      "## Lessons Learned",
+      "",
+      "- **What**: Add a retry to the fetch helper.",
+      "Retry note <!<!-- x -->-- hidden --> done.",
+    ].join("\n");
+    await run(body);
+    const written = readFileSync(LESSONS_FILE, "utf8");
+    assert.doesNotMatch(written, /<!--|-->|hidden/);
+  });
+
   // The load-bearing fix: a prose "nothing to share" disclaimer must NOT file
   // an issue. Each of these cleared the old length gates and produced noise.
   const negatives = [
