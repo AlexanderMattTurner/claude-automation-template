@@ -126,17 +126,27 @@ def run(
     return res, merges, pr
 
 
-def test_a_person_arming_auto_merge_is_taken_over_with_their_choices(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("title", "message", "extra"),
+    [
+        ("feat: x (#7)", "body", ["--subject", "feat: x (#7)", "--body", "body"]),
+        ("feat: x (#7)", None, ["--subject", "feat: x (#7)"]),
+        (None, "body", ["--body", "body"]),
+        # A cleared body is a choice, and differs from GitHub's default body.
+        ("feat: x (#7)", "", ["--subject", "feat: x (#7)", "--body", ""]),
+        (None, None, []),
+    ],
+)
+def test_a_person_arming_auto_merge_is_taken_over_with_their_choices(
+    tmp_path: Path, title, message, extra
+):
     res, merges, pr = run(
         tmp_path,
         "auto_merge_enabled",
-        auto_merge=armed("alice", "squash", title="feat: x (#7)", message="body"),
+        auto_merge=armed("alice", "squash", title=title, message=message),
     )
     assert res.returncode == 0, res.stdout + res.stderr
-    assert merges == [
-        ["--disable-auto"],
-        ["--auto", "--squash", "--subject", "feat: x (#7)", "--body", "body"],
-    ]
+    assert merges == [["--disable-auto"], ["--auto", "--squash", *extra]]
     assert pr["auto_merge"]["enabled_by"]["login"] == BOT
 
 
@@ -209,7 +219,7 @@ def test_a_refused_disable_leaves_the_persons_arming_in_place(tmp_path: Path):
     res, merges, pr = run(
         tmp_path, "auto_merge_enabled", auto_merge=before, refuse="disable"
     )
-    assert res.returncode != 0
+    assert res.returncode == 1
     assert merges == [["--disable-auto"]]
     assert pr["auto_merge"] == before
 

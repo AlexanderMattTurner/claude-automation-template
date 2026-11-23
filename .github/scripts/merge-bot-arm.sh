@@ -40,10 +40,13 @@ if [[ -n "$armed_by" ]]; then
   # Someone who may merge armed this PR, so either event may hand it to the App
   # with their choices kept. REST spells the method as the flag does.
   merge_args+=("--$(jq -r '.auto_merge.merge_method' <<<"$pr")")
-  title="$(jq -r '.auto_merge.commit_title // ""' <<<"$pr")"
-  message="$(jq -r '.auto_merge.commit_message // ""' <<<"$pr")"
-  [[ -z "$title" ]] || merge_args+=(--subject "$title")
-  [[ -z "$message" ]] || merge_args+=(--body "$message")
+  # null means "GitHub's default"; an empty string is a body the person cleared.
+  if jq -e '.auto_merge.commit_title != null' <<<"$pr" >/dev/null; then
+    merge_args+=(--subject "$(jq -r '.auto_merge.commit_title' <<<"$pr")")
+  fi
+  if jq -e '.auto_merge.commit_message != null' <<<"$pr" >/dev/null; then
+    merge_args+=(--body "$(jq -r '.auto_merge.commit_message' <<<"$pr")")
+  fi
   gh pr merge "$PR_NUMBER" --disable-auto
 elif [[ "$EVENT_ACTION" == "labeled" ]]; then
   # pull_request_target lets a triage-role user add a label, and that role may
@@ -77,5 +80,5 @@ if [[ "$(jq -r '.auto_merge.enabled_by.login // ""' <<<"$pr")" == "$BOT_LOGIN" ]
 fi
 now_off=""
 [[ -z "$armed_by" ]] || now_off=" ${armed_by} had armed its auto-merge, which is now OFF: arm it again by hand."
-echo "::error::PR #${PR_NUMBER} is not armed by ${BOT_LOGIN}.${now_off} Check that the App is installed on ${GH_REPO} with contents, pull requests and workflows write access."
+echo "::error::PR #${PR_NUMBER} is not armed by ${BOT_LOGIN}.${now_off} Read the gh error above. The usual causes: 'Allow auto-merge' is off in the settings of ${GH_REPO}, or the App lacks contents, pull requests or workflows write access there."
 exit 1

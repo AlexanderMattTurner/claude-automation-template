@@ -258,7 +258,7 @@ Repository **settings and secrets are never copied** when you create a repo from
 
 1. Create a GitHub App you own (Settings → Developer settings → GitHub Apps, no webhook) with the permissions below, and install it on the repo.
 2. Set the `MERGE_BOT_CLIENT_ID` **variable** to the App's Client ID, and the `MERGE_BOT_PRIVATE_KEY` secret to a private key you generate for it.
-3. Arm auto-merge as usual, or add the `merge-bot` label to a PR. The label also covers a PR whose checks are already green.
+3. Arm auto-merge as usual, or add the `merge-bot` label to a PR. The label also covers a PR whose checks are already green. On a PR nobody armed, the label needs a sender with write access, and it picks the first method the repo allows: merge, squash, rebase.
 
 | Permission      | Access         | Why                                 |
 | --------------- | -------------- | ----------------------------------- |
